@@ -133,7 +133,11 @@ All errors derive from `StorageError`.
 - Files have the mode 0600. The folders that the module makes have the mode 0700.
 - The log shows relative paths, sizes and counts. It does not show image content or original file names.
 - The module does **not** encrypt the files. An image shows the inside of a home.
-  Use disk encryption for the drive of the storage root, for example LUKS on the Raspberry Pi.
+  The owner decided to delay disk encryption. The reasons are:
+  the server is used on a local network (a small office or home network), it is never connected directly to the internet,
+  it stays on the premises, and it has one user.
+  Look at this decision again if one of these facts changes. Disk encryption of the drive of the storage root,
+  for example LUKS on the Raspberry Pi, is the planned way to add it.
 
 ## Known limits
 
