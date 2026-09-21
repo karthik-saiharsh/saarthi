@@ -43,6 +43,9 @@ register_pages(StubUploadService())
 The caller starts the server (`ui.run`).
 This module does not start the server.
 
+The real service is `Backend.upload_service` (see `backend/README.md`).
+The stub is for work on the UI only.
+
 To change the colours, edit `static/css/tokens.css`.
 Only this file can contain colour values.
 A test enforces this rule.

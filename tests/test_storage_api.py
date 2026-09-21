@@ -70,3 +70,13 @@ def test_helpers_need_init_storage(monkeypatch: pytest.MonkeyPatch) -> None:
         storage.list_stored_paths()
     with pytest.raises(StorageConfigError):
         storage.prepare_image(photo())
+
+
+def test_current_config_is_the_loaded_config() -> None:
+    assert storage.current_config() == storage.init_storage()
+
+
+def test_current_config_needs_init_storage(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(storage, "_config", None)
+    with pytest.raises(StorageConfigError):
+        storage.current_config()

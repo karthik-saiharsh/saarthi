@@ -9,7 +9,7 @@ It is part of the image ingestion pipeline.
 
 The page does not contain application logic.
 It calls an `UploadService` and shows the result.
-The backend phase gives the real `UploadService`.
+The real `UploadService` is `Backend.upload_service` (see `docs/backend/Upload Endpoint.md`). The stub is for work on the UI only.
 
 ## Route
 

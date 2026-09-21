@@ -52,6 +52,7 @@ Edit `config.toml`.
 | Helper | Task |
 |--------|------|
 | `init_storage` | Read the config, prepare the root folder, remove stale temporary files |
+| `current_config` | Return the config that `init_storage` loaded (limits, retention days) |
 | `prepare_image` | Check an upload and make the JPEG without metadata. Returns the bytes, the SHA-256 hash, the width and the height |
 | `save_image` | Write a prepared image to disk. Returns the relative path |
 | `read_image` | Return the bytes of a stored image |

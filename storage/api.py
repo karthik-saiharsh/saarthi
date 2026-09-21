@@ -39,6 +39,7 @@ __all__ = [
     "StorageNotFoundError",
     "StoragePathError",
     "UnsupportedImageError",
+    "current_config",
     "delete_images",
     "find_missing_files",
     "find_orphan_files",
@@ -79,6 +80,11 @@ def init_storage(config_path: Path = DEFAULT_CONFIG_PATH) -> StorageConfig:
         "Storage ready at %s, %d bytes free", config.root, files.free_space(config)
     )
     return config
+
+
+def current_config() -> StorageConfig:
+    """Return the config that `init_storage` loaded (limits, retention days, ...)."""
+    return _require_config()
 
 
 def prepare_image(data: bytes) -> PreparedImage:
