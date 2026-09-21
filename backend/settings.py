@@ -17,9 +17,19 @@ _ENV_NAME: re.Pattern[str] = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
 @dataclass(frozen=True)
+class WorkerConfig:
+    idle_wait_seconds: int
+    generic_pass_every: int
+    duplicate_window_minutes: int
+    duplicate_max_compared: int
+    error_pause_seconds: int
+
+
+@dataclass(frozen=True)
 class BackendConfig:
     max_pending: int
     token_env_var: str
+    worker: WorkerConfig
 
 
 def _table(raw: dict, name: str) -> dict:
@@ -27,6 +37,18 @@ def _table(raw: dict, name: str) -> dict:
     if not isinstance(table, dict):
         raise BackendConfigError(f"Missing [{name}] table in config")
     return table
+
+
+def _integer(table: dict, key: str, minimum: int) -> int:
+    """Read an integer of `minimum` or more from the [worker] table."""
+    if key not in table:
+        raise BackendConfigError(f"Missing key worker.{key} in config")
+    value: object = table[key]
+    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+        raise BackendConfigError(
+            f"worker.{key} must be an integer of {minimum} or more"
+        )
+    return value
 
 
 def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> BackendConfig:
@@ -64,5 +86,13 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> BackendConfig:
             "api.token_env_var must be a valid environment variable name"
         )
 
+    worker: dict = _table(raw, "worker")
+    worker_config: WorkerConfig = WorkerConfig(
+        idle_wait_seconds=_integer(worker, "idle_wait_seconds", 1),
+        generic_pass_every=_integer(worker, "generic_pass_every", 0),
+        duplicate_window_minutes=_integer(worker, "duplicate_window_minutes", 1),
+        duplicate_max_compared=_integer(worker, "duplicate_max_compared", 1),
+        error_pause_seconds=_integer(worker, "error_pause_seconds", 0),
+    )
     logger.info("Loaded backend config from %s", config_path)
-    return BackendConfig(max_pending=max_pending, token_env_var=token_env_var)
+    return BackendConfig(max_pending, token_env_var, worker_config)

@@ -6,6 +6,7 @@ decides that order. The HTTP endpoint and the UI both call it.
 """
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -34,9 +35,14 @@ class IngestResult:
 class IngestService:
     """Accepts one image at a time. It is safe to call from several threads."""
 
-    def __init__(self, config: BackendConfig) -> None:
+    def __init__(
+        self, config: BackendConfig, on_stored: Callable[[], None] | None = None
+    ) -> None:
+        """`on_stored` runs after a new image is stored. The worker uses it to wake up."""
         assert isinstance(config, BackendConfig), "config must be a BackendConfig"
+        assert on_stored is None or callable(on_stored), "on_stored must be callable"
         self._config: BackendConfig = config
+        self._on_stored: Callable[[], None] | None = on_stored
 
     def submit(self, data: bytes) -> IngestResult:
         """Check, store and register one uploaded image.
@@ -82,6 +88,13 @@ class IngestService:
         logger.info(
             "Stored image %d (%dx%d)", image.id, prepared.width, prepared.height
         )
+        if self._on_stored is not None:
+            try:
+                self._on_stored()
+            except (
+                Exception
+            ):  # A failing hook must not fail an upload that is already stored.
+                logger.exception("The on_stored hook failed")
         return IngestResult(IngestStatus.STORED, image.id)
 
     @staticmethod

@@ -221,9 +221,7 @@ def test_the_right_token_is_accepted(scheme: str) -> None:
 
 
 def test_the_token_comes_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    config: BackendConfig = BackendConfig(
-        max_pending=5, token_env_var="SAARTHI_TEST_TOKEN"
-    )
+    config: BackendConfig = BackendConfig(5, "SAARTHI_TEST_TOKEN", load_config().worker)
     monkeypatch.delenv("SAARTHI_TEST_TOKEN", raising=False)
     assert read_token(config) is None
     monkeypatch.setenv("SAARTHI_TEST_TOKEN", TOKEN)

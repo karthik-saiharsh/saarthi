@@ -17,11 +17,20 @@ def write(tmp_path: Path, text: str) -> Path:
 def test_default_config_loads() -> None:
     config: BackendConfig = load_config()
     assert config.max_pending >= 1 and config.token_env_var == "SAARTHI_API_TOKEN"
+    assert (
+        config.worker.idle_wait_seconds >= 1 and config.worker.generic_pass_every >= 0
+    )
 
 
 @pytest.mark.parametrize(
     ("old", "new"),
     [
+        ("idle_wait_seconds = 5", "idle_wait_seconds = 0"),
+        ("generic_pass_every = 10", "generic_pass_every = -1"),
+        ("generic_pass_every = 10", "generic_pass_every = true"),
+        ("duplicate_window_minutes = 60", "duplicate_window_minutes = 0"),
+        ("duplicate_max_compared = 200", "duplicate_max_compared = 0"),
+        ("error_pause_seconds = 5", 'error_pause_seconds = "soon"'),
         ("max_pending = 500", "max_pending = 0"),
         ("max_pending = 500", "max_pending = true"),
         ("max_pending = 500", 'max_pending = "many"'),
@@ -36,7 +45,7 @@ def test_bad_values_are_refused(tmp_path: Path, old: str, new: str) -> None:
         load_config(write(tmp_path, DEFAULT_TEXT.replace(old, new, 1)))
 
 
-@pytest.mark.parametrize("table", ["ingest", "api"])
+@pytest.mark.parametrize("table", ["ingest", "api", "worker"])
 def test_missing_table_is_refused(tmp_path: Path, table: str) -> None:
     with pytest.raises(BackendConfigError, match=table):
         load_config(write(tmp_path, DEFAULT_TEXT.replace(f"[{table}]", f"[{table}_x]")))
@@ -45,6 +54,18 @@ def test_missing_table_is_refused(tmp_path: Path, table: str) -> None:
 def test_missing_key_names_the_key(tmp_path: Path) -> None:
     with pytest.raises(BackendConfigError, match="ingest.max_pending"):
         load_config(write(tmp_path, DEFAULT_TEXT.replace("max_pending = 500", "")))
+
+
+def test_a_missing_worker_key_names_the_key(tmp_path: Path) -> None:
+    with pytest.raises(BackendConfigError, match="worker.idle_wait_seconds"):
+        load_config(write(tmp_path, DEFAULT_TEXT.replace("idle_wait_seconds = 5", "")))
+
+
+def test_generic_pass_can_be_switched_off(tmp_path: Path) -> None:
+    text: str = DEFAULT_TEXT.replace(
+        "generic_pass_every = 10", "generic_pass_every = 0"
+    )
+    assert load_config(write(tmp_path, text)).worker.generic_pass_every == 0
 
 
 def test_missing_and_broken_files_are_refused(tmp_path: Path) -> None:

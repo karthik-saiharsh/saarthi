@@ -172,6 +172,16 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> DbConfig:
     return config
 
 
+def close_connection() -> None:
+    """Close the database connection of the current thread, if it is open.
+
+    A thread that uses the database for a long time calls this when it ends.
+    """
+    with _translate_errors("close_connection"):
+        if not database_proxy.is_closed():
+            database_proxy.close()
+
+
 # The open vector index. `init_db` sets it.
 _vector_index: VectorIndex | None = None
 

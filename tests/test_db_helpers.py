@@ -17,6 +17,7 @@ from db.api import (
     add_image,
     add_regions,
     claim_next_pending,
+    close_connection,
     count_images_by_status,
     find_image_by_sha256,
     get_image,
@@ -325,3 +326,15 @@ def test_count_images_by_status_counts_only_that_status() -> None:
     assert count_images_by_status(ImageStatus.DONE) == done_before + 1
     with pytest.raises(AssertionError):
         count_images_by_status("pending")  # type: ignore[arg-type]
+
+
+def test_close_connection_closes_the_connection_of_this_thread_and_can_run_twice() -> (
+    None
+):
+    from db.schema import database_proxy
+
+    close_connection()
+    assert database_proxy.is_closed()
+    close_connection()  # Nothing to close: no error
+    assert get_image(2**31) is None  # The next call opens a connection again
+    assert not database_proxy.is_closed()

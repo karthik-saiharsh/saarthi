@@ -108,7 +108,7 @@ def test_a_file_that_is_too_large_is_refused(
 def test_a_full_queue_refuses_new_uploads(service: IngestService) -> None:
     waiting: int = db.count_images_by_status(ImageStatus.PENDING)
     limited: IngestService = IngestService(
-        BackendConfig(max_pending=waiting + 1, token_env_var="X")
+        BackendConfig(waiting + 1, "X", load_config().worker)
     )
     assert limited.submit(picture(7)).status == IngestStatus.STORED
     with pytest.raises(QueueFullError):
@@ -171,3 +171,21 @@ def test_parameters_are_checked(service: IngestService) -> None:
         service.submit("text")  # type: ignore[arg-type]
     with pytest.raises(AssertionError):
         IngestService("config")  # type: ignore[arg-type]
+
+
+def test_a_hook_runs_for_a_new_image_only_and_its_failure_does_not_fail_the_upload(
+    service: IngestService,  # Only for its clean-up of the rows and files
+) -> None:
+    calls: list[int] = []
+
+    def hook() -> None:
+        calls.append(1)
+        raise RuntimeError("the hook is broken")
+
+    service: IngestService = IngestService(load_config(), on_stored=hook)
+    first: IngestResult = service.submit(picture(40))
+    assert first.status == IngestStatus.STORED and calls == [1]
+    assert service.submit(picture(40)).status == IngestStatus.DUPLICATE
+    assert calls == [1]  # No call for a duplicate
+    with pytest.raises(AssertionError):
+        IngestService(load_config(), on_stored="no")  # type: ignore[arg-type]

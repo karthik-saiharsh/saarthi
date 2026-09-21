@@ -10,3 +10,17 @@ max_pending = 500
 # If this variable is set, every upload request needs the header
 # "Authorization: Bearer <token>". If it is not set, the endpoint is open.
 token_env_var = "SAARTHI_API_TOKEN"
+
+[worker]
+# How long the worker waits for a wake-up signal when no image waits, in seconds.
+# An upload wakes the worker at once. This time is only a safety net.
+idle_wait_seconds = 5
+# The generic pass ("an object") runs on every Nth analysed image. 0 never runs it.
+# Each generic pass costs one more detector run.
+generic_pass_every = 10
+# An image is a near duplicate if it looks like an image captured in this time window, in minutes.
+duplicate_window_minutes = 60
+# The worker compares with at most this number of recent images.
+duplicate_max_compared = 200
+# The worker waits this long after an error in its own loop, in seconds.
+error_pause_seconds = 5
