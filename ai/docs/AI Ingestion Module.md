@@ -26,11 +26,13 @@ worker (backend):
   if engine.is_blurry(report):                                   db.mark_image_rejected(...)
   if engine.is_near_duplicate(report.phash, db.list_recent_phashes()): db.mark_image_rejected(...)
   candidates = engine.detect_candidates(image, include_generic=every_nth_frame)
+  vectors    = engine.embed_regions(image, [c.box for c in candidates])   # before the rows: an error leaves nothing
   regions    = db.add_regions(id, [to_new_region(c) for c in candidates])
-  vectors    = engine.embed_regions(image, [c.box for c in candidates])
   db.store_region_vectors([r.id for r in regions], vectors, engine.embedding_model)
   db.mark_image_done(id)
 ```
+
+The worker in `backend/worker.py` does these steps (see `docs/backend/Worker.md`).
 
 Every candidate that the backend stores must also get a vector.
 The start-up recovery of the db module sets an image back to `pending` if one of its regions has no vector.

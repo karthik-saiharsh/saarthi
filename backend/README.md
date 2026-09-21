@@ -3,11 +3,14 @@
 This is the backend module.
 It controls the flow of the application. It connects the other modules in the right order.
 
-At this time, the backend has one job: the upload step.
-It accepts one image, checks it, stores it, and puts it in the queue for the worker.
-The worker loop, the retention job and the start-up steps are not built yet.
+At this time, the backend has two jobs:
 
-For the full design, see `docs/backend/Upload Endpoint.md`.
+1. The upload step. It accepts one image, checks it, stores it, and puts it in the queue.
+2. The worker. It takes the images from the queue and runs the ai stages on them.
+
+The retention job and the start-up steps (`main.py`) are not built yet.
+
+For the full design, see `docs/backend/Upload Endpoint.md` and `docs/backend/Worker.md`.
 
 ## Files
 
@@ -17,9 +20,10 @@ For the full design, see `docs/backend/Upload Endpoint.md`.
 | `ingest.py` | `IngestService.submit`: the upload step. It uses `storage` and `db` |
 | `http.py` | The HTTP route `POST /api/images` |
 | `ui_adapter.py` | Connects the UI to the upload step (`ui.ports.UploadService`) |
+| `worker.py` | `Worker`: runs the ai stages on `pending` images, in a background thread |
 | `settings.py` | Reads `config.toml` |
 | `errors.py` | The error classes |
-| `config.toml` | The queue limit and the name of the token variable |
+| `config.toml` | The queue limit, the name of the token variable and the worker settings |
 
 ## Rules
 
@@ -71,7 +75,33 @@ If the environment variable is set, every request needs `Authorization: Bearer <
 If it is not set, the route is open on the local network.
 A variable that is set but empty stops the start, so the route cannot open by mistake.
 
+| Key (table `[worker]`) | Meaning |
+|------------------------|---------|
+| `worker.idle_wait_seconds` | How long the worker waits for a wake-up signal when no image waits |
+| `worker.generic_pass_every` | Run the generic pass on every Nth analysed image. 0 never runs it |
+| `worker.duplicate_window_minutes` | Compare the hash of an image with the images from this time |
+| `worker.duplicate_max_compared` | Compare with at most this number of images |
+| `worker.error_pause_seconds` | The pause after an error in the loop of the worker |
+
 The largest upload is `limits.max_bytes` in `storage/config.toml`.
+
+## Worker
+
+`Worker.process_next()` takes the oldest `pending` image and does these steps:
+read and decode the file, check the quality, reject a blurry image or a near duplicate, detect candidates,
+make the vectors, store the regions and the vectors, and mark the image `done`.
+An error marks the image `failed`. The reason is only the name of the error class.
+`start()` runs the worker as a background thread. An upload calls `wake()`, so a new image starts at once.
+`stop()` finishes the current image and stops the thread.
+
+```python
+worker = Worker(config, engine)
+ingest = IngestService(config, on_stored=worker.wake)
+worker.start()
+worker.stop(timeout=60)
+```
+
+The `Backend` class does not create the worker yet. `main.py` does this.
 
 ## Usage
 

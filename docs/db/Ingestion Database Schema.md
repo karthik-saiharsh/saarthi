@@ -115,6 +115,8 @@ Each helper uses peewee expressions only. No helper builds SQL from text.
 | `list_images_older_than(cutoff, limit=100)` | List the oldest `done`, `rejected` and `failed` images that were captured before `cutoff`. An image that waits or is in use is never listed | List of `Image` |
 | `delete_images(image_ids)` | Delete the images and their regions (by cascade), then remove their vectors from the index. Unknown ids are ignored. If one image is `processing`, the helper raises `InvalidStateError` and deletes nothing | The `file_path` of each deleted image |
 | `list_image_paths()` | List the `file_path` of every image, sorted | List of text |
+| `count_images_by_status(status)` | Count the images with one status. The upload step uses it to limit the queue of `pending` images | Integer |
+| `close_connection()` | Close the database connection of the current thread. A thread that uses the database for a long time calls it when it ends | `None` |
 | `recover_interrupted()` | Reset interrupted images. It changes the tables only. The application uses `startup_recovery()` | `RecoveryReport` |
 | `startup_recovery()` | Repair the tables and the index after a stop (see below) | `StartupReport` |
 

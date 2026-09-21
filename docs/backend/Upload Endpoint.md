@@ -6,7 +6,7 @@ The upload endpoint accepts the images from the wearable, one at a time.
 It checks each image, stores it without metadata, and puts it in the queue for the worker.
 The same upload step also serves the upload page of the UI.
 
-The endpoint does not analyse the image. The worker does that later (see "Not built yet").
+The endpoint does not analyse the image. The worker does that later (see `docs/backend/Worker.md`).
 
 ## Where it fits
 
@@ -35,6 +35,9 @@ This is why the browser upload and the wearable upload give the same results.
 
 If two uploads of the same picture arrive at the same time, both can pass step 3.
 The unique hash in the database lets only one row in. The second upload deletes its own file and returns `DUPLICATE`.
+
+6. **Wake the worker.** For a new image, the step calls the `on_stored` hook (the worker's `wake`).
+   An error in the hook is logged. It does not fail an upload that is already stored.
 
 The step returns `STORED` or `DUPLICATE` with the id of the image. Other results are errors.
 
@@ -135,7 +138,7 @@ A `failed` row shows the button **Try again** on the page.
 
 ## Not built yet
 
-- The worker loop that takes `pending` images and runs the ai stages.
+- The `Backend` class does not create the worker and does not pass `on_stored` to the upload step yet.
 - The retention job and the check for orphan and missing files.
 - `main.py`: the start-up steps, the web server, and the shutdown.
   `main.py` must start `storage`, `db` and the ai engine first, then make the `Backend`, then add `backend.create_router()` to the application and give `backend.upload_service` to the UI.

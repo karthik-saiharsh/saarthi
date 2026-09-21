@@ -91,6 +91,8 @@ All helpers are in `api.py`. The helpers return `Image` and `Region` objects.
 | `list_images_older_than` | List `done`, `rejected` and `failed` images captured before a time (retention) |
 | `delete_images` | Delete images, their regions and their vectors. Returns the file paths for the storage module |
 | `list_image_paths` | List the file path of every image (orphan and missing file checks) |
+| `count_images_by_status` | Count the images with one status (the upload step limits the queue with it) |
+| `close_connection` | Close the database connection of the current thread. A long-running thread calls it when it ends |
 
 A helper that changes the status of an image works only from the correct status.
 If the status is not correct, the helper raises `InvalidStateError`.
