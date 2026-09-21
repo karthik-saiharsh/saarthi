@@ -1,0 +1,54 @@
+from pathlib import Path
+
+import pytest
+
+from backend.errors import BackendConfigError
+from backend.settings import DEFAULT_CONFIG_PATH, BackendConfig, load_config
+
+DEFAULT_TEXT: str = DEFAULT_CONFIG_PATH.read_text(encoding="utf-8")
+
+
+def write(tmp_path: Path, text: str) -> Path:
+    path: Path = tmp_path / "config.toml"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def test_default_config_loads() -> None:
+    config: BackendConfig = load_config()
+    assert config.max_pending >= 1 and config.token_env_var == "SAARTHI_API_TOKEN"
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("max_pending = 500", "max_pending = 0"),
+        ("max_pending = 500", "max_pending = true"),
+        ("max_pending = 500", 'max_pending = "many"'),
+        ('token_env_var = "SAARTHI_API_TOKEN"', 'token_env_var = ""'),
+        ('token_env_var = "SAARTHI_API_TOKEN"', 'token_env_var = "NOT A NAME"'),
+        ('token_env_var = "SAARTHI_API_TOKEN"', "token_env_var = 5"),
+    ],
+)
+def test_bad_values_are_refused(tmp_path: Path, old: str, new: str) -> None:
+    assert old in DEFAULT_TEXT
+    with pytest.raises(BackendConfigError):
+        load_config(write(tmp_path, DEFAULT_TEXT.replace(old, new, 1)))
+
+
+@pytest.mark.parametrize("table", ["ingest", "api"])
+def test_missing_table_is_refused(tmp_path: Path, table: str) -> None:
+    with pytest.raises(BackendConfigError, match=table):
+        load_config(write(tmp_path, DEFAULT_TEXT.replace(f"[{table}]", f"[{table}_x]")))
+
+
+def test_missing_key_names_the_key(tmp_path: Path) -> None:
+    with pytest.raises(BackendConfigError, match="ingest.max_pending"):
+        load_config(write(tmp_path, DEFAULT_TEXT.replace("max_pending = 500", "")))
+
+
+def test_missing_and_broken_files_are_refused(tmp_path: Path) -> None:
+    with pytest.raises(BackendConfigError):
+        load_config(tmp_path / "none.toml")
+    with pytest.raises(BackendConfigError):
+        load_config(write(tmp_path, "not toml ["))

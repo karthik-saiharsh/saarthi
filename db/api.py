@@ -284,6 +284,13 @@ def find_image_by_sha256(sha256: str) -> Image | None:
         return Image.get_or_none(Image.sha256 == sha256)
 
 
+def count_images_by_status(status: ImageStatus) -> int:
+    """Return how many images have this status. Use it to limit the queue of `pending` images."""
+    assert isinstance(status, ImageStatus), "status must be an ImageStatus"
+    with _translate_errors("count_images_by_status"):
+        return Image.select().where(Image.status == status.value).count()
+
+
 def list_recent_phashes(since: datetime | None = None, limit: int = 200) -> list[str]:
     """Return the perceptual hashes of `done` images, newest first.
 

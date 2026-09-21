@@ -1,0 +1,12 @@
+# Settings for the backend component.
+
+[ingest]
+# New uploads are refused when this many images wait for the worker.
+# A slow device (the Raspberry Pi) cannot clear a long queue.
+max_pending = 500
+
+[api]
+# Name of the environment variable that holds the access token.
+# If this variable is set, every upload request needs the header
+# "Authorization: Bearer <token>". If it is not set, the endpoint is open.
+token_env_var = "SAARTHI_API_TOKEN"

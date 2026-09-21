@@ -17,6 +17,7 @@ from db.api import (
     add_image,
     add_regions,
     claim_next_pending,
+    count_images_by_status,
     find_image_by_sha256,
     get_image,
     get_regions,
@@ -312,3 +313,15 @@ def test_list_recent_phashes_ignores_done_images_without_a_hash() -> None:
     image: Image = new_image()
     set_status(image, ImageStatus.DONE)
     assert list_recent_phashes() == []
+
+
+def test_count_images_by_status_counts_only_that_status() -> None:
+    pending_before: int = count_images_by_status(ImageStatus.PENDING)
+    done_before: int = count_images_by_status(ImageStatus.DONE)
+    new_image()
+    done: Image = new_image()
+    set_status(done, ImageStatus.DONE)
+    assert count_images_by_status(ImageStatus.PENDING) == pending_before + 1
+    assert count_images_by_status(ImageStatus.DONE) == done_before + 1
+    with pytest.raises(AssertionError):
+        count_images_by_status("pending")  # type: ignore[arg-type]
