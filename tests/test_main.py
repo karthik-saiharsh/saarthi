@@ -23,6 +23,7 @@ import storage.api as storage
 from ai.types import Box, RawDetection
 from backend.errors import BackendConfigError
 from backend.http import UPLOAD_ROUTE
+from backend.instance_lock import InstanceRunningError
 from db.schema import Image
 from tests.ai_support import FakeDetector, FakeEmbedder, make_engine
 from tests.db_support import skip_if_actual_data_has_problems
@@ -53,6 +54,23 @@ class RecordingApp:
 
     def on_shutdown(self, handler: Callable[[], None]) -> None:
         self.shutdown.append(handler)
+
+
+@pytest.fixture(autouse=True)
+def release_locks(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Release the instance lock of every `Components` that a test starts."""
+    started: list[main.Components] = []
+    real_start = main.start_components
+
+    def start(engine: object = None) -> main.Components:
+        components: main.Components = real_start(engine)  # type: ignore[arg-type]
+        started.append(components)
+        return components
+
+    monkeypatch.setattr(main, "start_components", start)
+    yield
+    for components in started:
+        components.lock.release()
 
 
 @pytest.fixture(autouse=True)
@@ -175,3 +193,49 @@ def test_the_pages_use_the_real_upload_service_and_the_home_page_leads_to_it(
     assert (
         isinstance(answer, RedirectResponse) and answer.headers["location"] == "/upload"
     )
+
+
+def test_a_second_copy_is_stopped_before_it_changes_anything() -> None:
+    first: main.Components = main.start_components(engine=make_engine())
+    with pytest.raises(InstanceRunningError):
+        main.start_components(
+            engine=make_engine()
+        )  # It stops before the recovery and before the models
+    first.lock.release()
+    second: main.Components = main.start_components(
+        engine=make_engine()
+    )  # Free after the release
+    assert second.lock.is_held
+
+
+def test_the_shutdown_releases_the_lock() -> None:
+    components: main.Components = main.start_components(engine=make_engine())
+    assert components.lock.is_held
+    main.stop_components(components)
+    assert not components.lock.is_held
+
+
+def test_a_failed_start_releases_the_lock() -> None:
+    engine = make_engine(
+        embedder=FakeEmbedder(dimension=128)
+    )  # The backend refuses this model
+    with pytest.raises(BackendConfigError):
+        main.start_components(engine=engine)
+    assert main.start_components(
+        engine=make_engine()
+    ).lock.is_held  # The lock was free again
+
+
+def test_the_exit_code_is_1_when_another_copy_runs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail(engine: object = None) -> main.Components:
+        raise InstanceRunningError("Another copy of Saarthi is running")
+
+    monkeypatch.setattr(main, "start_components", fail)
+    monkeypatch.setattr(
+        main.ui,
+        "run",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("no server")),
+    )
+    assert main.main() == 1

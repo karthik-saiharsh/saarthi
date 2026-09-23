@@ -4,14 +4,16 @@ Start-up order (each step needs the one before it):
 
 1. Storage: read the config, prepare the root folder.
 2. Database and vector index.
-3. Start-up recovery: repair what a stop or a crash left behind.
-4. The ai models (the first start downloads them).
-5. The backend: the upload step, the worker and the maintenance jobs.
-6. The web server: the upload page `/upload`, the upload route `/api/images`.
+3. Instance lock: only one copy may use the data. A second copy stops here.
+4. Start-up recovery: repair what a stop or a crash left behind.
+5. The ai models (the first start downloads them).
+6. The backend: the upload step, the worker and the maintenance jobs.
+7. The web server: the upload page `/upload`, the upload route `/api/images`.
    The worker and the maintenance thread start when the server starts.
 
 Shutdown: the worker finishes its image, the maintenance thread stops, the
-vector index is saved to disk, and the database connection is closed.
+vector index is saved to disk, the database connection is closed, and the
+instance lock is released.
 
 Run it with `uv run python main.py`.
 """
@@ -31,6 +33,7 @@ import storage.api as storage
 from ai.api import AiEngine, AiError
 from backend.api import Backend
 from backend.errors import BackendError
+from backend.instance_lock import InstanceLock
 from ui.registry import UPLOAD_ROUTE as UPLOAD_PAGE
 from ui.registry import register_pages
 
@@ -61,25 +64,37 @@ class Components:
 
     backend: Backend
     recovery: db.StartupReport
+    lock: InstanceLock
 
 
 def start_components(engine: AiEngine | None = None) -> Components:
-    """Start storage, database, recovery, the ai models and the backend, in this order.
+    """Start storage, database, the lock, recovery, the ai models and the backend, in this order.
 
     The threads do not start here. They start with the web server (see `attach`).
     Pass `engine` only in tests, to avoid loading the real models.
+    Raise `InstanceRunningError` if another copy of the application uses the data.
     """
     logger.info("Starting storage")
     storage.init_storage()
     logger.info("Starting the database and the vector index")
     db.init_db()
-    recovery: db.StartupReport = db.startup_recovery()
-    if engine is None:
-        logger.info("Loading the ai models (the first start downloads them)")
-        engine = AiEngine()
-    backend: Backend = Backend(engine)
+    # The lock comes before the recovery. The recovery would reset the images
+    # that another running copy is working on.
+    lock: InstanceLock = InstanceLock(
+        db.current_config().sqlite_path.with_suffix(".lock")
+    )
+    lock.acquire()
+    try:
+        recovery: db.StartupReport = db.startup_recovery()
+        if engine is None:
+            logger.info("Loading the ai models (the first start downloads them)")
+            engine = AiEngine()
+        backend: Backend = Backend(engine)
+    except BaseException:
+        lock.release()
+        raise
     logger.info("All components are ready")
-    return Components(backend, recovery)
+    return Components(backend, recovery, lock)
 
 
 def stop_components(components: Components) -> None:
@@ -91,6 +106,7 @@ def stop_components(components: Components) -> None:
     except db.DbError:  # VectorIndexError derives from DbError.
         logger.exception("The vector index could not be saved at shutdown")
     db.close_connection()
+    components.lock.release()
     logger.info("Shutdown is complete")
 
 
