@@ -184,8 +184,12 @@ The index is saved to disk in these cases:
 
 A save error is written to the log and does not stop the ingestion. The next change tries again.
 A crash can lose the vectors that the file does not have yet. The start-up recovery repairs this.
+In a real test, a `kill -9` lost 10 vectors. The recovery cleared the marks, set the image back to `pending`, and the worker made the vectors again.
 
 ## Start-up recovery
+
+The recovery changes data. Only one copy of the application may run on the data.
+The application takes an instance lock before the recovery (see `docs/backend/Lifecycle.md`).
 
 The `backend` module calls `startup_recovery()` one time at start.
 It must call it after `init_db()` and before it starts the workers.

@@ -12,6 +12,20 @@ Edge Efficient Episodic Memory Aid
 1. Update the `pre-commit` to use the latest versions of `ruff` and `black` with `pre-commit autoupdate` in this project directory.
 1. That's it! You're good to begin development :)
 
+## Run the application
+
+1. Run: `uv run python main.py`
+1. Open `http://<address of this computer>:8080/upload` in a browser to upload pictures.
+1. The wearable (or a script) sends one picture at a time: `curl -X POST --data-binary @photo.jpg http://<address>:8080/api/images`
+
+- The first start downloads the AI models (about 780 MB). It needs internet one time.
+- To require an access token for the upload route, set the environment variable `SAARTHI_API_TOKEN`
+  before the start. Every request then needs the header `Authorization: Bearer <token>`.
+- Only one copy of the application may run on the same data.
+- Press Ctrl+C to stop. The application finishes the picture that it works on and saves its data.
+- The settings are in the `config.toml` file of each module (`backend/`, `db/`, `storage/`, `ai/`).
+  The design documents are in `docs/` and in the `docs` folder of each module.
+
 ## A few ground rules
 
 1. This project is divided into modules, and each module has its own readme stating its purpose.

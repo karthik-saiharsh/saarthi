@@ -118,6 +118,9 @@ Call `startup_recovery()` one time after `init_db()` and before the workers star
 It repairs the tables and the index after a stop, and returns a `StartupReport`.
 The backend writes the report to the log. No other action is needed.
 
+The application makes sure that only one copy runs on the data (`backend/instance_lock.py`).
+The recovery changes data, so it must never run beside another copy.
+
 **Rule:** every region of a `done` image must have a vector.
 If a region has no vector, the recovery sets its image back to `pending`.
 

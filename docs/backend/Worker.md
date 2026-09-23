@@ -86,6 +86,8 @@ worker.start()
 worker.stop(timeout=60)
 ```
 
+The `Backend` class does these steps for you (see `docs/backend/Lifecycle.md`).
+
 - `start()` starts the thread. A second call raises `RuntimeError`.
 - `stop()` asks the thread to stop. The worker finishes the image that it holds. This can take as long as one image:
   about 10 seconds on the development machine, more on the Raspberry Pi. When the worker is idle, `stop()` returns at once.
@@ -123,10 +125,10 @@ The log does not show image content or file names.
 
 - The speed is about 10 seconds for each image on the development machine. A frame that arrives faster than this waits in the queue.
   The upload step refuses new images when `ingest.max_pending` images wait. The speed on the Raspberry Pi is not measured.
-- The blur threshold is not set with real frames. The start value of 100 rejects the test photo.
+- The blur threshold is not set with real frames. The start value of 100 rejects the test photo (score 94.2).
+  The score also depends on the JPEG compression: the same photo saved again at another quality scored 117.1.
 - The worker does not retry a failed image. A helper to retry failed images does not exist.
 - The worker gives no progress report. The number of `pending` images is the only sign of the load.
-- The `Backend` class does not create the worker yet. `main.py` must create it with the ai engine and connect `wake` to the upload step.
 - The vocabulary of the detector is a placeholder (see `ai/docs/AI Ingestion Module.md`).
 
 ## Tests
@@ -144,4 +146,6 @@ The quality gate, the image decoding and the post-processing are the real code.
 | Failures | A detector error, an embedder error (no regions left), a missing file, an unexpected error. The next image still works |
 | The thread | A wake-up works with a long wait. Stop is fast. No double start. The loop survives an error |
 
-The worker has not yet run with the real models. The first full run is part of the `main.py` step.
+The worker also ran with the real models, inside the real application (see `docs/backend/Lifecycle.md`).
+With the test photo, one image took about 8.4 seconds from the claim to `done`: the detector 7.6 seconds, the vectors 0.7 seconds.
+An image that the near-duplicate gate rejected took a few milliseconds.

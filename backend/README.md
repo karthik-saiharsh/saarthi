@@ -3,14 +3,16 @@
 This is the backend module.
 It controls the flow of the application. It connects the other modules in the right order.
 
-At this time, the backend has two jobs:
+The backend has three jobs:
 
 1. The upload step. It accepts one image, checks it, stores it, and puts it in the queue.
 2. The worker. It takes the images from the queue and runs the ai stages on them.
+3. The maintenance jobs. They delete old images and orphan files, report missing files, and save the vector index.
 
-The retention job and the start-up steps (`main.py`) are not built yet.
+`main.py` starts the application and stops it. It calls the backend after all other modules are ready.
 
-For the full design, see `docs/backend/Upload Endpoint.md` and `docs/backend/Worker.md`.
+For the full design, see `docs/backend/Upload Endpoint.md`, `docs/backend/Worker.md`, `docs/backend/Maintenance.md`
+and `docs/backend/Lifecycle.md`.
 
 ## Files
 
@@ -21,9 +23,11 @@ For the full design, see `docs/backend/Upload Endpoint.md` and `docs/backend/Wor
 | `http.py` | The HTTP route `POST /api/images` |
 | `ui_adapter.py` | Connects the UI to the upload step (`ui.ports.UploadService`) |
 | `worker.py` | `Worker`: runs the ai stages on `pending` images, in a background thread |
+| `maintenance.py` | `Maintenance`: retention, orphan and missing files, the vector checkpoint |
+| `instance_lock.py` | `InstanceLock`: only one copy of the application may use the data |
 | `settings.py` | Reads `config.toml` |
 | `errors.py` | The error classes |
-| `config.toml` | The queue limit, the name of the token variable and the worker settings |
+| `config.toml` | The queue limit, the token variable, the worker, the server and the maintenance settings |
 
 ## Rules
 
@@ -83,6 +87,18 @@ A variable that is set but empty stops the start, so the route cannot open by mi
 | `worker.duplicate_max_compared` | Compare with at most this number of images |
 | `worker.error_pause_seconds` | The pause after an error in the loop of the worker |
 
+| Key (table `[server]`) | Meaning |
+|------------------------|---------|
+| `server.host` | The address of the web server. `0.0.0.0` accepts the local network. `127.0.0.1` accepts only this computer |
+| `server.port` | The port of the web server |
+| `server.worker_stop_seconds` | At shutdown, the time that the server waits for the worker to finish its image |
+
+| Key (table `[maintenance]`) | Meaning |
+|-----------------------------|---------|
+| `maintenance.interval_minutes` | The time between two maintenance runs |
+| `maintenance.orphan_delete_limit` | The most orphan files that one run deletes. 0 never deletes one |
+| `maintenance.retention_batch` | The number of expired images that are deleted in one group |
+
 The largest upload is `limits.max_bytes` in `storage/config.toml`.
 
 ## Worker
@@ -101,21 +117,25 @@ worker.start()
 worker.stop(timeout=60)
 ```
 
-The `Backend` class does not create the worker yet. `main.py` does this.
+The `Backend` class creates the worker and connects `wake` to the upload step.
+`Backend.start()` starts the worker and the maintenance thread. `Backend.stop()` stops them.
 
 ## Usage
 
-```python
-import db.api as db
-import storage.api as storage
-from backend.api import Backend
+`main.py` starts the modules in this order (see `docs/backend/Lifecycle.md`):
 
+```python
 storage.init_storage()
 db.init_db()
-backend = Backend()
+# ... the instance lock and db.startup_recovery() ...
+engine = AiEngine()
+backend = Backend(engine)          # It checks the size of the vectors
 
 app.include_router(backend.create_router())     # The HTTP route
 register_pages(backend.upload_service)          # The UI
+app.on_startup(backend.start)                   # The worker and the maintenance thread
+app.on_shutdown(lambda: stop_components(components))
+# stop_components stops the backend, saves the vector index, closes the database and releases the lock
 ```
 
 ## Errors
@@ -125,6 +145,7 @@ register_pages(backend.upload_service)          # The UI
 | `BackendError` | Base class of the errors below |
 | `BackendConfigError` | `config.toml` or the token variable is not correct |
 | `QueueFullError` | Too many images wait for the worker |
+| `InstanceRunningError` | Another copy of the application already uses the data |
 
 The upload step also passes on the errors of the `storage` and `db` modules.
 The route and the UI turn each of them into a fixed message without internal details.

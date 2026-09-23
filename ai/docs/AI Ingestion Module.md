@@ -229,7 +229,9 @@ The photo shows a phone in a pink case on a book, a charger with a cable, and a 
 ## Known limits and open items
 
 - **Blur threshold.** The start value `blur_min = 100` calls the test photo blurry. The photo scores 94.
+  The score also depends on the JPEG compression: the same photo saved again at another quality scored 117.1.
   Calibrate the value with 20 or more real frames from the wearable, both good and bad.
+  The value `blur_min = 0` turns the gate off.
 - **Vocabulary.** The phrases are a placeholder. The labels are only as good as the phrases.
 - **Duplicate boxes.** A lower `nms_iou`, or one box for each object, needs a decision after the vocabulary is real.
 - **Other start values.** `crop_blur_min`, `box_threshold` and `text_threshold` are values from the pipeline document. They are not tuned.

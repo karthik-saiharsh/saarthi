@@ -136,12 +136,11 @@ A `failed` row shows the button **Try again** on the page.
 - The route has no rate limit. The size limit, the queue limit and the free-space limit protect the device.
 - A client that sends its body very slowly can hold a connection open. The timeouts of the web server are the protection.
 
-## Not built yet
+## Not in the endpoint
 
-- The `Backend` class does not create the worker and does not pass `on_stored` to the upload step yet.
-- The retention job and the check for orphan and missing files.
-- `main.py`: the start-up steps, the web server, and the shutdown.
-  `main.py` must start `storage`, `db` and the ai engine first, then make the `Backend`, then add `backend.create_router()` to the application and give `backend.upload_service` to the UI.
+- The endpoint shows no status of the queue. The number of `pending` images is in the database only.
+- The start-up and the shutdown are in `main.py` (see `docs/backend/Lifecycle.md`).
+  The worker and the maintenance jobs are in `docs/backend/Worker.md` and `docs/backend/Maintenance.md`.
 
 ## Tests
 
