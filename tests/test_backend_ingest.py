@@ -15,7 +15,7 @@ import db.api as db
 import storage.api as storage
 from backend.errors import QueueFullError
 from backend.ingest import IngestResult, IngestService, IngestStatus
-from backend.settings import BackendConfig, load_config
+from backend.settings import load_config
 from db.schema import Image, ImageStatus
 
 
@@ -108,7 +108,7 @@ def test_a_file_that_is_too_large_is_refused(
 def test_a_full_queue_refuses_new_uploads(service: IngestService) -> None:
     waiting: int = db.count_images_by_status(ImageStatus.PENDING)
     limited: IngestService = IngestService(
-        BackendConfig(waiting + 1, "X", load_config().worker)
+        dataclasses.replace(load_config(), max_pending=waiting + 1, token_env_var="X")
     )
     assert limited.submit(picture(7)).status == IngestStatus.STORED
     with pytest.raises(QueueFullError):

@@ -24,3 +24,11 @@ duplicate_window_minutes = 60
 duplicate_max_compared = 200
 # The worker waits this long after an error in its own loop, in seconds.
 error_pause_seconds = 5
+
+[server]
+# The address and the port of the web server. It serves the upload page and the upload route.
+# "0.0.0.0" accepts requests from the local network. "127.0.0.1" accepts only this computer.
+host = "0.0.0.0"
+port = 8080
+# At shutdown, the server waits this long (in seconds) for the worker to finish its image.
+worker_stop_seconds = 120

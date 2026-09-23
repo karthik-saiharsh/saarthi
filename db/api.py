@@ -182,8 +182,16 @@ def close_connection() -> None:
             database_proxy.close()
 
 
-# The open vector index. `init_db` sets it.
+# The open vector index and the config. `init_db` sets them.
 _vector_index: VectorIndex | None = None
+_config: DbConfig | None = None
+
+
+def current_config() -> DbConfig:
+    """Return the config that `init_db` loaded (paths, vector size, checkpoint rule)."""
+    if _config is None:
+        raise DbError("The database is not ready. Call init_db first")
+    return _config
 
 
 def _replace_vector_index(config: DbConfig) -> None:
@@ -239,6 +247,8 @@ def init_db(config_path: Path = DEFAULT_CONFIG_PATH) -> tuple[SqliteDatabase, Db
         raise
     logger.info("Tables ready: image, region")
     _replace_vector_index(config)
+    global _config
+    _config = config
     return database, config
 
 

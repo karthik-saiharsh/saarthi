@@ -4,6 +4,7 @@ They use the actual storage and database. Each test removes what it made.
 """
 
 import asyncio
+import time
 from collections.abc import Iterator
 from io import BytesIO
 
@@ -17,12 +18,13 @@ import db.api as db
 import storage.api as storage
 from backend import ui_adapter
 from backend.api import Backend
-from backend.errors import QueueFullError
+from backend.errors import BackendConfigError, QueueFullError
 from backend.http import UPLOAD_ROUTE
 from backend.ingest import IngestResult, IngestService, IngestStatus
 from backend.settings import load_config
 from backend.ui_adapter import UiUploadService
 from db.schema import Image
+from tests.ai_support import FakeEmbedder, make_engine
 from ui.models import ItemStatus
 from ui.ports import OutcomeStatus, UploadOutcome, UploadService
 from ui.upload_session import UploadSession
@@ -129,7 +131,7 @@ def test_the_adapter_checks_its_parameters() -> None:
 
 
 def test_the_ui_session_stores_images_through_the_real_backend() -> None:
-    backend: Backend = Backend()
+    backend: Backend = Backend(make_engine())
     service: UploadService = backend.upload_service  # The adapter fits the UI interface
 
     async def scenario() -> list[ItemStatus]:
@@ -151,7 +153,7 @@ def test_the_backend_makes_a_working_router_and_takes_the_limit_from_storage(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("SAARTHI_API_TOKEN", raising=False)
-    backend: Backend = Backend()
+    backend: Backend = Backend(make_engine())
     assert backend.max_upload_bytes == storage.current_config().max_bytes
     app: FastAPI = FastAPI()
     app.include_router(backend.create_router())
@@ -165,7 +167,7 @@ def test_the_token_from_the_environment_protects_the_route(
 ) -> None:
     monkeypatch.setenv("SAARTHI_API_TOKEN", "secret-token-for-the-test")
     app: FastAPI = FastAPI()
-    app.include_router(Backend().create_router())
+    app.include_router(Backend(make_engine()).create_router())
     client: TestClient = TestClient(app)
     assert client.post(UPLOAD_ROUTE, content=picture(3)).status_code == 401
     ok = client.post(
@@ -179,4 +181,35 @@ def test_the_token_from_the_environment_protects_the_route(
 def test_the_backend_needs_started_storage(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(storage, "_config", None)
     with pytest.raises(storage.StorageConfigError):
-        Backend()
+        Backend(make_engine())
+
+
+def test_the_backend_refuses_a_model_with_the_wrong_vector_size() -> None:
+    engine = make_engine(embedder=FakeEmbedder(dimension=128))
+    with pytest.raises(BackendConfigError, match="128"):
+        Backend(engine)
+
+
+def test_the_backend_starts_and_stops_the_worker_and_an_upload_wakes_it() -> None:
+    backend: Backend = Backend(make_engine())
+    assert not backend.worker.is_running
+    backend.start()
+    try:
+        assert backend.worker.is_running
+        app: FastAPI = FastAPI()
+        app.include_router(backend.create_router())
+        image_id: int = (
+            TestClient(app).post(UPLOAD_ROUTE, content=picture(50)).json()["image_id"]
+        )
+        deadline: float = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            image = db.get_image(image_id)
+            if image is not None and image.status == "done":
+                break
+            time.sleep(0.05)
+        else:
+            raise AssertionError("The worker did not finish the image")
+    finally:
+        backend.stop()
+    assert not backend.worker.is_running
+    assert backend.server.port > 0

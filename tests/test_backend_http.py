@@ -4,6 +4,7 @@ The error answers use a fake service. The real answers use the actual storage
 and database, and clean up what they make.
 """
 
+import dataclasses
 from collections.abc import Iterator
 from io import BytesIO
 
@@ -221,7 +222,9 @@ def test_the_right_token_is_accepted(scheme: str) -> None:
 
 
 def test_the_token_comes_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    config: BackendConfig = BackendConfig(5, "SAARTHI_TEST_TOKEN", load_config().worker)
+    config: BackendConfig = dataclasses.replace(
+        load_config(), max_pending=5, token_env_var="SAARTHI_TEST_TOKEN"
+    )
     monkeypatch.delenv("SAARTHI_TEST_TOKEN", raising=False)
     assert read_token(config) is None
     monkeypatch.setenv("SAARTHI_TEST_TOKEN", TOKEN)

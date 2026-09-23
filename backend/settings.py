@@ -26,10 +26,18 @@ class WorkerConfig:
 
 
 @dataclass(frozen=True)
+class ServerConfig:
+    host: str
+    port: int
+    worker_stop_seconds: int
+
+
+@dataclass(frozen=True)
 class BackendConfig:
     max_pending: int
     token_env_var: str
     worker: WorkerConfig
+    server: ServerConfig
 
 
 def _table(raw: dict, name: str) -> dict:
@@ -39,15 +47,24 @@ def _table(raw: dict, name: str) -> dict:
     return table
 
 
-def _integer(table: dict, key: str, minimum: int) -> int:
-    """Read an integer of `minimum` or more from the [worker] table."""
+def _integer(
+    table: dict, name: str, key: str, minimum: int, maximum: int | None = None
+) -> int:
+    """Read an integer from a table. Raise `BackendConfigError` if it is missing or out of range."""
     if key not in table:
-        raise BackendConfigError(f"Missing key worker.{key} in config")
+        raise BackendConfigError(f"Missing key {name}.{key} in config")
     value: object = table[key]
-    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
-        raise BackendConfigError(
-            f"worker.{key} must be an integer of {minimum} or more"
+    too_big: bool = maximum is not None and isinstance(value, int) and value > maximum
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or value < minimum
+        or too_big
+    ):
+        limit: str = (
+            f"between {minimum} and {maximum}" if maximum else f"{minimum} or more"
         )
+        raise BackendConfigError(f"{name}.{key} must be an integer {limit}")
     return value
 
 
@@ -88,11 +105,22 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> BackendConfig:
 
     worker: dict = _table(raw, "worker")
     worker_config: WorkerConfig = WorkerConfig(
-        idle_wait_seconds=_integer(worker, "idle_wait_seconds", 1),
-        generic_pass_every=_integer(worker, "generic_pass_every", 0),
-        duplicate_window_minutes=_integer(worker, "duplicate_window_minutes", 1),
-        duplicate_max_compared=_integer(worker, "duplicate_max_compared", 1),
-        error_pause_seconds=_integer(worker, "error_pause_seconds", 0),
+        idle_wait_seconds=_integer(worker, "worker", "idle_wait_seconds", 1),
+        generic_pass_every=_integer(worker, "worker", "generic_pass_every", 0),
+        duplicate_window_minutes=_integer(
+            worker, "worker", "duplicate_window_minutes", 1
+        ),
+        duplicate_max_compared=_integer(worker, "worker", "duplicate_max_compared", 1),
+        error_pause_seconds=_integer(worker, "worker", "error_pause_seconds", 0),
+    )
+    server: dict = _table(raw, "server")
+    host: object = server.get("host")
+    if not isinstance(host, str) or not host.strip():
+        raise BackendConfigError("server.host must be a non-empty string")
+    server_config: ServerConfig = ServerConfig(
+        host=host,
+        port=_integer(server, "server", "port", 1, 65535),
+        worker_stop_seconds=_integer(server, "server", "worker_stop_seconds", 1),
     )
     logger.info("Loaded backend config from %s", config_path)
-    return BackendConfig(max_pending, token_env_var, worker_config)
+    return BackendConfig(max_pending, token_env_var, worker_config, server_config)

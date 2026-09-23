@@ -17,12 +17,12 @@ import db.api as db
 import storage.api as storage
 from ai.api import AiEngine
 from ai.errors import InferenceError
-from ai.settings import load_config as load_ai_config
 from ai.types import Box, RawDetection
 from backend.ingest import IngestService
 from backend.settings import BackendConfig, load_config
 from backend.worker import REASON_BLURRY, REASON_DUPLICATE, Worker
 from db.schema import Image, ImageStatus, Region
+from tests.ai_support import FakeDetector, FakeEmbedder, make_engine
 from tests.db_support import skip_if_actual_data_has_problems
 
 
@@ -47,39 +47,6 @@ def flat() -> bytes:
     return buffer.getvalue()
 
 
-class FakeDetector:
-    name = "fake-detector@00000000"
-
-    def __init__(self) -> None:
-        self.generic_flags: list[bool] = []
-        self.detections: list[RawDetection] = []
-        self.error: Exception | None = None
-
-    def detect(
-        self, image, phrases, small_phrases=(), include_generic=False, tiling=None
-    ):
-        self.generic_flags.append(include_generic)
-        if self.error is not None:
-            error, self.error = self.error, None  # Fail one time only
-            raise error
-        return list(self.detections)
-
-
-class FakeEmbedder:
-    name = "fake-embedder@00000000"
-    dimension = 384
-
-    def __init__(self) -> None:
-        self.error: Exception | None = None
-
-    def embed(self, image, boxes):
-        if self.error is not None:
-            raise self.error
-        vectors: np.ndarray = np.zeros((len(boxes), self.dimension), dtype=np.float32)
-        vectors[:, 0] = 1.0
-        return vectors
-
-
 @dataclasses.dataclass
 class Setup:
     worker: Worker
@@ -98,7 +65,7 @@ def make_setup(**worker_changes: int) -> Setup:
         base, worker=dataclasses.replace(base.worker, **worker_changes)
     )
     detector, embedder = FakeDetector(), FakeEmbedder()
-    engine: AiEngine = AiEngine(load_ai_config(), detector=detector, embedder=embedder)  # type: ignore[arg-type]
+    engine: AiEngine = make_engine(detector, embedder)
     worker: Worker = Worker(config, engine)
     return Setup(
         worker, detector, embedder, IngestService(config, on_stored=worker.wake), config

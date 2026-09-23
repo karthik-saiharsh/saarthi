@@ -64,3 +64,18 @@ def test_init_db_creates_file_and_tables_and_is_repeatable(tmp_path: Path) -> No
         for suffix in ("", "-wal", "-shm"):
             Path(str(config.sqlite_path) + suffix).unlink(missing_ok=True)
         database.close()
+
+
+def test_current_config_is_the_loaded_config_and_needs_init_db(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from db import api
+
+    database, config = init_db()
+    try:
+        assert api.current_config() == config
+        monkeypatch.setattr(api, "_config", None)
+        with pytest.raises(api.DbError):
+            api.current_config()
+    finally:
+        database.close()

@@ -31,6 +31,12 @@ def test_default_config_loads() -> None:
         ("duplicate_window_minutes = 60", "duplicate_window_minutes = 0"),
         ("duplicate_max_compared = 200", "duplicate_max_compared = 0"),
         ("error_pause_seconds = 5", 'error_pause_seconds = "soon"'),
+        ("port = 8080", "port = 0"),
+        ("port = 8080", "port = 70000"),
+        ("port = 8080", 'port = "8080"'),
+        ("worker_stop_seconds = 120", "worker_stop_seconds = 0"),
+        ('host = "0.0.0.0"', 'host = ""'),
+        ('host = "0.0.0.0"', "host = 5"),
         ("max_pending = 500", "max_pending = 0"),
         ("max_pending = 500", "max_pending = true"),
         ("max_pending = 500", 'max_pending = "many"'),
@@ -45,7 +51,7 @@ def test_bad_values_are_refused(tmp_path: Path, old: str, new: str) -> None:
         load_config(write(tmp_path, DEFAULT_TEXT.replace(old, new, 1)))
 
 
-@pytest.mark.parametrize("table", ["ingest", "api", "worker"])
+@pytest.mark.parametrize("table", ["ingest", "api", "worker", "server"])
 def test_missing_table_is_refused(tmp_path: Path, table: str) -> None:
     with pytest.raises(BackendConfigError, match=table):
         load_config(write(tmp_path, DEFAULT_TEXT.replace(f"[{table}]", f"[{table}_x]")))
