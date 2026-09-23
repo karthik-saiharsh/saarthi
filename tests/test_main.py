@@ -1,0 +1,177 @@
+"""Tests of the life of the application (`main.py`).
+
+They use the actual storage, database and index, and fake ai models. Each test
+removes what it made.
+"""
+
+import time
+import types
+from collections.abc import Callable, Iterator
+from io import BytesIO
+
+import faiss
+import numpy as np
+import pytest
+from fastapi import APIRouter, FastAPI
+from fastapi.responses import RedirectResponse
+from fastapi.testclient import TestClient
+from PIL import Image as PilImage
+
+import db.api as db
+import main
+import storage.api as storage
+from ai.types import Box, RawDetection
+from backend.errors import BackendConfigError
+from backend.http import UPLOAD_ROUTE
+from db.schema import Image
+from tests.ai_support import FakeDetector, FakeEmbedder, make_engine
+from tests.db_support import skip_if_actual_data_has_problems
+
+
+def picture(seed: int) -> bytes:
+    rng: np.random.Generator = np.random.default_rng(seed)
+    buffer: BytesIO = BytesIO()
+    PilImage.fromarray(rng.integers(0, 255, (60, 80, 3), dtype=np.uint8)).save(
+        buffer, "JPEG"
+    )
+    return buffer.getvalue()
+
+
+class RecordingApp:
+    """A stand-in for the NiceGUI app. It records what `attach` does."""
+
+    def __init__(self) -> None:
+        self.routers: list[APIRouter] = []
+        self.startup: list[Callable[[], None]] = []
+        self.shutdown: list[Callable[[], None]] = []
+
+    def include_router(self, router: APIRouter) -> None:
+        self.routers.append(router)
+
+    def on_startup(self, handler: Callable[[], None]) -> None:
+        self.startup.append(handler)
+
+    def on_shutdown(self, handler: Callable[[], None]) -> None:
+        self.shutdown.append(handler)
+
+
+@pytest.fixture(autouse=True)
+def clean_system() -> Iterator[None]:
+    storage.init_storage()
+    database, _ = db.init_db()
+    skip_if_actual_data_has_problems()
+    if Image.select().where(Image.status == "pending").exists():
+        pytest.skip(
+            "Actual database has pending images. The worker would claim one of them"
+        )
+    before: set[str] = set(db.list_image_paths())
+    yield
+    made: list[Image] = [i for i in Image.select() if i.file_path not in before]
+    if made:
+        storage.delete_images(db.delete_images([i.id for i in made]))
+    db.checkpoint_vectors()  # Keep the actual index file free of test vectors
+    database.close()
+
+
+def test_the_components_start_in_order_and_the_recovery_report_is_kept() -> None:
+    components: main.Components = main.start_components(engine=make_engine())
+    assert components.recovery == db.StartupReport([], [], 0, 0)  # Nothing to repair
+    assert (
+        not components.backend.worker.is_running
+    )  # The threads wait for the web server
+
+
+def test_a_model_with_the_wrong_vector_size_stops_the_start() -> None:
+    engine = make_engine(embedder=FakeEmbedder(dimension=128))
+    with pytest.raises(BackendConfigError):
+        main.start_components(engine=engine)
+
+
+def test_attach_adds_the_route_and_ties_the_threads_to_the_server() -> None:
+    components: main.Components = main.start_components(engine=make_engine())
+    web_app: RecordingApp = RecordingApp()
+    main.attach(components, web_app)  # type: ignore[arg-type]
+    assert len(web_app.routers) == 1
+    assert [r.path for r in web_app.routers[0].routes] == [UPLOAD_ROUTE]  # type: ignore[attr-defined]
+
+    web_app.startup[0]()
+    assert (
+        components.backend.worker.is_running
+        and components.backend.maintenance.is_running
+    )
+    web_app.shutdown[0]()
+    assert (
+        not components.backend.worker.is_running
+        and not components.backend.maintenance.is_running
+    )
+
+
+def test_an_upload_is_analysed_and_the_vectors_are_saved_at_shutdown() -> None:
+    detector: FakeDetector = FakeDetector()
+    detector.detections = [RawDetection(Box(5, 5, 40, 40), 0.6, "bottle", "full")]
+    components: main.Components = main.start_components(engine=make_engine(detector))
+    web_app: RecordingApp = RecordingApp()
+    main.attach(components, web_app)  # type: ignore[arg-type]
+    api: FastAPI = FastAPI()
+    api.include_router(web_app.routers[0])
+
+    web_app.startup[0]()
+    try:
+        response = TestClient(api).post(UPLOAD_ROUTE, content=picture(1))
+        assert response.status_code == 201
+        image_id: int = response.json()["image_id"]
+        deadline: float = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            image = db.get_image(image_id)
+            if image is not None and image.status == "done":
+                break
+            time.sleep(0.05)
+        else:
+            raise AssertionError("The worker did not finish the image")
+    finally:
+        web_app.shutdown[0]()
+
+    region_ids: list[int] = [r.id for r in db.get_regions(image_id)]
+    assert len(region_ids) == 1
+    saved = faiss.read_index(
+        str(db.current_config().faiss_path)
+    )  # The shutdown saved the vectors
+    assert set(faiss.vector_to_array(saved.id_map).tolist()) >= set(region_ids)
+
+
+def test_a_start_error_gives_exit_code_1_and_no_server(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail(engine: object = None) -> main.Components:
+        raise storage.StorageConfigError("config is wrong")
+
+    def no_server(*args: object, **kwargs: object) -> None:
+        raise AssertionError("The server must not start")
+
+    monkeypatch.setattr(main, "start_components", fail)
+    monkeypatch.setattr(main.ui, "run", no_server)
+    assert main.main() == 1
+
+
+def test_the_pages_use_the_real_upload_service_and_the_home_page_leads_to_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    components: main.Components = main.start_components(engine=make_engine())
+    registered: list[object] = []
+    pages: dict[str, Callable[[], object]] = {}
+
+    def page(path: str) -> Callable[[Callable[[], object]], Callable[[], object]]:
+        def register(function: Callable[[], object]) -> Callable[[], object]:
+            pages[path] = function
+            return function
+
+        return register
+
+    monkeypatch.setattr(main, "register_pages", registered.append)
+    monkeypatch.setattr(main, "ui", types.SimpleNamespace(page=page))
+    main.create_pages(components)
+    assert len(registered) == 1 and type(registered[0]).__name__ == "UiUploadService"
+    answer = pages["/"]()
+    assert (
+        isinstance(answer, RedirectResponse) and answer.headers["location"] == "/upload"
+    )

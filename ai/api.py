@@ -12,7 +12,13 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 
 from ai.detector import CandidateDetector
 from ai.embedder import RegionEmbedder
-from ai.errors import ImageError
+from ai.errors import (
+    AiConfigError,
+    AiError,
+    ImageError,
+    InferenceError,
+    ModelLoadError,
+)
 from ai.postprocess import apply_crop_quality, select_candidates
 from ai.quality import blur_score, hamming_distance, perceptual_hash
 from ai.runtime import configure_threads
@@ -20,6 +26,16 @@ from ai.settings import AiConfig, load_config
 from ai.types import Box, Candidate, QualityReport
 
 logger: logging.Logger = logging.getLogger(__name__)
+
+__all__ = [
+    "AiConfigError",
+    "AiEngine",
+    "AiError",
+    "ImageError",
+    "InferenceError",
+    "ModelLoadError",
+    "open_image",
+]
 
 
 def open_image(data: bytes, max_pixels: int) -> Image.Image:

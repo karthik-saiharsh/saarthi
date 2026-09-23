@@ -1,29 +1,136 @@
+"""Entry point of Saarthi. It owns the life of the application.
+
+Start-up order (each step needs the one before it):
+
+1. Storage: read the config, prepare the root folder.
+2. Database and vector index.
+3. Start-up recovery: repair what a stop or a crash left behind.
+4. The ai models (the first start downloads them).
+5. The backend: the upload step, the worker and the maintenance jobs.
+6. The web server: the upload page `/upload`, the upload route `/api/images`.
+   The worker and the maintenance thread start when the server starts.
+
+Shutdown: the worker finishes its image, the maintenance thread stops, the
+vector index is saved to disk, and the database connection is closed.
+
+Run it with `uv run python main.py`.
+"""
+
 import logging
+import sys
+from dataclasses import dataclass
+from typing import Protocol
 
+from fastapi import APIRouter
+from fastapi.responses import RedirectResponse
+from nicegui import app as nicegui_app
+from nicegui import ui
+
+import db.api as db
+import storage.api as storage
+from ai.api import AiEngine, AiError
 from backend.api import Backend
-from ui.main import Frontend
+from backend.errors import BackendError
+from ui.registry import UPLOAD_ROUTE as UPLOAD_PAGE
+from ui.registry import register_pages
 
-logging.basicConfig(
-    level=logging.INFO, format="MAIN - %(asctime)s - %(levelname)s - %(message)s"
-)
-logger: logging.Logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger("main")
+if not logger.handlers:
+    _handler: logging.StreamHandler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(name)s-%(asctime)s: %(message)s"))
+    logger.addHandler(_handler)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+
+APP_TITLE: str = "Saarthi"
 
 
-def main() -> None:
-    """Entry point for the Saarthi application.
+class WebApp(Protocol):
+    """The part of the NiceGUI `app` that `attach` uses. A test can give a stand-in."""
 
-    Initialises the backend (which loads DB, storage, and AI models),
-    wires it into the frontend, and starts the NiceGUI server.
+    def include_router(self, router: APIRouter) -> None: ...
+
+    def on_startup(self, handler: object) -> None: ...
+
+    def on_shutdown(self, handler: object) -> None: ...
+
+
+@dataclass
+class Components:
+    """The parts of the running application."""
+
+    backend: Backend
+    recovery: db.StartupReport
+
+
+def start_components(engine: AiEngine | None = None) -> Components:
+    """Start storage, database, recovery, the ai models and the backend, in this order.
+
+    The threads do not start here. They start with the web server (see `attach`).
+    Pass `engine` only in tests, to avoid loading the real models.
     """
-    logger.info("Initialising Saarthi...")
+    logger.info("Starting storage")
+    storage.init_storage()
+    logger.info("Starting the database and the vector index")
+    db.init_db()
+    recovery: db.StartupReport = db.startup_recovery()
+    if engine is None:
+        logger.info("Loading the ai models (the first start downloads them)")
+        engine = AiEngine()
+    backend: Backend = Backend(engine)
+    logger.info("All components are ready")
+    return Components(backend, recovery)
 
-    backend: Backend = Backend()
-    frontend: Frontend = Frontend(backend)
-    frontend.setup_routes()
 
-    logger.info("All systems ready — launching UI")
-    frontend.run()
+def stop_components(components: Components) -> None:
+    """Stop the threads, save the vector index and close the database connection."""
+    logger.info("Shutting down")
+    components.backend.stop()
+    try:
+        db.checkpoint_vectors()
+    except db.DbError:  # VectorIndexError derives from DbError.
+        logger.exception("The vector index could not be saved at shutdown")
+    db.close_connection()
+    logger.info("Shutdown is complete")
 
 
-if __name__ == "__main__":
-    main()
+def attach(components: Components, web_app: WebApp) -> None:
+    """Add the upload route to the web app and connect the threads to its life."""
+    web_app.include_router(components.backend.create_router())
+    web_app.on_startup(components.backend.start)
+    web_app.on_shutdown(lambda: stop_components(components))
+
+
+def create_pages(components: Components) -> None:
+    """Add the pages of the UI. `/` leads to the upload page."""
+    register_pages(components.backend.upload_service)
+
+    @ui.page("/")
+    def home() -> RedirectResponse:
+        return RedirectResponse(UPLOAD_PAGE)
+
+
+def main() -> int:
+    """Start the application. Return the exit code."""
+    try:
+        components: Components = start_components()
+    except (storage.StorageError, db.DbError, AiError, BackendError) as error:
+        logger.error("Cannot start: %s: %s", type(error).__name__, error)
+        return 1
+    attach(components, nicegui_app)
+    create_pages(components)
+    server = components.backend.server
+    logger.info(
+        "Serving on http://%s:%d (upload page: %s)",
+        server.host,
+        server.port,
+        UPLOAD_PAGE,
+    )
+    ui.run(
+        host=server.host, port=server.port, title=APP_TITLE, reload=False, show=False
+    )
+    return 0
+
+
+if __name__ in {"__main__", "__mp_main__"}:
+    sys.exit(main())
