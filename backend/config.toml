@@ -32,3 +32,15 @@ host = "0.0.0.0"
 port = 8080
 # At shutdown, the server waits this long (in seconds) for the worker to finish its image.
 worker_stop_seconds = 120
+
+[maintenance]
+# The maintenance job runs when the application starts, and then every N minutes.
+# It deletes expired images (see retention.days in storage/config.toml), deletes orphan
+# files, reports missing files, and saves the vector index to disk.
+interval_minutes = 60
+# At most this number of orphan files is deleted in one run. A larger number is reported
+# as a warning and not deleted. This protects the images if the database is wrong or empty.
+# 0 never deletes an orphan file.
+orphan_delete_limit = 100
+# Expired images are deleted in groups of this size.
+retention_batch = 100

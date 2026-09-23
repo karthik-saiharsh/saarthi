@@ -33,11 +33,19 @@ class ServerConfig:
 
 
 @dataclass(frozen=True)
+class MaintenanceConfig:
+    interval_minutes: int
+    orphan_delete_limit: int
+    retention_batch: int
+
+
+@dataclass(frozen=True)
 class BackendConfig:
     max_pending: int
     token_env_var: str
     worker: WorkerConfig
     server: ServerConfig
+    maintenance: MaintenanceConfig
 
 
 def _table(raw: dict, name: str) -> dict:
@@ -122,5 +130,15 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> BackendConfig:
         port=_integer(server, "server", "port", 1, 65535),
         worker_stop_seconds=_integer(server, "server", "worker_stop_seconds", 1),
     )
+    maintenance: dict = _table(raw, "maintenance")
+    maintenance_config: MaintenanceConfig = MaintenanceConfig(
+        interval_minutes=_integer(maintenance, "maintenance", "interval_minutes", 1),
+        orphan_delete_limit=_integer(
+            maintenance, "maintenance", "orphan_delete_limit", 0
+        ),
+        retention_batch=_integer(maintenance, "maintenance", "retention_batch", 1),
+    )
     logger.info("Loaded backend config from %s", config_path)
-    return BackendConfig(max_pending, token_env_var, worker_config, server_config)
+    return BackendConfig(
+        max_pending, token_env_var, worker_config, server_config, maintenance_config
+    )

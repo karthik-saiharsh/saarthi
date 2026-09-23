@@ -16,6 +16,7 @@ from ai.api import AiEngine
 from backend.errors import BackendConfigError
 from backend.http import create_router, read_token
 from backend.ingest import IngestService
+from backend.maintenance import Maintenance
 from backend.settings import (
     DEFAULT_CONFIG_PATH,
     BackendConfig,
@@ -31,7 +32,7 @@ __all__ = ["Backend"]
 
 
 class Backend:
-    """The upload step and the worker, with the HTTP route and the UI service."""
+    """The upload step, the worker and the maintenance jobs, with the HTTP route and the UI service."""
 
     def __init__(
         self, engine: AiEngine, config_path: Path = DEFAULT_CONFIG_PATH
@@ -52,6 +53,7 @@ class Backend:
         self._ingest: IngestService = IngestService(
             self._config, on_stored=self._worker.wake
         )
+        self._maintenance: Maintenance = Maintenance(self._config)
         self._token: str | None = read_token(self._config)
         self._max_upload_bytes: int = storage.current_config().max_bytes
         logger.info(
@@ -73,12 +75,21 @@ class Backend:
     def worker(self) -> Worker:
         return self._worker
 
+    @property
+    def maintenance(self) -> Maintenance:
+        return self._maintenance
+
     def start(self) -> None:
-        """Start the worker thread."""
+        """Start the worker and the maintenance thread."""
         self._worker.start()
+        self._maintenance.start()
 
     def stop(self) -> None:
-        """Stop the worker. It finishes the image that it holds, up to `server.worker_stop_seconds`."""
+        """Stop the maintenance and the worker.
+
+        The worker finishes the image that it holds, up to `server.worker_stop_seconds`.
+        """
+        self._maintenance.stop(timeout=self._config.server.worker_stop_seconds)
         self._worker.stop(timeout=self._config.server.worker_stop_seconds)
 
     def create_router(self) -> APIRouter:
