@@ -80,3 +80,52 @@ def test_current_config_needs_init_storage(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(storage, "_config", None)
     with pytest.raises(StorageConfigError):
         storage.current_config()
+
+
+# ---- read_crop ----
+
+
+def test_a_crop_is_a_clean_jpeg_of_the_part_of_the_image() -> None:
+
+    prepared: PreparedImage = storage.prepare_image(photo(3))  # 80 x 60
+    path: str = storage.save_image(prepared)
+    try:
+        crop: bytes = storage.read_crop(path, (10, 5, 50, 45))
+        image: Image.Image = Image.open(BytesIO(crop))
+        assert image.format == "JPEG" and image.size == (40, 40)
+        assert len(image.getexif()) == 0 and "icc_profile" not in image.info
+        # A crop is not made larger, and a large crop is made smaller.
+        assert Image.open(
+            BytesIO(storage.read_crop(path, (0, 0, 80, 60), max_side=40))
+        ).size == (40, 30)
+        assert Image.open(
+            BytesIO(storage.read_crop(path, (0, 0, 80, 60), max_side=500))
+        ).size == (80, 60)
+    finally:
+        storage.delete_images([path])
+
+
+@pytest.mark.parametrize(
+    "box",
+    [
+        (-1, 0, 10, 10),
+        (0, 0, 81, 10),
+        (0, 0, 10, 61),
+        (10, 10, 10, 20),
+        (20, 10, 10, 20),
+    ],
+)
+def test_a_crop_outside_the_image_is_refused(box: tuple[int, int, int, int]) -> None:
+    path: str = storage.save_image(storage.prepare_image(photo(4)))
+    try:
+        with pytest.raises(storage.InvalidCropError):
+            storage.read_crop(path, box)
+    finally:
+        storage.delete_images([path])
+
+
+def test_a_crop_of_a_missing_file_or_a_bad_path_is_refused() -> None:
+    with pytest.raises(storage.StorageNotFoundError):
+        storage.read_crop("2026/01/01/" + "a" * 32 + ".jpg", (0, 0, 10, 10))
+    with pytest.raises(storage.StoragePathError):
+        storage.read_crop("../etc/passwd", (0, 0, 10, 10))

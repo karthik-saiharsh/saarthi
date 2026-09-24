@@ -12,7 +12,7 @@ from io import BytesIO
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
-from storage.errors import ImageTooLargeError, UnsupportedImageError
+from storage.errors import ImageTooLargeError, InvalidCropError, UnsupportedImageError
 from storage.settings import StorageConfig
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -118,3 +118,38 @@ def prepare_image(data: bytes, config: StorageConfig) -> PreparedImage:
         width=clean.width,
         height=clean.height,
     )
+
+
+def crop_jpeg(
+    data: bytes, box: tuple[int, int, int, int], max_side: int, config: StorageConfig
+) -> bytes:
+    """Return a JPEG of a part of a stored image, for example for the confirmation screen.
+
+    `box` is (x0, y0, x1, y1) in pixels of the stored image. The longest side of
+    the result is at most `max_side`. A small crop is not made larger. The new
+    file has no metadata. Raise `InvalidCropError` if the box is not inside the image.
+    """
+    assert isinstance(data, bytes) and data, "data must be non-empty bytes"
+    assert len(box) == 4 and all(
+        isinstance(v, int) for v in box
+    ), "box needs 4 integers"
+    assert isinstance(max_side, int) and max_side > 0, "max_side must be positive"
+    assert isinstance(config, StorageConfig), "config must be a StorageConfig"
+    try:
+        image: Image.Image = Image.open(BytesIO(data))
+        image.load()
+    except (UnidentifiedImageError, OSError, ValueError, SyntaxError) as error:
+        raise UnsupportedImageError(
+            "The stored file is not an image that we can read"
+        ) from error
+    x0, y0, x1, y1 = box
+    if not (0 <= x0 < x1 <= image.width and 0 <= y0 < y1 <= image.height):
+        raise InvalidCropError("The box is not inside the image")
+
+    crop: Image.Image = image.convert("RGB").crop(box)
+    if max(crop.size) > max_side:
+        crop.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
+    clean: Image.Image = Image.frombytes("RGB", crop.size, crop.tobytes())
+    buffer: BytesIO = BytesIO()
+    clean.save(buffer, format="JPEG", quality=config.jpeg_quality, optimize=True)
+    return buffer.getvalue()

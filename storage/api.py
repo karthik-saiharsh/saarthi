@@ -12,6 +12,7 @@ from pathlib import Path
 from storage import files
 from storage.errors import (
     ImageTooLargeError,
+    InvalidCropError,
     StorageConfigError,
     StorageError,
     StorageFullError,
@@ -21,7 +22,7 @@ from storage.errors import (
     UnsupportedImageError,
 )
 from storage.files import DeleteReport
-from storage.imaging import PreparedImage
+from storage.imaging import PreparedImage, crop_jpeg
 from storage.imaging import prepare_image as _prepare_image
 from storage.settings import DEFAULT_CONFIG_PATH, StorageConfig, load_config
 
@@ -30,6 +31,7 @@ logger: logging.Logger = logging.getLogger(__name__)
 __all__ = [
     "DeleteReport",
     "ImageTooLargeError",
+    "InvalidCropError",
     "PreparedImage",
     "StorageConfig",
     "StorageConfigError",
@@ -47,6 +49,7 @@ __all__ = [
     "init_storage",
     "list_stored_paths",
     "prepare_image",
+    "read_crop",
     "read_image",
     "save_image",
 ]
@@ -104,6 +107,16 @@ def save_image(prepared: PreparedImage) -> str:
 def read_image(relative_path: str) -> bytes:
     """Return the bytes of a stored image."""
     return files.read_file(_require_config(), relative_path)
+
+
+def read_crop(
+    relative_path: str, box: tuple[int, int, int, int], max_side: int = 512
+) -> bytes:
+    """Return a JPEG of a part of a stored image. The longest side is at most `max_side`.
+
+    `box` is (x0, y0, x1, y1) in pixels. Raise `InvalidCropError` if it is not inside the image.
+    """
+    return crop_jpeg(read_image(relative_path), box, max_side, _require_config())
 
 
 def delete_images(relative_paths: list[str]) -> DeleteReport:

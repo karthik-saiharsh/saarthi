@@ -31,3 +31,7 @@ class StorageNotFoundError(StorageError):
 
 class StorageIOError(StorageError):
     """Raised when the disk refuses a read, a write or a delete."""
+
+
+class InvalidCropError(StorageError):
+    """Raised when a crop box does not lie inside the image."""

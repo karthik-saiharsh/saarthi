@@ -8,7 +8,7 @@ The jobs, in this order:
 1. Retention. If `retention.days` in `storage/config.toml` is more than 0, delete the
    images that are older. The rows and the vectors go first (db), the files last (storage).
    A stop in between leaves orphan files, and the orphan job removes them.
-2. Orphan files. Delete files that no database row owns, at most
+2. Orphan files. Delete files that no database row owns (images and reference photos), at most
    `maintenance.orphan_delete_limit` in one run. A larger number is only reported.
 3. Missing files. Report the rows whose file does not exist. Nothing is changed.
 4. Checkpoint. Save the vector index to disk.
@@ -156,7 +156,7 @@ class Maintenance:
     def _check_files(self) -> tuple[int, int, int]:
         """Orphan and missing files. Return (orphans found, orphans deleted, missing files)."""
         try:
-            known: list[str] = db.list_image_paths()
+            known: list[str] = db.list_all_file_paths()  # Images and reference photos
             orphans: list[str] = storage.find_orphan_files(known)
             missing: list[str] = storage.find_missing_files(known)
         except (storage.StorageError, db.DbError):

@@ -44,3 +44,8 @@ interval_minutes = 60
 orphan_delete_limit = 100
 # Expired images are deleted in groups of this size.
 retention_batch = 100
+
+[enrollment]
+# The largest number of reference photos for one object, and of objects.
+max_photos_per_object = 20
+max_objects = 50

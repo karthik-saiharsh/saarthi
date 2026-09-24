@@ -1,6 +1,8 @@
-"""The worker: takes `pending` images and runs the ai stages on them.
+"""The worker: takes `pending` reference photos and images and runs the ai stages on them.
 
-One image at a time. For each image the worker does these steps:
+One item at a time. A reference photo of an enrolled object comes first: the
+worker finds the object (stage E2) and makes its views (stage E3).
+For each frame the worker does these steps:
 
 1. Read the stored file and decode it.
 2. Quality check. Save the blur score and the hash.
@@ -27,12 +29,14 @@ from ai.api import AiEngine
 from ai.errors import AiError
 from ai.types import Candidate
 from backend.settings import BackendConfig, WorkerConfig
-from db.schema import Image, RegionSource, utc_now
+from db.schema import EnrolledObject, Image, ReferencePhoto, RegionSource, utc_now
 
 logger: logging.Logger = logging.getLogger(__name__)
 
 REASON_BLURRY: str = "too blurry"
 REASON_DUPLICATE: str = "near duplicate of a recent image"
+# The reason of a reference photo where the detector finds nothing. The UI shows a text for it.
+REASON_OBJECT_NOT_FOUND: str = "object not found"
 
 
 def _to_new_region(candidate: Candidate) -> db.NewRegion:
@@ -119,12 +123,18 @@ class Worker:
     # ---- One image ----
 
     def process_next(self) -> bool:
-        """Claim the oldest `pending` image and process it.
+        """Process one reference photo, or else one frame.
 
-        Return True if an image was processed (also when it was rejected or
-        failed), and False if no image waited. This function does not raise
+        A reference photo comes first: a carer waits for it, and it is only
+        the work of a few seconds. Claim the oldest `pending` image if no
+        photo waits.
+
+        Return True if something was processed (also when it was rejected or
+        failed), and False if nothing waited. This function does not raise
         for errors in one image.
         """
+        if self._process_next_photo():
+            return True
         image: Image | None = db.claim_next_pending()
         if image is None:
             return False
@@ -139,6 +149,60 @@ class Worker:
             logger.exception("Image %d failed with an unexpected error", image.id)
             self._fail(image.id, type(error).__name__)
         return True
+
+    def _process_next_photo(self) -> bool:
+        """Claim the oldest `pending` reference photo and process it (stages E2 and E3)."""
+        photo: ReferencePhoto | None = db.gallery.claim_next_reference_photo()
+        if photo is None:
+            return False
+        try:
+            self._locate_and_embed(photo)
+        except (AiError, storage.StorageError, db.DbError) as error:
+            logger.error(
+                "Reference photo %d failed: %s", photo.id, type(error).__name__
+            )
+            self._fail_photo(photo.id, type(error).__name__)
+        except (
+            Exception
+        ) as error:  # Any other error is also a failure of this photo only.
+            logger.exception(
+                "Reference photo %d failed with an unexpected error", photo.id
+            )
+            self._fail_photo(photo.id, type(error).__name__)
+        return True
+
+    def _locate_and_embed(self, photo: ReferencePhoto) -> None:
+        """Find the object in the photo, then make its views. Both steps or none."""
+        enrolled: EnrolledObject | None = db.gallery.get_object(
+            photo.enrolled_object_id
+        )
+        if enrolled is None:
+            raise db.InvalidStateError("The object of the photo does not exist")
+        picture: PilImage.Image = self._engine.open_image(
+            storage.read_image(photo.file_path)
+        )
+        located = self._engine.locate_object(
+            picture, enrolled.category_phrase, list(enrolled.synonyms)
+        )
+        if located is None:
+            db.gallery.mark_photo_failed(photo.id, REASON_OBJECT_NOT_FOUND)
+            return
+        views = self._engine.embed_views(picture, located.box)
+        box = located.box
+        db.gallery.store_photo_views(
+            photo.id,
+            (box.x0, box.y0, box.x1, box.y1),
+            located.det_score,
+            views,
+            self._engine.embedding_model,
+        )
+
+    def _fail_photo(self, photo_id: int, reason: str) -> None:
+        """Mark a photo as failed. The reason is a class name, never a message with data."""
+        try:
+            db.gallery.mark_photo_failed(photo_id, reason)
+        except db.DbError:
+            logger.error("Cannot mark reference photo %d as failed", photo_id)
 
     def _fail(self, image_id: int, reason: str) -> None:
         """Mark an image as failed. The reason is a class name, never a message with data."""

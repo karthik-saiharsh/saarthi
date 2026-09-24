@@ -51,6 +51,7 @@ class Made:
     def __init__(self) -> None:
         self.image_ids: list[int] = []
         self.orphan_paths: list[str] = []
+        self.object_ids: list[int] = []
 
     def image(
         self, status: ImageStatus = ImageStatus.DONE, captured_at: datetime = OLD
@@ -66,6 +67,22 @@ class Made:
         self.image_ids.append(row.id)
         return row
 
+    def reference_photo(self, age_seconds: int) -> tuple[int, str]:
+        """A reference photo with its row and file. The file has a given age."""
+        obj = db.gallery.create_object(f"__test__ {uuid.uuid4().hex[:8]}", "a bottle")
+        self.object_ids.append(obj.id)
+        prepared = storage.prepare_image(picture())
+        path: str = storage.save_image(prepared)
+        self.orphan_paths.append(
+            path
+        )  # Removed at the end, if the test did not remove it
+        photo = db.gallery.add_reference_photo(
+            obj.id, path, prepared.sha256, prepared.width, prepared.height
+        )
+        old: float = time.time() - age_seconds
+        os.utime(storage.current_config().root / path, (old, old))
+        return photo.id, path
+
     def orphan(self, age_seconds: int) -> str:
         """A file that no row owns, with a given age."""
         path: str = storage.save_image(storage.prepare_image(picture()))
@@ -79,7 +96,7 @@ class Made:
 def actual_system(monkeypatch: pytest.MonkeyPatch) -> Iterator[Made]:
     config = storage.init_storage()
     database, _ = db.init_db()
-    if storage.find_orphan_files(db.list_image_paths()):
+    if storage.find_orphan_files(db.list_all_file_paths()):
         pytest.skip(
             "The actual storage has orphan files. The job would delete some of them"
         )
@@ -91,6 +108,8 @@ def actual_system(monkeypatch: pytest.MonkeyPatch) -> Iterator[Made]:
     existing: list[Image] = list(Image.select().where(Image.id.in_(made.image_ids)))
     if existing:
         storage.delete_images(db.delete_images([i.id for i in existing]))
+    for object_id in made.object_ids:
+        storage.delete_images(db.gallery.delete_object(object_id))
     storage.delete_images(made.orphan_paths)
     db.checkpoint_vectors()  # Keep the actual index file free of test vectors
     database.close()
@@ -207,6 +226,42 @@ def test_a_limit_of_zero_deletes_no_orphan_file(actual_system: Made) -> None:
         1,
         0,
     ) and exists(path)
+
+
+# ---- Reference photos ----
+
+
+def test_a_reference_photo_is_not_an_orphan_while_its_row_exists(
+    actual_system: Made,
+) -> None:
+    photo_id, path = actual_system.reference_photo(
+        age_seconds=7200
+    )  # Older than the grace time
+    report: MaintenanceReport = make().run_once()
+    assert report.orphan_files_found == 0 and report.missing_files == 0 and exists(path)
+    db.gallery.remove_photo(photo_id)  # Now no row owns the file
+    report = make().run_once()
+    assert (
+        report.orphan_files_found == 1
+        and report.orphan_files_deleted == 1
+        and not exists(path)
+    )
+
+
+def test_retention_never_deletes_reference_photos(
+    actual_system: Made, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A long time, so that a test never expires a real image.
+    set_retention(monkeypatch, RETENTION_DAYS)
+    _, path = actual_system.reference_photo(age_seconds=10 * 24 * 3600)
+    report: MaintenanceReport = make().run_once()
+    assert report.expired_images_deleted == 0 and exists(path)
+
+
+def test_a_missing_reference_photo_file_is_reported(actual_system: Made) -> None:
+    _, path = actual_system.reference_photo(age_seconds=10)
+    storage.delete_images([path])
+    assert make().run_once().missing_files == 1
 
 
 # ---- Missing files and the checkpoint ----

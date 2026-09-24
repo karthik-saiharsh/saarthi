@@ -40,12 +40,19 @@ class MaintenanceConfig:
 
 
 @dataclass(frozen=True)
+class EnrollmentConfig:
+    max_photos_per_object: int
+    max_objects: int
+
+
+@dataclass(frozen=True)
 class BackendConfig:
     max_pending: int
     token_env_var: str
     worker: WorkerConfig
     server: ServerConfig
     maintenance: MaintenanceConfig
+    enrollment: EnrollmentConfig
 
 
 def _table(raw: dict, name: str) -> dict:
@@ -138,7 +145,19 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> BackendConfig:
         ),
         retention_batch=_integer(maintenance, "maintenance", "retention_batch", 1),
     )
+    enrollment: dict = _table(raw, "enrollment")
+    enrollment_config: EnrollmentConfig = EnrollmentConfig(
+        max_photos_per_object=_integer(
+            enrollment, "enrollment", "max_photos_per_object", 1
+        ),
+        max_objects=_integer(enrollment, "enrollment", "max_objects", 1),
+    )
     logger.info("Loaded backend config from %s", config_path)
     return BackendConfig(
-        max_pending, token_env_var, worker_config, server_config, maintenance_config
+        max_pending,
+        token_env_var,
+        worker_config,
+        server_config,
+        maintenance_config,
+        enrollment_config,
     )

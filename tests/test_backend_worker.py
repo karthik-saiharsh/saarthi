@@ -6,6 +6,7 @@ decoding and all the post-processing are the real code.
 
 import dataclasses
 import time
+import uuid
 from collections.abc import Callable, Iterator
 from io import BytesIO
 
@@ -18,12 +19,27 @@ import storage.api as storage
 from ai.api import AiEngine
 from ai.errors import InferenceError
 from ai.types import Box, RawDetection
+from backend.enrollment import EnrollmentService
 from backend.ingest import IngestService
 from backend.settings import BackendConfig, load_config
-from backend.worker import REASON_BLURRY, REASON_DUPLICATE, Worker
-from db.schema import Image, ImageStatus, Region
+from backend.worker import (
+    REASON_BLURRY,
+    REASON_DUPLICATE,
+    REASON_OBJECT_NOT_FOUND,
+    Worker,
+)
+from db.schema import (
+    Image,
+    ImageStatus,
+    ObjectView,
+    PhotoStatus,
+    ReferencePhoto,
+    Region,
+)
 from tests.ai_support import FakeDetector, FakeEmbedder, make_engine
 from tests.db_support import skip_if_actual_data_has_problems
+
+PREFIX: str = "__test__ "
 
 
 def noise(seed: int, jitter: int = 0) -> bytes:
@@ -54,6 +70,7 @@ class Setup:
     embedder: FakeEmbedder
     ingest: IngestService
     config: BackendConfig
+    enrollment: EnrollmentService
 
     def upload(self, data: bytes) -> int:
         return self.ingest.submit(data).image_id
@@ -68,7 +85,12 @@ def make_setup(**worker_changes: int) -> Setup:
     engine: AiEngine = make_engine(detector, embedder)
     worker: Worker = Worker(config, engine)
     return Setup(
-        worker, detector, embedder, IngestService(config, on_stored=worker.wake), config
+        worker,
+        detector,
+        embedder,
+        IngestService(config, on_stored=worker.wake),
+        config,
+        EnrollmentService(config, engine, on_photo_added=worker.wake),
     )
 
 
@@ -81,11 +103,22 @@ def actual_system() -> Iterator[None]:
         pytest.skip(
             "Actual database has pending images. The worker would claim one of them"
         )
+    if (
+        ReferencePhoto.select()
+        .where(ReferencePhoto.status == PhotoStatus.PENDING.value)
+        .exists()
+    ):
+        pytest.skip(
+            "Actual database has pending reference photos. The worker would claim one"
+        )
     before: set[str] = set(db.list_image_paths())
     yield
     made: list[Image] = [i for i in Image.select() if i.file_path not in before]
     if made:
         storage.delete_images(db.delete_images([i.id for i in made]))
+    for obj in db.gallery.list_objects():
+        if obj.name.startswith(PREFIX):
+            storage.delete_images(db.gallery.delete_object(obj.id))
     database.close()
 
 
@@ -319,3 +352,128 @@ def test_the_loop_survives_an_error_in_its_own_code(
 def test_the_worker_checks_its_parameters() -> None:
     with pytest.raises(AssertionError):
         Worker("config", None)  # type: ignore[arg-type]
+
+
+# ---- Reference photos (stages E2 and E3) ----
+
+
+def new_object(setup: Setup, phrase: str = "a bottle") -> int:
+    return setup.enrollment.create_object(
+        f"{PREFIX}{uuid.uuid4().hex[:8]}", phrase, ["a flask"]
+    ).id
+
+
+def test_a_reference_photo_is_located_and_gets_its_views(setup: Setup) -> None:
+    setup.detector.detections = [
+        RawDetection(Box(10, 10, 40, 40), 0.40, "bottle", "full"),
+        RawDetection(Box(15, 12, 60, 50), 0.70, "bottle", "full"),  # The best box
+    ]
+    object_id: int = new_object(setup)
+    info = setup.enrollment.add_photo(object_id, noise(100))
+    assert setup.worker.process_next() is True
+
+    photo: ReferencePhoto = db.gallery.get_photo(info.id)  # type: ignore[assignment]
+    assert photo.status == PhotoStatus.LOCATED.value and photo.det_score == 0.70
+    assert (photo.x0, photo.y0, photo.x1, photo.y1) == (15, 12, 60, 50)
+    rows = list(ObjectView.select().where(ObjectView.photo == info.id))
+    assert [v.augmentation for v in rows] == [
+        "original",
+        "box_smaller",
+        "box_larger",
+        "brighter",
+    ]
+    assert {v.embedding_model for v in rows} == {"fake-embedder@00000000"}
+    assert setup.detector.context_flags == [False]  # Only the phrases of the object
+
+
+def test_an_object_that_is_not_found_fails_the_photo_with_a_fixed_reason(
+    setup: Setup,
+) -> None:
+    object_id: int = new_object(setup)
+    info = setup.enrollment.add_photo(object_id, noise(101))
+    assert setup.worker.process_next() is True
+    photo: ReferencePhoto = db.gallery.get_photo(info.id)  # type: ignore[assignment]
+    assert (
+        photo.status == PhotoStatus.FAILED.value
+        and photo.status_detail == REASON_OBJECT_NOT_FOUND
+    )
+    assert photo.x0 is None
+
+
+def test_a_model_error_fails_only_that_photo_with_the_class_name(setup: Setup) -> None:
+    setup.detector.error = InferenceError("secret detail: /home/x")
+    object_id: int = new_object(setup)
+    bad = setup.enrollment.add_photo(object_id, noise(102))
+    setup.detector.detections = [
+        RawDetection(Box(10, 10, 40, 40), 0.6, "bottle", "full")
+    ]
+    good = setup.enrollment.add_photo(object_id, noise(103))
+    assert setup.worker.process_next() and setup.worker.process_next()
+    failed: ReferencePhoto = db.gallery.get_photo(bad.id)  # type: ignore[assignment]
+    assert (
+        failed.status == PhotoStatus.FAILED.value
+        and failed.status_detail == "InferenceError"
+    )
+    assert db.gallery.get_photo(good.id).status == PhotoStatus.LOCATED.value  # type: ignore[union-attr]
+
+
+def test_a_missing_file_fails_the_photo(setup: Setup) -> None:
+    object_id: int = new_object(setup)
+    info = setup.enrollment.add_photo(object_id, noise(104))
+    storage.delete_images([db.gallery.get_photo(info.id).file_path])  # type: ignore[union-attr]
+    assert setup.worker.process_next() is True
+    photo: ReferencePhoto = db.gallery.get_photo(info.id)  # type: ignore[assignment]
+    assert (
+        photo.status == PhotoStatus.FAILED.value
+        and photo.status_detail == "StorageNotFoundError"
+    )
+
+
+def test_a_reference_photo_comes_before_a_frame(setup: Setup) -> None:
+    setup.detector.detections = [
+        RawDetection(Box(10, 10, 40, 40), 0.6, "bottle", "full")
+    ]
+    frame_id: int = setup.upload(noise(105))  # Waits first
+    info = setup.enrollment.add_photo(new_object(setup), noise(106))
+    assert setup.worker.process_next() is True  # The photo
+    assert db.gallery.get_photo(info.id).status == PhotoStatus.LOCATED.value  # type: ignore[union-attr]
+    assert state(frame_id).status == ImageStatus.PENDING.value
+    assert setup.worker.process_next() is True  # Then the frame
+    assert state(frame_id).status == ImageStatus.DONE.value
+
+
+def test_three_confirmed_photos_make_an_object_ready(setup: Setup) -> None:
+    setup.detector.detections = [
+        RawDetection(Box(10, 10, 40, 40), 0.6, "bottle", "full")
+    ]
+    object_id: int = new_object(setup)
+    infos = [setup.enrollment.add_photo(object_id, noise(110 + k)) for k in range(3)]
+    while setup.worker.process_next():
+        pass
+    for info in infos:
+        setup.enrollment.confirm_photo(object_id, info.id)
+    assert setup.enrollment.get_object(object_id).summary.status == "ready"
+    assert (
+        "a bottle" in db.gallery.gallery_phrases()
+        and "a flask" in db.gallery.gallery_phrases()
+    )
+
+
+def test_the_thread_processes_a_reference_photo_at_once_because_of_the_wake_up() -> (
+    None
+):
+    setup: Setup = make_setup(idle_wait_seconds=60, generic_pass_every=0)
+    setup.detector.detections = [
+        RawDetection(Box(10, 10, 40, 40), 0.6, "bottle", "full")
+    ]
+    object_id: int = new_object(setup)
+    setup.worker.start()
+    try:
+        time.sleep(0.3)  # Idle now. The safety net is far away.
+        info = setup.enrollment.add_photo(object_id, noise(120))
+        wait_for(
+            lambda: db.gallery.get_photo(info.id).status == PhotoStatus.LOCATED.value,  # type: ignore[union-attr]
+            seconds=10,
+        )
+    finally:
+        setup.worker.stop(timeout=15)

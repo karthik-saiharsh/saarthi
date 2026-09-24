@@ -13,6 +13,7 @@ from fastapi import APIRouter
 import db.api as db
 import storage.api as storage
 from ai.api import AiEngine
+from backend.enrollment import EnrollmentService
 from backend.errors import BackendConfigError
 from backend.http import create_router, read_token
 from backend.ingest import IngestService
@@ -53,6 +54,10 @@ class Backend:
         self._ingest: IngestService = IngestService(
             self._config, on_stored=self._worker.wake
         )
+        # A new reference photo wakes the worker, as an upload does.
+        self._enrollment: EnrollmentService = EnrollmentService(
+            self._config, engine, on_photo_added=self._worker.wake
+        )
         self._maintenance: Maintenance = Maintenance(self._config)
         self._token: str | None = read_token(self._config)
         self._max_upload_bytes: int = storage.current_config().max_bytes
@@ -74,6 +79,11 @@ class Backend:
     @property
     def worker(self) -> Worker:
         return self._worker
+
+    @property
+    def enrollment(self) -> EnrollmentService:
+        """The steps of the carer: objects, reference photos, confirmation, calibration."""
+        return self._enrollment
 
     @property
     def maintenance(self) -> Maintenance:

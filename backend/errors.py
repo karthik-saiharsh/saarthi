@@ -11,3 +11,15 @@ class BackendConfigError(BackendError):
 
 class QueueFullError(BackendError):
     """Raised when too many images wait for the worker, so a new upload is refused."""
+
+
+class InvalidInputError(BackendError):
+    """Raised when a value from the carer is not valid (a name or a phrase)."""
+
+
+class LimitReachedError(BackendError):
+    """Raised when the gallery has the largest number of objects or photos."""
+
+
+class NotFoundError(BackendError):
+    """Raised when an object or a photo does not exist."""
