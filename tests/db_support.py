@@ -12,7 +12,14 @@ from db.api import (
     list_embedded_region_ids,
     list_vector_ids,
 )
-from db.schema import Image, ImageStatus, Region, RegionSource
+from db.schema import (
+    Image,
+    ImageStatus,
+    PhotoStatus,
+    ReferencePhoto,
+    Region,
+    RegionSource,
+)
 
 TEST_PREFIX: str = "__test__/"
 MODEL: str = "test-model"
@@ -56,6 +63,12 @@ def skip_if_actual_data_has_problems() -> None:
     problems: list[str] = []
     if Image.select().where(Image.status == ImageStatus.PROCESSING.value).exists():
         problems.append("processing images")
+    if (
+        ReferencePhoto.select()
+        .where(ReferencePhoto.status == PhotoStatus.PROCESSING.value)
+        .exists()
+    ):
+        problems.append("processing reference photos")
     gap = Region.select(Region.image).where(Region.embedding_model.is_null())
     if (
         Image.select()

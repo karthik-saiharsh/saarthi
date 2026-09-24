@@ -5,41 +5,51 @@
 
 import logging
 import tomllib
-from collections.abc import Iterator
-from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 
 import numpy as np
-from peewee import IntegrityError, PeeweeException, SqliteDatabase
+from peewee import PeeweeException, SqliteDatabase
 
+from db import (
+    gallery,
+)
 from db.errors import (
     ConfigError,
     DbError,
     DuplicateImageError,
+    DuplicateObjectError,
     InvalidRecordError,
     InvalidStateError,
     VectorIndexError,
 )
 from db.schema import (
+    EnrolledObject,
     Image,
     ImageStatus,
+    ObjectView,
+    ReferencePhoto,
     Region,
     RegionSource,
     database_proxy,
     utc_now,
 )
+from db.support import translate_errors
 from db.vector_index import VectorIndex
 
 logger: logging.Logger = logging.getLogger(__name__)
-if not logger.handlers:
-    _handler: logging.StreamHandler = logging.StreamHandler()
-    _handler.setFormatter(logging.Formatter("%(name)s-%(asctime)s: %(message)s"))
-    logger.addHandler(_handler)
-    logger.setLevel(logging.INFO)
-    logger.propagate = False
 
+# The error classes are part of the public interface of this module.
+__all__ = [
+    "ConfigError",
+    "DbError",
+    "DuplicateImageError",
+    "DuplicateObjectError",
+    "InvalidRecordError",
+    "InvalidStateError",
+    "VectorIndexError",
+]
 DB_DIR: Path = Path(__file__).resolve().parent
 DEFAULT_CONFIG_PATH: Path = DB_DIR / "config.toml"
 
@@ -90,6 +100,8 @@ class RecoveryReport:
     stale_vector_ids: list[int]
     # Regions of `done` images with no vector.
     unembedded_region_ids: list[int]
+    # Reference photos that were `processing` and are `pending` again.
+    reset_photo_ids: list[int] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -104,6 +116,8 @@ class StartupReport:
     orphan_vectors_removed: int
     # Marks that the tables had and the index did not. They are cleared.
     missing_vectors_cleared: int
+    # Reference photos that were `processing` and are `pending` again.
+    interrupted_photo_ids: list[int] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -236,7 +250,9 @@ def init_db(config_path: Path = DEFAULT_CONFIG_PATH) -> tuple[SqliteDatabase, Db
         database_proxy.initialize(database)
         database.connect(reuse_if_open=True)
         logger.info("Opened database %s", config.sqlite_path)
-        database.create_tables([Image, Region], safe=True)
+        database.create_tables(
+            [Image, Region, EnrolledObject, ReferencePhoto, ObjectView], safe=True
+        )
     except (OSError, PeeweeException) as error:
         logger.error(
             "Cannot open database %s: %s: %s",
@@ -245,26 +261,17 @@ def init_db(config_path: Path = DEFAULT_CONFIG_PATH) -> tuple[SqliteDatabase, Db
             error,
         )
         raise
-    logger.info("Tables ready: image, region")
+    logger.info(
+        "Tables ready: image, region, enrolled_object, reference_photo, object_view"
+    )
     _replace_vector_index(config)
+    gallery.configure(config.vector_dimension)
     global _config
     _config = config
     return database, config
 
 
-@contextmanager
-def _translate_errors(action: str) -> Iterator[None]:
-    """Log peewee errors and raise them as the typed errors of this module."""
-    try:
-        yield
-    except IntegrityError as error:
-        logger.error("%s failed: %s: %s", action, type(error).__name__, error)
-        if "UNIQUE" in str(error).upper():
-            raise DuplicateImageError(f"{action}: value already exists") from error
-        raise InvalidRecordError(f"{action}: database refused the value") from error
-    except PeeweeException as error:
-        logger.error("%s failed: %s: %s", action, type(error).__name__, error)
-        raise DbError(f"{action}: database error") from error
+_translate_errors = translate_errors  # The old private name stays for the code below
 
 
 def add_image(
@@ -567,6 +574,7 @@ def recover_interrupted() -> RecoveryReport:
             .order_by(Image.id)
         ]
         stale_vector_ids: list[int] = _reset_images_to_pending(interrupted)
+        reset_photos: list[int] = gallery.reset_processing_photos()
         unembedded: list[int] = [
             row.id
             for row in Region.select(Region.id)
@@ -578,10 +586,14 @@ def recover_interrupted() -> RecoveryReport:
             .order_by(Region.id)
         ]
 
-    report: RecoveryReport = RecoveryReport(interrupted, stale_vector_ids, unembedded)
+    report: RecoveryReport = RecoveryReport(
+        interrupted, stale_vector_ids, unembedded, reset_photos
+    )
     logger.info(
-        "Recovery: %d image(s) reset, %d stale vector id(s), %d region(s) without vector",
+        "Recovery: %d image(s) and %d reference photo(s) reset, %d stale vector id(s), "
+        "%d region(s) without vector",
         len(interrupted),
+        len(reset_photos),
         len(stale_vector_ids),
         len(unembedded),
     )
@@ -701,6 +713,15 @@ def list_image_paths() -> list[str]:
         ]
 
 
+def list_all_file_paths() -> list[str]:
+    """Return the `file_path` of every image and every reference photo, sorted.
+
+    The orphan check compares this list with the files on disk. A list of
+    images alone would make the reference photos look like orphans.
+    """
+    return sorted({*list_image_paths(), *gallery.list_photo_paths()})
+
+
 def delete_images(image_ids: list[int]) -> list[str]:
     """Delete images, their regions and their vectors. Return their `file_path` values.
 
@@ -798,6 +819,7 @@ def startup_recovery() -> StartupReport:
 
     report: StartupReport = StartupReport(
         interrupted_image_ids=interrupted.reset_image_ids,
+        interrupted_photo_ids=interrupted.reset_photo_ids,
         requeued_image_ids=requeued_image_ids,
         orphan_vectors_removed=orphan_vectors_removed,
         missing_vectors_cleared=missing_vectors_cleared,

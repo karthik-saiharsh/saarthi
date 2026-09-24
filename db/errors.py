@@ -23,3 +23,7 @@ class InvalidRecordError(DbError):
 
 class VectorIndexError(DbError):
     """Raised when the vector index cannot do what the caller asks."""
+
+
+class DuplicateObjectError(DbError):
+    """Raised when an enrolled object with this name already exists."""
