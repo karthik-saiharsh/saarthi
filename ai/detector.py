@@ -76,17 +76,22 @@ class CandidateDetector:
         small_phrases: Sequence[str] = (),
         include_generic: bool = False,
         tiling: bool | None = None,
+        context_phrases: bool = True,
     ) -> list[RawDetection]:
         """Return the raw boxes of all passes. `ai.postprocess` cleans them up.
 
         `tiling` switches the tiled pass for this call. None uses the config.
+        `context_phrases` adds the hand and depiction phrases to each prompt.
+        Switch it off to look for one object only (see `AiEngine.locate_object`).
         """
         assert isinstance(image, Image.Image), "image must be a PIL image"
         assert phrases, "phrases must not be empty"
         cfg = self._config.detection
         width, height = image.size
         started: float = time.perf_counter()
-        extras: list[str] = [cfg.hand_phrase, *cfg.depiction_phrases]
+        extras: list[str] = (
+            [cfg.hand_phrase, *cfg.depiction_phrases] if context_phrases else []
+        )
         detections: list[RawDetection] = []
         passes: int = 0
 
@@ -99,7 +104,7 @@ class CandidateDetector:
         small: list[str] = [p for p in phrases if p in set(small_phrases)]
         use_tiling: bool = cfg.tiling_enabled if tiling is None else tiling
         if use_tiling and small and min(width, height) >= 2:
-            tile_extras: list[str] = [cfg.hand_phrase]
+            tile_extras: list[str] = [cfg.hand_phrase] if context_phrases else []
             tiles: list[Tile] = tile_grid(width, height, cfg.tile_overlap)
             for prompt in plan_prompts(
                 small, tile_extras, cfg.chunk_size, self.count_tokens

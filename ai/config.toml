@@ -85,3 +85,20 @@ crop_size = 224
 # A box with a side shorter than this value is embedded from a padded crop.
 small_box_min_side = 64
 crop_padding = 0.15
+
+[enrollment]
+# E3: the views that one reference photo gives. Allowed names: "original" (the box as it is),
+# "box_smaller", "box_larger" (the box grows or shrinks by box_scale), and "brighter"
+# (the photo is brighter by the value of brightness). Each name makes one vector.
+augmentations = ["original", "box_smaller", "box_larger", "brighter"]
+box_scale = 0.10
+brightness = 0.15
+# E4: the threshold of an object is mean - tau_std_factor * std of the similarities between
+# its views of different photos. The strong threshold is tau + tau_strong_offset.
+tau_std_factor = 0.5
+tau_strong_offset = 0.05
+# The margin that a match must have over the nearest look-alike (the doc starts with 0.03 and 0.08).
+margin_min = 0.03
+margin_strong = 0.08
+# An object needs at least this number of confirmed photos before it is calibrated.
+min_photos = 3

@@ -72,6 +72,22 @@ class EmbeddingConfig:
     crop_padding: float
 
 
+# The names of the views that a reference photo can give (see `ai/enrollment.py`).
+AUGMENTATIONS: tuple[str, ...] = ("original", "box_smaller", "box_larger", "brighter")
+
+
+@dataclass(frozen=True)
+class EnrollmentConfig:
+    augmentations: tuple[str, ...]
+    box_scale: float
+    brightness: float
+    tau_std_factor: float
+    tau_strong_offset: float
+    margin_min: float
+    margin_strong: float
+    min_photos: int
+
+
 @dataclass(frozen=True)
 class AiConfig:
     models: ModelsConfig
@@ -79,6 +95,7 @@ class AiConfig:
     quality: QualityConfig
     detection: DetectionConfig
     embedding: EmbeddingConfig
+    enrollment: EnrollmentConfig
 
 
 class _Table:
@@ -165,6 +182,7 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> AiConfig:
     quality: _Table = _Table(raw, "quality")
     detection: _Table = _Table(raw, "detection")
     embedding: _Table = _Table(raw, "embedding")
+    enrollment: _Table = _Table(raw, "enrollment")
 
     default_phrases: tuple[str, ...] = detection.texts("default_phrases")
     small_phrases: tuple[str, ...] = detection.texts("small_phrases", allow_empty=True)
@@ -180,6 +198,20 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> AiConfig:
         raise AiConfigError(
             "embedding.frame_long_edge_max must not be below frame_short_edge"
         )
+
+    augmentations: tuple[str, ...] = enrollment.texts("augmentations")
+    unknown_names: list[str] = [a for a in augmentations if a not in AUGMENTATIONS]
+    if unknown_names:
+        raise AiConfigError(
+            f"enrollment.augmentations has unknown names {unknown_names}. "
+            f"Allowed: {', '.join(AUGMENTATIONS)}"
+        )
+    if len(set(augmentations)) != len(augmentations):
+        raise AiConfigError("enrollment.augmentations must not repeat a name")
+    margin_min: float = enrollment.number("margin_min", 0.0, 1.0)
+    margin_strong: float = enrollment.number("margin_strong", 0.0, 1.0)
+    if margin_strong < margin_min:
+        raise AiConfigError("enrollment.margin_strong must not be below margin_min")
 
     config: AiConfig = AiConfig(
         models=ModelsConfig(
@@ -224,6 +256,16 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> AiConfig:
             crop_size=_multiple_of_patch(embedding, "crop_size"),
             small_box_min_side=embedding.integer("small_box_min_side"),
             crop_padding=embedding.number("crop_padding", 0.0, 1.0),
+        ),
+        enrollment=EnrollmentConfig(
+            augmentations=augmentations,
+            box_scale=enrollment.number("box_scale", 0.01, 0.5),
+            brightness=enrollment.number("brightness", 0.01, 1.0),
+            tau_std_factor=enrollment.number("tau_std_factor", 0.0, 5.0),
+            tau_strong_offset=enrollment.number("tau_strong_offset", 0.0, 1.0),
+            margin_min=margin_min,
+            margin_strong=margin_strong,
+            min_photos=enrollment.integer("min_photos", minimum=2),
         ),
     )
     logger.info("Loaded ai config from %s", config_path)

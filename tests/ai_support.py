@@ -14,13 +14,21 @@ class FakeDetector:
 
     def __init__(self) -> None:
         self.generic_flags: list[bool] = []
+        self.context_flags: list[bool] = []
         self.detections: list[RawDetection] = []
         self.error: Exception | None = None
 
     def detect(
-        self, image, phrases, small_phrases=(), include_generic=False, tiling=None
+        self,
+        image,
+        phrases,
+        small_phrases=(),
+        include_generic=False,
+        tiling=None,
+        context_phrases=True,
     ):
         self.generic_flags.append(include_generic)
+        self.context_flags.append(context_phrases)
         if self.error is not None:
             error, self.error = self.error, None  # Fail one time only
             raise error
@@ -32,15 +40,25 @@ class FakeEmbedder:
 
     name = "fake-embedder@00000000"
 
-    def __init__(self, dimension: int = 384) -> None:
+    def __init__(self, dimension: int = 384, one_hot_by_box: bool = False) -> None:
         self.dimension: int = dimension
         self.error: Exception | None = None
+        # True: each box gets its own vector (one-hot at a place that depends on the box).
+        self.one_hot_by_box: bool = one_hot_by_box
+        self.calls: list[tuple[float, list]] = (
+            []
+        )  # The mean brightness of the image, the boxes
 
     def embed(self, image, boxes):
         if self.error is not None:
             raise self.error
+        self.calls.append((float(np.asarray(image.convert("L")).mean()), list(boxes)))
         vectors: np.ndarray = np.zeros((len(boxes), self.dimension), dtype=np.float32)
-        vectors[:, 0] = 1.0
+        for row, box in enumerate(boxes):
+            column: int = (
+                (box.x0 + 7 * box.y0) % self.dimension if self.one_hot_by_box else 0
+            )
+            vectors[row, column] = 1.0
         return vectors
 
 

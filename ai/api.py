@@ -10,11 +10,14 @@ from io import BytesIO
 import numpy as np
 from PIL import Image, ImageOps, UnidentifiedImageError
 
+from ai.calibration import calibrate
 from ai.detector import CandidateDetector
 from ai.embedder import RegionEmbedder
+from ai.enrollment import brighten, scale_box
 from ai.errors import (
     AiConfigError,
     AiError,
+    CalibrationError,
     ImageError,
     InferenceError,
     ModelLoadError,
@@ -23,7 +26,7 @@ from ai.postprocess import apply_crop_quality, select_candidates
 from ai.quality import blur_score, hamming_distance, perceptual_hash
 from ai.runtime import configure_threads
 from ai.settings import AiConfig, load_config
-from ai.types import Box, Candidate, QualityReport
+from ai.types import Box, Calibration, Candidate, LocatedObject, QualityReport
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -31,6 +34,7 @@ __all__ = [
     "AiConfigError",
     "AiEngine",
     "AiError",
+    "CalibrationError",
     "ImageError",
     "InferenceError",
     "ModelLoadError",
@@ -162,3 +166,74 @@ class AiEngine:
     def embed_regions(self, image: Image.Image, boxes: list[Box]) -> np.ndarray:
         """Return one unit-length float32 vector for each box."""
         return self._embedder.embed(image, boxes)
+
+    # ---- Enrollment (stages E2 to E4) ----
+
+    @property
+    def min_photos(self) -> int:
+        """The number of confirmed photos that an object needs before it is calibrated."""
+        return self._config.enrollment.min_photos
+
+    def locate_object(
+        self,
+        image: Image.Image,
+        category_phrase: str,
+        synonyms: list[str] | None = None,
+    ) -> LocatedObject | None:
+        """Find the enrolled object in a reference photo (stage E2).
+
+        Run the detector with the category phrase and the synonyms. Return the
+        box with the best score, or None if the detector finds nothing.
+        """
+        assert isinstance(image, Image.Image), "image must be a PIL image"
+        assert isinstance(category_phrase, str) and category_phrase, "phrase needed"
+        phrases: list[str] = [category_phrase, *(synonyms or [])]
+        # Only the phrases of the object. A hand or a book cover (a "picture frame") must not
+        # compete for the labels, and the depiction rule must not drop an object that lies on a book.
+        raw = self._detector.detect(image, phrases, (), False, False, False)
+        candidates: list[Candidate] = select_candidates(
+            raw, image.width, image.height, phrases, self._config.detection
+        )
+        matches: list[tuple[Candidate, str]] = [
+            (c, p) for c in candidates for p in c.phrases if p in phrases
+        ]
+        if not matches:
+            logger.info("The object was not found in the reference photo")
+            return None
+        candidate, phrase = max(matches, key=lambda m: m[0].det_score)
+        logger.info("Object found with score %.2f", candidate.det_score)
+        return LocatedObject(candidate.box, candidate.det_score, phrase)
+
+    def embed_views(self, image: Image.Image, box: Box) -> list[tuple[str, np.ndarray]]:
+        """Make the views of an object in a reference photo (stage E3).
+
+        One vector for each name in `enrollment.augmentations`. Return a list
+        of (name, vector) in the order of the config.
+        """
+        assert isinstance(image, Image.Image), "image must be a PIL image"
+        assert isinstance(box, Box), "box must be a Box"
+        cfg = self._config.enrollment
+        width, height = image.size
+        boxes: dict[str, Box] = {
+            "original": box,
+            "box_smaller": scale_box(box, -cfg.box_scale, width, height),
+            "box_larger": scale_box(box, cfg.box_scale, width, height),
+        }
+        box_names: list[str] = [n for n in cfg.augmentations if n in boxes]
+        vectors: dict[str, np.ndarray] = {}
+        if box_names:
+            made: np.ndarray = self._embedder.embed(
+                image, [boxes[n] for n in box_names]
+            )
+            vectors.update({name: made[i] for i, name in enumerate(box_names)})
+        if "brighter" in cfg.augmentations:
+            vectors["brighter"] = self._embedder.embed(
+                brighten(image, cfg.brightness), [box]
+            )[0]
+        return [(name, vectors[name]) for name in cfg.augmentations]
+
+    def calibrate_object(
+        self, views: np.ndarray, photo_ids: list[int], other_views: np.ndarray
+    ) -> Calibration:
+        """Calculate the thresholds of an object from its views and the negatives (stage E4)."""
+        return calibrate(views, photo_ids, other_views, self._config.enrollment)

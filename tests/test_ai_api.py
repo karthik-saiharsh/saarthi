@@ -74,7 +74,13 @@ class FakeDetector:
         self.calls: list[tuple] = []
 
     def detect(
-        self, image, phrases, small_phrases=(), include_generic=False, tiling=None
+        self,
+        image,
+        phrases,
+        small_phrases=(),
+        include_generic=False,
+        tiling=None,
+        context_phrases=True,
     ):
         self.calls.append((list(phrases), list(small_phrases), include_generic, tiling))
         return self.detections

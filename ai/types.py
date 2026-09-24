@@ -60,3 +60,29 @@ class RawDetection:
     score: float
     label: str  # Text label from the detector. It can be a part of a phrase
     source: Source
+
+
+@dataclass(frozen=True)
+class LocatedObject:
+    """Where an enrolled object is in a reference photo (stage E2)."""
+
+    box: Box
+    det_score: float
+    phrase: str  # The phrase that the detector linked to the box
+
+
+@dataclass(frozen=True)
+class Calibration:
+    """The result of the calibration of one object (stage E4)."""
+
+    tau: float  # A match needs at least this similarity
+    tau_strong: float  # A match above this value is strong
+    margin_min: float  # A match must beat the nearest look-alike by this value
+    own_mean: float  # Mean similarity between views of different photos
+    own_std: float
+    negative_max: (
+        float | None
+    )  # The highest similarity to a view of another object, if any
+    n_views: int
+    n_photos: int
+    note: str | None  # A short text for the carer, for example a warning

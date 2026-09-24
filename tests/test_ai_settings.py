@@ -36,6 +36,23 @@ def test_default_config_loads_and_is_consistent() -> None:
         ("local_files_only = false", 'local_files_only = "no"'),
         ("box_threshold = 0.25", "box_threshold = 1.5"),
         ("chunk_size = 30", "chunk_size = 0"),
+        (
+            'augmentations = ["original", "box_smaller", "box_larger", "brighter"]',
+            'augmentations = ["original", "flip"]',
+        ),
+        (
+            'augmentations = ["original", "box_smaller", "box_larger", "brighter"]',
+            'augmentations = ["original", "original"]',
+        ),
+        (
+            'augmentations = ["original", "box_smaller", "box_larger", "brighter"]',
+            "augmentations = []",
+        ),
+        ("box_scale = 0.10", "box_scale = 0.9"),
+        ("brightness = 0.15", "brightness = 0"),
+        ("tau_std_factor = 0.5", "tau_std_factor = -1"),
+        ("margin_strong = 0.08", "margin_strong = 0.01"),
+        ("min_photos = 3", "min_photos = 1"),
         ("chunk_size = 30", "chunk_size = true"),
         ("frame_short_edge = 448", "frame_short_edge = 450"),
         ("frame_long_edge_max = 784", "frame_long_edge_max = 434"),
@@ -54,7 +71,7 @@ def test_bad_values_are_refused(tmp_path: Path, old: str, new: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "table", ["models", "image", "quality", "detection", "embedding"]
+    "table", ["models", "image", "quality", "detection", "embedding", "enrollment"]
 )
 def test_missing_table_is_refused(tmp_path: Path, table: str) -> None:
     text: str = DEFAULT_TEXT.replace(f"[{table}]", f"[{table}_renamed]")

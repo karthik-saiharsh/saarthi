@@ -19,3 +19,7 @@ class ImageError(AiError):
 
 class InferenceError(AiError):
     """Raised when a model fails while it works on an image."""
+
+
+class CalibrationError(AiError):
+    """Raised when the views are not enough for a calibration."""
