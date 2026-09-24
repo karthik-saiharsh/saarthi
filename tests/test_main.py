@@ -110,7 +110,11 @@ def test_attach_adds_the_route_and_ties_the_threads_to_the_server() -> None:
     web_app: RecordingApp = RecordingApp()
     main.attach(components, web_app)  # type: ignore[arg-type]
     assert len(web_app.routers) == 1
-    assert [r.path for r in web_app.routers[0].routes] == [UPLOAD_ROUTE]  # type: ignore[attr-defined]
+    api: FastAPI = FastAPI()
+    api.include_router(web_app.routers[0])
+    paths: set[str] = set(api.openapi()["paths"])
+    assert UPLOAD_ROUTE in paths and "/api/objects" in paths
+    assert "/api/objects/{object_id}/photos" in paths
 
     web_app.startup[0]()
     assert (

@@ -16,7 +16,7 @@ from PIL import Image as PilImage
 
 import db.api as db
 import storage.api as storage
-from backend import http
+from backend import http, http_common
 from backend.errors import BackendConfigError, QueueFullError
 from backend.http import UPLOAD_ROUTE, create_router, read_token
 from backend.ingest import IngestResult, IngestService, IngestStatus
@@ -110,7 +110,7 @@ def test_data_that_is_not_an_image_gets_415(real_client: TestClient) -> None:
 def test_an_empty_body_gets_400(real_client: TestClient) -> None:
     response = real_client.post(UPLOAD_ROUTE, content=b"")
     assert response.status_code == 400 and response.json() == {
-        "error": http.MESSAGE_EMPTY
+        "error": http_common.MESSAGE_EMPTY
     }
 
 
@@ -210,7 +210,9 @@ def test_a_missing_or_wrong_token_gets_401_and_the_body_is_not_read(
     assert (
         response.status_code == 401 and response.headers["WWW-Authenticate"] == "Bearer"
     )
-    assert response.json() == {"error": http.MESSAGE_TOKEN} and service.bodies == []
+    assert (
+        response.json() == {"error": http_common.MESSAGE_TOKEN} and service.bodies == []
+    )
 
 
 @pytest.mark.parametrize("scheme", ["Bearer", "bearer", "BEARER"])

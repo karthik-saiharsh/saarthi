@@ -16,6 +16,7 @@ from ai.api import AiEngine
 from backend.enrollment import EnrollmentService
 from backend.errors import BackendConfigError
 from backend.http import create_router, read_token
+from backend.http_objects import create_objects_router
 from backend.ingest import IngestService
 from backend.maintenance import Maintenance
 from backend.settings import (
@@ -103,8 +104,17 @@ class Backend:
         self._worker.stop(timeout=self._config.server.worker_stop_seconds)
 
     def create_router(self) -> APIRouter:
-        """Return the router with `POST /api/images`. Add it with `app.include_router`."""
-        return create_router(self._ingest, self._max_upload_bytes, self._token)
+        """Return the router with all routes (the upload route and the gallery routes).
+
+        Add it with `app.include_router`.
+        """
+        router: APIRouter = create_router(
+            self._ingest, self._max_upload_bytes, self._token
+        )
+        router.include_router(
+            create_objects_router(self._enrollment, self._max_upload_bytes, self._token)
+        )
+        return router
 
     @property
     def upload_service(self) -> UiUploadService:
