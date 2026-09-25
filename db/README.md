@@ -3,6 +3,7 @@
 This is the db module.
 It stores the metadata of the captured images in a SQLite database.
 It stores the embedding vectors of the detected regions in a FAISS index.
+It also stores the gallery: the objects that the owner wants to find, their reference photos, and their vectors.
 The module uses the `peewee` ORM.
 
 The `Region.id` value is the vector id in the FAISS index.
@@ -14,7 +15,9 @@ For the full design, see `docs/db/Ingestion Database Schema.md`.
 
 | File | Purpose |
 |------|---------|
-| `schema.py` | The `Image` and `Region` tables |
+| `schema.py` | The tables: `Image`, `Region`, `EnrolledObject`, `ReferencePhoto`, `ObjectView` |
+| `gallery.py` | The helpers of the gallery. `api.py` gives them as `db.gallery` |
+| `support.py` | The error translation that `api.py` and `gallery.py` share |
 | `api.py` | The public interface: config loader, `init_db`, the query helpers, the vector helpers and the start-up recovery |
 | `vector_index.py` | The FAISS index. It has no database code |
 | `errors.py` | The error classes |
@@ -32,6 +35,9 @@ For the full design, see `docs/db/Ingestion Database Schema.md`.
 
 - `image`: one row for each uploaded image.
 - `region`: one row for each detected box in an image.
+- `enrolled_object`: one row for each object of the gallery, with its calibration.
+- `reference_photo`: one row for each photo that a carer gave for an object.
+- `object_view`: one vector for each view of a reference photo. These vectors are in SQLite, not in FAISS, because the gallery is small.
 
 ## Configuration
 

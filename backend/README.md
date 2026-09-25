@@ -3,16 +3,17 @@
 This is the backend module.
 It controls the flow of the application. It connects the other modules in the right order.
 
-The backend has three jobs:
+The backend has four jobs:
 
 1. The upload step. It accepts one image, checks it, stores it, and puts it in the queue.
-2. The worker. It takes the images from the queue and runs the ai stages on them.
-3. The maintenance jobs. They delete old images and orphan files, report missing files, and save the vector index.
+2. The worker. It takes the photos and the images from the queue and runs the ai stages on them.
+3. Enrollment. A carer adds the objects that the owner wants to find, with photos. The backend calibrates each object.
+4. The maintenance jobs. They delete old images and orphan files, report missing files, and save the vector index.
 
 `main.py` starts the application and stops it. It calls the backend after all other modules are ready.
 
-For the full design, see `docs/backend/Upload Endpoint.md`, `docs/backend/Worker.md`, `docs/backend/Maintenance.md`
-and `docs/backend/Lifecycle.md`.
+For the full design, see `docs/backend/Upload Endpoint.md`, `docs/backend/Enrollment.md`, `docs/backend/Worker.md`,
+`docs/backend/Maintenance.md` and `docs/backend/Lifecycle.md`.
 
 ## Files
 
@@ -21,13 +22,16 @@ and `docs/backend/Lifecycle.md`.
 | `api.py` | The public interface: the `Backend` class |
 | `ingest.py` | `IngestService.submit`: the upload step. It uses `storage` and `db` |
 | `http.py` | The HTTP route `POST /api/images` |
-| `ui_adapter.py` | Connects the UI to the upload step (`ui.ports.UploadService`) |
-| `worker.py` | `Worker`: runs the ai stages on `pending` images, in a background thread |
+| `http_objects.py` | The HTTP routes of the gallery, `/api/objects` |
+| `http_common.py` | What both route files share: the token check, the body reader, the error answers |
+| `enrollment.py` | `EnrollmentService`: objects, reference photos, the carer's confirmation, the calibration |
+| `ui_adapter.py` | Connects the UI to the upload step and to enrollment (`ui.ports.UploadService`, `ui.ports.EnrollmentService`) |
+| `worker.py` | `Worker`: runs the ai stages on `pending` photos and images, in a background thread |
 | `maintenance.py` | `Maintenance`: retention, orphan and missing files, the vector checkpoint |
 | `instance_lock.py` | `InstanceLock`: only one copy of the application may use the data |
 | `settings.py` | Reads `config.toml` |
 | `errors.py` | The error classes |
-| `config.toml` | The queue limit, the token variable, the worker, the server and the maintenance settings |
+| `config.toml` | The queue limit, the token variable, the worker, the enrollment limits, the server and the maintenance settings |
 
 ## Rules
 
@@ -66,6 +70,12 @@ curl -X POST -H "Authorization: Bearer $SAARTHI_API_TOKEN" --data-binary @photo.
 | 507 | The disk of the server is full |
 | 500 | Another error |
 
+## Gallery routes
+
+The routes under `/api/objects` create objects, add reference photos, show the crop of a photo,
+and confirm, retry or remove a photo. They use the same optional token as the upload route.
+The list of routes and codes is in `docs/backend/Enrollment.md`.
+
 ## Configuration
 
 Edit `config.toml`.
@@ -87,6 +97,11 @@ A variable that is set but empty stops the start, so the route cannot open by mi
 | `worker.duplicate_max_compared` | Compare with at most this number of images |
 | `worker.error_pause_seconds` | The pause after an error in the loop of the worker |
 
+| Key (table `[enrollment]`) | Meaning |
+|----------------------------|---------|
+| `enrollment.max_photos_per_object` | The most reference photos for one object |
+| `enrollment.max_objects` | The most objects in the gallery |
+
 | Key (table `[server]`) | Meaning |
 |------------------------|---------|
 | `server.host` | The address of the web server. `0.0.0.0` accepts the local network. `127.0.0.1` accepts only this computer |
@@ -103,9 +118,11 @@ The largest upload is `limits.max_bytes` in `storage/config.toml`.
 
 ## Worker
 
-`Worker.process_next()` takes the oldest `pending` image and does these steps:
+`Worker.process_next()` takes the oldest `pending` reference photo first (see `docs/backend/Enrollment.md`).
+If there is none, it takes the oldest `pending` image and does these steps:
 read and decode the file, check the quality, reject a blurry image or a near duplicate, detect candidates,
 make the vectors, store the regions and the vectors, and mark the image `done`.
+The detector looks for the phrases of the `ready` objects of the gallery. Without a ready object, it uses the placeholder phrases of `ai/config.toml`.
 An error marks the image `failed`. The reason is only the name of the error class.
 `start()` runs the worker as a background thread. An upload calls `wake()`, so a new image starts at once.
 `stop()` finishes the current image and stops the thread.
@@ -131,8 +148,8 @@ db.init_db()
 engine = AiEngine()
 backend = Backend(engine)          # It checks the size of the vectors
 
-app.include_router(backend.create_router())     # The HTTP route
-register_pages(backend.upload_service)          # The UI
+app.include_router(backend.create_router())     # The HTTP routes
+register_pages(backend.upload_service, backend.enrollment_service)  # The UI
 app.on_startup(backend.start)                   # The worker and the maintenance thread
 app.on_shutdown(lambda: stop_components(components))
 # stop_components stops the backend, saves the vector index, closes the database and releases the lock
@@ -146,6 +163,9 @@ app.on_shutdown(lambda: stop_components(components))
 | `BackendConfigError` | `config.toml` or the token variable is not correct |
 | `QueueFullError` | Too many images wait for the worker |
 | `InstanceRunningError` | Another copy of the application already uses the data |
+| `InvalidInputError` | A name or a phrase of an object is not valid |
+| `LimitReachedError` | The gallery has the largest number of objects or photos |
+| `NotFoundError` | An object or a photo does not exist |
 
 The upload step also passes on the errors of the `storage` and `db` modules.
 The route and the UI turn each of them into a fixed message without internal details.

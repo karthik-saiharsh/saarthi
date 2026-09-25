@@ -3,6 +3,7 @@
 ## Purpose
 
 The worker takes the images that wait in the queue and runs the ai stages on them.
+It also takes the reference photos of the enrollment (see `docs/backend/Enrollment.md`). A reference photo goes before an image.
 The upload step puts an image in the queue with the status `pending`. The worker takes it out.
 When the worker is finished, the image is `done`, `rejected` or `failed`.
 
@@ -44,6 +45,10 @@ The db connection is per thread. The worker closes its connection when the threa
 | 9. Finish | `db.mark_image_done` | The image is `done` |
 
 An image with no candidates is also `done`, with no regions.
+
+In step 6, the phrases for the detector come from the gallery: `db.gallery.gallery_phrases()` gives the category phrase and
+the synonyms of all `ready` objects (also the look-alikes). If no object is `ready`, the worker uses `detection.default_phrases` of `ai/config.toml`.
+The list `detection.small_phrases` stays in the config. A gallery phrase gets the tiled pass only if it is in this list.
 
 ### Why the vectors come before the regions
 
@@ -129,7 +134,9 @@ The log does not show image content or file names.
   The score also depends on the JPEG compression: the same photo saved again at another quality scored 117.1.
 - The worker does not retry a failed image. A helper to retry failed images does not exist.
 - The worker gives no progress report. The number of `pending` images is the only sign of the load.
-- The vocabulary of the detector is a placeholder (see `ai/docs/AI Ingestion Module.md`).
+- The vocabulary of the detector is a placeholder only while the gallery has no `ready` object (see `ai/docs/AI Ingestion Module.md`).
+- The depiction rule can drop an object that lies on a book, a screen or a poster (see "Known limits" in `docs/backend/Enrollment.md`).
+  In the real test, a frame of the test photo had 0 regions for this reason.
 
 ## Tests
 

@@ -3,6 +3,7 @@
 This is the ai module.
 It looks at one image and gives the data that the database needs:
 a quality check, the boxes of candidate objects, and one vector for each box.
+It also gives the stages of enrollment: find one object in a photo, make its views, and calibrate its thresholds.
 
 For the full design, see `ai/docs/AI Ingestion Module.md`.
 The source of the design is `docs/ai/DINO-Based Object Recall Pipeline.md`.
@@ -17,6 +18,8 @@ The source of the design is `docs/ai/DINO-Based Object Recall Pipeline.md`.
 | `postprocess.py` | Turns detector output into candidates. No model |
 | `detector.py` | `CandidateDetector`: Grounding DINO with three kinds of pass |
 | `embedder.py` | `RegionEmbedder`: DINOv2 small, one vector for each box |
+| `calibration.py` | The thresholds of an object from its views (stage E4). No model |
+| `enrollment.py` | Box scaling and brightness for the views of a photo. No model |
 | `runtime.py` | Safe model loading, device choice, model names |
 | `settings.py` | Reads `config.toml` |
 | `types.py` | `Box`, `QualityReport`, `Candidate`, `RawDetection` |
@@ -41,6 +44,9 @@ The source of the design is `docs/ai/DINO-Based Object Recall Pipeline.md`.
 | I1 Gate | `engine.is_blurry(report)`, `engine.is_near_duplicate(hash, recent_hashes)` | True or False |
 | I2 Detect | `engine.detect_candidates(image, ...)` | A list of `Candidate`. The best score comes first |
 | I3 Embed | `engine.embed_regions(image, boxes)` | A `float32` array of shape `(n, 384)`, each row of unit length |
+| E2 Locate | `engine.locate_object(image, category_phrase, synonyms)` | A `LocatedObject` (the best box and its score), or `None` |
+| E3 Views | `engine.embed_views(image, box)` | A list of (view name, vector). The views are in `[enrollment]` of `config.toml` |
+| E4 Calibrate | `engine.calibrate_object(views, photo_ids, others)` | A `Calibration` with `tau`, `tau_strong` and a note. `engine.min_photos` is the number of photos that an object needs |
 
 `engine.embedding_model` is the name that goes into `Region.embedding_model`.
 `engine.embedding_dimension` must equal `vectors.dimension` in `db/config.toml`.

@@ -56,6 +56,7 @@ Edit `config.toml`.
 | `prepare_image` | Check an upload and make the JPEG without metadata. Returns the bytes, the SHA-256 hash, the width and the height |
 | `save_image` | Write a prepared image to disk. Returns the relative path |
 | `read_image` | Return the bytes of a stored image |
+| `read_crop` | Return a JPEG of a box of a stored image, shrunk to `max_side`. The carer sees it to confirm a reference photo |
 | `delete_images` | Delete stored images. Returns a report of deleted, missing and failed paths |
 | `list_stored_paths` | List all stored paths |
 | `find_orphan_files` | Find files that the database does not know |

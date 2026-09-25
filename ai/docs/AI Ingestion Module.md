@@ -142,6 +142,26 @@ The embedder is DINOv2 small. The vector has 384 numbers.
 The vectors are not compared with a model change. A threshold is not portable between two models.
 The name in `Region.embedding_model` tells which model made a vector.
 
+## Enrollment stages E2 to E4
+
+The enrollment gives the system the objects that it looks for (see `docs/backend/Enrollment.md`).
+The module gives three helpers. The `backend` module calls them.
+
+- **E2 `engine.locate_object(image, category_phrase, synonyms)`.** One detector pass with the phrases of the object.
+  The hand and depiction phrases are not in the prompt (`context_phrases=False`), because a depiction box can cover the object.
+  The post-processing is the usual one. The result is the best box and its score, or `None`.
+  The detector also gives a box for an object that is not in the photo, so the carer must check the crop.
+- **E3 `engine.embed_views(image, box)`.** One vector for each view of `[enrollment].augmentations`:
+  `original`, `box_smaller` and `box_larger` (the box scaled by `box_scale`), and `brighter` (`brightness`).
+  The three box views use one model run.
+- **E4 `engine.calibrate_object(views, photo_ids, others)`.** Pure numpy functions in `calibration.py`.
+  `own` is the list of similarities between views of different photos. `tau = mean - tau_std_factor * std`.
+  With negatives, `tau = max(tau, neg_max + margin_min)`. `tau_strong = tau + tau_strong_offset`. No value is above 1.0.
+  The result has a note when another object is too similar.
+
+The table `[enrollment]` in `config.toml` has `augmentations`, `box_scale`, `brightness`, `tau_std_factor`, `tau_strong_offset`,
+`margin_min`, `margin_strong` and `min_photos`.
+
 ## Configuration
 
 All settings are in `ai/config.toml`. The start values come from the pipeline document.
@@ -244,12 +264,12 @@ The photo shows a phone in a pink case on a book, a charger with a cable, and a 
 
 ## Not in this module
 
-These parts need a gallery of enrolled objects in the database. They are not built yet:
+These parts are not built yet:
 
-- Enrollment of objects (stages E1 to E4).
 - Matching of a box with an enrolled object (I4), verification (I5) and the last-seen record (I6).
 - The search for an object and the answer to the user.
-- Techniques from the pipeline document: pooling over a mask, background-free enrollment, and the calibrated accept and reject model.
+- Techniques from the pipeline document: pooling over a mask (SAM), background-free enrollment, context negatives, and the calibrated accept and reject model.
+  The owner decided that enrollment uses boxes only.
 
 ## Tests
 
@@ -261,6 +281,7 @@ These parts need a gallery of enrolled objects in the database. They are not bui
 | `tests/test_ai_settings.py` | The config file |
 | `tests/test_ai_embedder_math.py` | Frame size, patch pooling, padded crops |
 | `tests/test_ai_api.py` | `AiEngine` with fake models, and `open_image` |
+| `tests/test_ai_calibration.py`, `tests/test_ai_enrollment.py` | The calibration, the box scaling and the brightness |
 | `tests/test_ai_models.py` (slow) | The real models: vector shape and length, the three passes, the engine |
 | `tests/test_ingestion_chain.py` (slow) | One photo from the upload to the retention, with all modules |
 

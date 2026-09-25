@@ -32,7 +32,8 @@ Delete images that are too old.
 
 Delete files that no database row owns.
 
-- A file is an orphan if its path is not in `db.list_image_paths()`.
+- A file is an orphan if its path is not in `db.list_all_file_paths()`. This list holds the files of the images and of the reference photos.
+  The reference photos must be in the list, or the job would delete them.
 - A file that is younger than `cleanup.orphan_grace_seconds` (3600 by default, in `storage/config.toml`) is not an orphan yet.
   It can be an upload that is still being written.
 - The job deletes at most `maintenance.orphan_delete_limit` files in one run (100 by default). A larger number is only reported,

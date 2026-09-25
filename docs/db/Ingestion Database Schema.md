@@ -74,6 +74,68 @@ One row for each detected box in an image.
 | `tile` | Tiled pass for small objects |
 | `generic` | Generic "an object" pass |
 
+## Gallery tables
+
+The gallery holds the objects that the owner wants to find (see `docs/backend/Enrollment.md`).
+The tables are `enrolled_object`, `reference_photo` and `object_view`.
+
+### Table `enrolled_object`
+
+| Column | Meaning |
+|--------|---------|
+| `name` | The name that the carer gave. Unique, at most 80 characters |
+| `category_phrase` | The words for the detector, for example `a bottle` |
+| `synonyms` | JSON list of more phrases for the same kind of object |
+| `tracked` | `false` means a look-alike. The system never reports it |
+| `status` | `draft` or `ready` |
+| `tau`, `tau_strong`, `margin_min` | The calibration. Null until the object is `ready` |
+| `calibration_model` | The model whose vectors the calibration used |
+| `calibration_note` | A short text for the carer: what is missing, or a warning |
+| `created_at`, `updated_at` | Naive UTC times |
+
+### Table `reference_photo`
+
+| Column | Meaning |
+|--------|---------|
+| `enrolled_object` | The object. Delete cascades to the photo |
+| `file_path` | Relative to the storage root. Unique |
+| `sha256` | Hash of the stored file. Unique together with the object |
+| `width`, `height` | Size in pixels |
+| `status` | `pending`, `processing`, `located`, `confirmed` or `failed` |
+| `status_detail` | The reason of a failure. No personal data |
+| `x0`, `y0`, `x1`, `y1`, `det_score` | The box of the object. Null until the object is located |
+
+### Table `object_view`
+
+One row for each vector of a photo.
+
+| Column | Meaning |
+|--------|---------|
+| `enrolled_object`, `photo` | The owners. Delete cascades |
+| `vector` | `float32` numbers of unit length, as bytes. The length is `vectors.dimension` |
+| `embedding_model` | The model that made the vector. Vectors of different models cannot be compared |
+| `augmentation` | How the view was made, for example `original` |
+
+The gallery vectors are in SQLite, not in FAISS. The gallery is small (tens of objects, tens of views each).
+
+### Gallery helpers
+
+`db/api.py` gives them as `db.gallery`. The `backend` module uses them.
+
+| Helper | Task |
+|--------|------|
+| `create_object`, `get_object`, `list_objects`, `count_objects`, `delete_object` | Objects. `delete_object` returns the file paths for the storage module |
+| `add_reference_photo`, `get_photo`, `list_photos`, `count_photos_by_status` | Photos |
+| `claim_next_reference_photo` | The worker takes the oldest `pending` photo. It becomes `processing` |
+| `store_photo_views`, `mark_photo_failed` | The result of the worker: the box and the views, or a failure |
+| `confirm_photo`, `remove_photo`, `retry_photo` | The steps of the carer. A photo in `processing` cannot be removed |
+| `load_views`, `load_other_views` | The views of an object, and the views of all other objects (the negatives) |
+| `set_calibration`, `clear_calibration` | Save the thresholds, or go back to `draft` with a note |
+| `gallery_phrases` | The phrases of all `ready` objects, for the detector |
+| `list_photo_paths`, `reset_processing_photos` | For the file checks and for the start-up recovery |
+
+`list_all_file_paths()` in `db/api.py` returns the paths of the image files and of the reference photos.
+
 ## Processing flow
 
 The `backend` module controls this flow. The db module gives the helper for each step.
@@ -215,6 +277,7 @@ The helper returns a `StartupReport`:
 |-------|---------|
 | `interrupted_image_ids` | Images that were `processing` and are `pending` again |
 | `requeued_image_ids` | `done` images with a gap that are `pending` again |
+| `interrupted_photo_ids` | Reference photos that were `processing` and are `pending` again |
 | `orphan_vectors_removed` | Number of orphan vectors that the helper removed |
 | `missing_vectors_cleared` | Number of marks that the helper cleared |
 

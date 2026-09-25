@@ -8,7 +8,7 @@ The UI does not contain application logic.
 It shows state and calls the application through `ports.py`.
 The UI does not import `backend`, `db`, `ai` or `storage`.
 
-For the full design, see `docs/ui/Upload Page.md`.
+For the full design, see `docs/ui/Upload Page.md` and `docs/ui/Enrollment Page.md`.
 
 ## Files
 

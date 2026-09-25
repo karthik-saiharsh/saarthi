@@ -17,7 +17,8 @@ The real `UploadService` is `Backend.upload_service` (see `docs/backend/Upload E
 |-------|------|
 | `/upload` | Upload pictures |
 
-`register_pages(service)` registers the route and serves the CSS files.
+`register_pages(upload_service, enrollment_service)` registers the routes and serves the CSS files.
+A navigation links this page to `/enroll` (see `docs/ui/Enrollment Page.md`).
 The caller starts the server.
 
 ## Interface to the backend
