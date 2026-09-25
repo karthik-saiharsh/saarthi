@@ -357,9 +357,17 @@ def test_the_worker_checks_its_parameters() -> None:
 # ---- Reference photos (stages E2 and E3) ----
 
 
-def new_object(setup: Setup, phrase: str = "a bottle") -> int:
+def new_object(
+    setup: Setup,
+    phrase: str = "a bottle",
+    synonyms: list[str] | None = None,
+    tracked: bool = True,
+) -> int:
     return setup.enrollment.create_object(
-        f"{PREFIX}{uuid.uuid4().hex[:8]}", phrase, ["a flask"]
+        f"{PREFIX}{uuid.uuid4().hex[:8]}",
+        phrase,
+        ["a flask"] if synonyms is None else synonyms,
+        tracked,
     ).id
 
 
@@ -457,6 +465,52 @@ def test_three_confirmed_photos_make_an_object_ready(setup: Setup) -> None:
         "a bottle" in db.gallery.gallery_phrases()
         and "a flask" in db.gallery.gallery_phrases()
     )
+
+
+def make_ready(
+    setup: Setup,
+    seed: int,
+    phrase: str = "a bottle",
+    synonyms: list[str] | None = None,
+    tracked: bool = True,
+) -> int:
+    """Make a ready object. The detector must have a detection, so a photo is located."""
+    object_id: int = new_object(setup, phrase, synonyms, tracked)
+    infos = [setup.enrollment.add_photo(object_id, noise(seed + k)) for k in range(3)]
+    while setup.worker.process_next():
+        pass
+    for info in infos:
+        setup.enrollment.confirm_photo(object_id, info.id)
+    assert setup.enrollment.get_object(object_id).summary.status == "ready"
+    return object_id
+
+
+def test_a_frame_uses_the_default_phrases_when_no_object_is_ready(
+    setup: Setup,
+) -> None:
+    if db.gallery.gallery_phrases():
+        pytest.skip("The actual gallery has ready objects")
+    new_object(setup)  # A draft object does not count
+    setup.upload(noise(200))
+    assert setup.worker.process_next() is True
+    default: list[str] = list(setup.worker._engine._config.detection.default_phrases)
+    assert setup.detector.phrase_calls[-1] == default
+
+
+def test_a_frame_uses_the_phrases_of_the_ready_objects(setup: Setup) -> None:
+    if db.gallery.gallery_phrases():
+        pytest.skip("The actual gallery has ready objects")
+    setup.detector.detections = [
+        RawDetection(Box(10, 10, 40, 40), 0.6, "bottle", "full"),
+        RawDetection(Box(45, 20, 75, 55), 0.6, "mug", "full"),
+    ]
+    make_ready(setup, 210)
+    make_ready(setup, 220, tracked=False, phrase="a mug", synonyms=["a cup"])
+    new_object(setup, phrase="a spoon")  # Draft: its phrase is not used
+    setup.upload(noise(230))
+    assert setup.worker.process_next() is True
+    used: list[str] = setup.detector.phrase_calls[-1]
+    assert used == ["a bottle", "a flask", "a mug", "a cup"]
 
 
 def test_the_thread_processes_a_reference_photo_at_once_because_of_the_wake_up() -> (

@@ -230,8 +230,12 @@ class Worker:
 
         self._analysed += 1
         every: int = self._config.generic_pass_every
+        # The detector looks for the objects of the owner. Without a ready
+        # object, it uses the placeholder list of `ai/config.toml`.
         candidates: list[Candidate] = self._engine.detect_candidates(
-            picture, include_generic=every > 0 and self._analysed % every == 0
+            picture,
+            phrases=db.gallery.gallery_phrases() or None,
+            include_generic=every > 0 and self._analysed % every == 0,
         )
         # The model work comes first. An error here leaves no regions behind.
         vectors: np.ndarray = self._engine.embed_regions(

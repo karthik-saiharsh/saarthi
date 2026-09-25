@@ -14,6 +14,7 @@ class FakeDetector:
 
     def __init__(self) -> None:
         self.generic_flags: list[bool] = []
+        self.phrase_calls: list[list[str]] = []
         self.context_flags: list[bool] = []
         self.detections: list[RawDetection] = []
         self.error: Exception | None = None
@@ -28,6 +29,7 @@ class FakeDetector:
         context_phrases=True,
     ):
         self.generic_flags.append(include_generic)
+        self.phrase_calls.append(list(phrases))
         self.context_flags.append(context_phrases)
         if self.error is not None:
             error, self.error = self.error, None  # Fail one time only
