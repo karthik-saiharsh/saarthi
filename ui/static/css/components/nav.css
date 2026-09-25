@@ -1,0 +1,29 @@
+/* app_nav: links between the pages. */
+
+.up-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.up-nav__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap-min);
+  padding: 0 var(--space-4);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-m);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-weight: var(--weight-medium);
+  text-decoration: none;
+}
+
+.up-nav__link:hover {
+  background: var(--color-accent-soft);
+}
+
+.up-nav__link--current {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}

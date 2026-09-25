@@ -189,10 +189,15 @@ def test_the_pages_use_the_real_upload_service_and_the_home_page_leads_to_it(
 
         return register
 
-    monkeypatch.setattr(main, "register_pages", registered.append)
+    monkeypatch.setattr(
+        main, "register_pages", lambda *services: registered.extend(services)
+    )
     monkeypatch.setattr(main, "ui", types.SimpleNamespace(page=page))
     main.create_pages(components)
-    assert len(registered) == 1 and type(registered[0]).__name__ == "UiUploadService"
+    assert [type(s).__name__ for s in registered] == [
+        "UiUploadService",
+        "UiEnrollmentService",
+    ]
     answer = pages["/"]()
     assert (
         isinstance(answer, RedirectResponse) and answer.headers["location"] == "/upload"

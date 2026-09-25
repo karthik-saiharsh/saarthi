@@ -34,8 +34,8 @@ from ai.api import AiEngine, AiError
 from backend.api import Backend
 from backend.errors import BackendError
 from backend.instance_lock import InstanceLock
-from ui.registry import UPLOAD_ROUTE as UPLOAD_PAGE
 from ui.registry import register_pages
+from ui.routes import UPLOAD_ROUTE as UPLOAD_PAGE
 
 logger: logging.Logger = logging.getLogger("main")
 if not logger.handlers:
@@ -119,7 +119,9 @@ def attach(components: Components, web_app: WebApp) -> None:
 
 def create_pages(components: Components) -> None:
     """Add the pages of the UI. `/` leads to the upload page."""
-    register_pages(components.backend.upload_service)
+    register_pages(
+        components.backend.upload_service, components.backend.enrollment_service
+    )
 
     @ui.page("/")
     def home() -> RedirectResponse:

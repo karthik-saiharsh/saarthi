@@ -4,6 +4,7 @@ The drop area is a Quasar uploader. Its header slot holds our own text and
 buttons. A second uploader opens the camera on phones.
 """
 
+import inspect
 import logging
 from collections.abc import Awaitable, Callable
 
@@ -21,7 +22,8 @@ LIMITS_TEXT: str = (
 )
 REJECTED_TEXT: str = "Some files were skipped. " + LIMITS_TEXT
 
-FileHandler = Callable[[str, str, bytes], None]
+# The handler may be a plain function or a coroutine function.
+FileHandler = Callable[[str, str, bytes], Awaitable[None] | None]
 
 
 def _make_upload_handler(
@@ -30,7 +32,9 @@ def _make_upload_handler(
     async def handle(event: UploadEventArguments) -> None:
         data: bytes = await event.file.read()
         logger.info("Received a file of %d bytes from the browser", len(data))
-        on_file(event.file.name, event.file.content_type, data)
+        result = on_file(event.file.name, event.file.content_type, data)
+        if inspect.isawaitable(result):
+            await result
 
     return handle
 
@@ -49,9 +53,10 @@ def _trigger_button(label: str, classes: str) -> None:
         ui.element("q-uploader-add-trigger")
 
 
-def upload_picker(on_file: FileHandler) -> None:
+def upload_picker(on_file: FileHandler, title: str = TITLE) -> None:
     """Build the picker. `on_file(name, content_type, data)` runs for each file."""
     assert callable(on_file), "on_file must be callable"
+    assert title, "title is required"
     handler = _make_upload_handler(on_file)
 
     zone: ui.upload = (
@@ -66,7 +71,7 @@ def upload_picker(on_file: FileHandler) -> None:
         .classes("up-picker__zone")
     )
     with zone.add_slot("header"), ui.element("div").classes("up-picker__content"):
-        ui.label(TITLE).classes("up-picker__title")
+        ui.label(title).classes("up-picker__title")
         ui.label(DRAG_TEXT).classes("up-picker__hint up-picker__draghint")
         ui.label(LIMITS_TEXT).classes("up-picker__hint")
         with ui.element("div").classes("up-picker__actions"):

@@ -14,13 +14,15 @@ For the full design, see `docs/ui/Upload Page.md`.
 
 | Path | Purpose |
 |------|---------|
-| `ports.py` | The interface to the backend: `UploadService`, `UploadOutcome` |
-| `stub_service.py` | A fake `UploadService` for work on the UI |
+| `ports.py` | The interface to the backend: `UploadService`, `EnrollmentService` and their data types |
+| `stub_service.py` | Fake services for work on the UI: `StubUploadService`, `StubEnrollmentService` |
 | `models.py` | `UploadItem` and `ItemStatus` |
 | `settings.py` | Accepted file types and the maximum file size |
 | `upload_session.py` | The upload queue of one browser tab. It has no NiceGUI code |
+| `enroll_session.py` | The objects and photos of one browser tab. It has no NiceGUI code |
+| `routes.py` | The routes of the pages |
 | `theme.py` | Serves the CSS files and adds them to a page |
-| `registry.py` | `register_pages(service)` |
+| `registry.py` | `register_pages(upload_service, enrollment_service)` |
 | `pages/` | One file for each page |
 | `components/` | One file for each component |
 | `static/css/` | `tokens.css`, `base.css` and one file for each component |
@@ -30,20 +32,21 @@ For the full design, see `docs/ui/Upload Page.md`.
 | Route | Page |
 |-------|------|
 | `/upload` | Upload pictures, one at a time or as a batch |
+| `/enroll` | Add objects, add photos of them, and check the crop of each photo |
 
 ## Use
 
 ```python
 from ui.registry import register_pages
-from ui.stub_service import StubUploadService
+from ui.stub_service import StubEnrollmentService, StubUploadService
 
-register_pages(StubUploadService())
+register_pages(StubUploadService(), StubEnrollmentService())
 ```
 
 The caller starts the server (`ui.run`).
 This module does not start the server.
 
-The real service is `Backend.upload_service` (see `backend/README.md`).
+The real services are `Backend.upload_service` and `Backend.enrollment_service` (see `backend/README.md`).
 The stub is for work on the UI only.
 
 To change the colours, edit `static/css/tokens.css`.

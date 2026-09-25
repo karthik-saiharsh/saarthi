@@ -5,11 +5,13 @@ import logging
 from nicegui import ui
 
 from ui.components.app_header import app_header
+from ui.components.app_nav import app_nav
 from ui.components.summary_bar import SummaryBar
 from ui.components.upload_picker import upload_picker
 from ui.components.upload_queue import QueueView
 from ui.models import FINISHED_STATUSES, ItemStatus, UploadItem
 from ui.ports import UploadService
+from ui.routes import UPLOAD_ROUTE
 from ui.theme import apply_theme
 from ui.upload_session import UploadSession
 
@@ -45,6 +47,7 @@ def build_upload_page(service: UploadService) -> None:
 
     with ui.element("main").classes("up-page"):
         app_header(PRODUCT_NAME, PAGE_TITLE, PAGE_SUBTITLE)
+        app_nav(UPLOAD_ROUTE)
         with ui.element("section").classes("up-card"):
             upload_picker(
                 lambda name, content_type, data: session.add(name, content_type, data)

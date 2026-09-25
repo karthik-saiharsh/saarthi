@@ -25,7 +25,7 @@ from backend.settings import (
     ServerConfig,
     load_config,
 )
-from backend.ui_adapter import UiUploadService
+from backend.ui_adapter import UiEnrollmentService, UiUploadService
 from backend.worker import Worker
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -120,3 +120,8 @@ class Backend:
     def upload_service(self) -> UiUploadService:
         """The service that the UI calls. It implements `ui.ports.UploadService`."""
         return UiUploadService(self._ingest)
+
+    @property
+    def enrollment_service(self) -> UiEnrollmentService:
+        """The gallery service that the UI calls. It implements `ui.ports.EnrollmentService`."""
+        return UiEnrollmentService(self._enrollment)

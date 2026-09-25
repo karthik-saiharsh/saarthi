@@ -24,6 +24,9 @@ CSS_FILES: tuple[str, ...] = (
     "css/components/row.css",
     "css/components/badge.css",
     "css/components/summary.css",
+    "css/components/nav.css",
+    "css/components/enroll.css",
+    "css/components/photos.css",
 )
 
 _static_registered: bool = False
