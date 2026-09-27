@@ -77,13 +77,13 @@ class Setup:
         return self.ingest.submit(data).image_id
 
 
-def make_setup(**worker_changes: int) -> Setup:
+def make_setup(blur_min: float | None = None, **worker_changes: int) -> Setup:
     base: BackendConfig = load_config()
     config: BackendConfig = dataclasses.replace(
         base, worker=dataclasses.replace(base.worker, **worker_changes)
     )
     detector, embedder = FakeDetector(), FakeEmbedder()
-    engine: AiEngine = make_engine(detector, embedder)
+    engine: AiEngine = make_engine(detector, embedder, blur_min)
     worker: Worker = Worker(config, engine)
     return Setup(
         worker,
@@ -187,7 +187,9 @@ def test_no_waiting_image_means_nothing_to_do(setup: Setup) -> None:
 # ---- Gates ----
 
 
-def test_a_blurry_image_is_rejected_before_detection(setup: Setup) -> None:
+def test_a_blurry_image_is_rejected_before_detection() -> None:
+    # The shipped config has the blur gate off, so the test sets a limit.
+    setup: Setup = make_setup(blur_min=100.0, generic_pass_every=0)
     image_id: int = setup.upload(flat())
     assert setup.worker.process_next() is True
     image: Image = state(image_id)

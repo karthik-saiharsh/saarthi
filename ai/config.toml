@@ -21,8 +21,9 @@ max_pixels = 40000000
 
 [quality]
 # An image with a blur score below this value is blurry. Compared on a copy
-# that is scaled to analysis_max_side.
-blur_min = 100.0
+# that is scaled to analysis_max_side. 0 turns the gate off. The owner chose 0 until
+# there are 20 or more real wearable frames to calibrate with (the pipeline start value is 100).
+blur_min = 0.0
 analysis_max_side = 1024
 # Images whose hashes differ by this number of bits or less are near duplicates.
 phash_max_distance = 4
@@ -47,7 +48,8 @@ max_frame_fraction = 0.6
 min_box_side = 12
 # A candidate with more than this part of its area inside a hand box is "in hand".
 hand_overlap = 0.3
-# A candidate with at least this part of its area inside a depiction box is dropped.
+# A candidate with at least this part of its area inside a depiction box is marked
+# quality_ok = false. It is not dropped: the detector can box a book cover as a screen.
 depiction_inside = 0.8
 # Phrases of the objects to find. The product owner sets this list.
 default_phrases = [
@@ -84,6 +86,7 @@ frame_long_edge_max = 784
 crop_size = 224
 # A box with a side shorter than this value is embedded from a padded crop.
 small_box_min_side = 64
+# The side is measured in model pixels: after the frame is scaled to the model input.
 crop_padding = 0.15
 
 [enrollment]

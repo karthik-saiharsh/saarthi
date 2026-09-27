@@ -112,7 +112,9 @@ def test_size_rules_and_clipping() -> None:
     assert [c.box for c in result] == [Box(0, 400, 100, 500)]
 
 
-def test_object_inside_a_depiction_is_dropped_but_a_partial_overlap_stays() -> None:
+def test_object_inside_a_depiction_is_marked_not_good_and_a_partial_overlap_is_good() -> (
+    None
+):
     result: list[Candidate] = select(
         [
             raw((100, 100, 700, 500), "a television screen", 0.8),
@@ -120,7 +122,17 @@ def test_object_inside_a_depiction_is_dropped_but_a_partial_overlap_stays() -> N
             raw((680, 200, 760, 300), "keys", 0.6),  # 25 % inside the screen
         ]
     )
-    assert [c.phrases for c in result] == [("a set of keys",)]
+    good: dict[str, bool] = {c.phrases[0]: c.quality_ok for c in result}
+    assert good == {"a bottle": False, "a set of keys": True}
+    assert all("a television screen" not in c.phrases for c in result)
+
+
+def test_crop_quality_does_not_make_a_depicted_candidate_good_again() -> None:
+    depicted: Candidate = Candidate(
+        Box(100, 100, 300, 300), 0.5, "full", ("a bottle",), False, False
+    )
+    result: list[Candidate] = apply_crop_quality([depicted], sharp_image(), 24, 20.0)
+    assert result[0].quality_ok is False
 
 
 def test_hand_flag_and_hand_is_not_a_candidate() -> None:
@@ -255,7 +267,15 @@ def test_a_box_without_an_object_phrase_is_a_hand_or_a_screen() -> None:
             raw((620, 120, 700, 200), "keys", 0.6),
         ]
     )
-    assert {c.phrases[0]: c.in_hand for c in result} == {"a bottle": True}
+    assert {c.phrases[0]: c.in_hand for c in result} == {
+        "a bottle": True,
+        "a set of keys": False,
+    }
+    # The keys lie inside the mirror: kept, but not good.
+    assert {c.phrases[0]: c.quality_ok for c in result} == {
+        "a bottle": True,
+        "a set of keys": False,
+    }
 
 
 def test_a_box_that_covers_most_of_the_frame_is_dropped_for_every_kind() -> None:

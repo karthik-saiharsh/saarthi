@@ -1,5 +1,6 @@
 """Tests of the AiEngine with fake models, and of open_image. No weights are loaded."""
 
+import dataclasses
 from io import BytesIO
 
 import numpy as np
@@ -9,7 +10,7 @@ from PIL import Image, ImageFilter
 from ai.api import AiEngine, open_image
 from ai.errors import ImageError
 from ai.settings import AiConfig, load_config
-from ai.types import Box, RawDetection
+from ai.types import Box, MatchObject, MatchRegion, RawDetection
 
 CONFIG: AiConfig = load_config()
 
@@ -111,7 +112,11 @@ def test_engine_reports_the_embedding_model() -> None:
 
 
 def test_quality_assessment_and_blur_gate() -> None:
-    engine, _ = make_engine()
+    # The shipped config has the gate off (blur_min = 0), so this test sets a limit.
+    config: AiConfig = dataclasses.replace(
+        CONFIG, quality=dataclasses.replace(CONFIG.quality, blur_min=100.0)
+    )
+    engine: AiEngine = AiEngine(config, detector=FakeDetector([]), embedder=FakeEmbedder())  # type: ignore[arg-type]
     sharp: Image.Image = noise_image()
     blurred: Image.Image = sharp.filter(ImageFilter.GaussianBlur(10))
     sharp_report = engine.assess_quality(sharp)
@@ -173,3 +178,21 @@ def test_embed_regions_passes_through() -> None:
         noise_image(), [Box(0, 0, 10, 10), Box(5, 5, 50, 50)]
     )
     assert vectors.shape == (2, 384)
+
+
+def test_the_shipped_config_has_the_blur_gate_off() -> None:
+    # The owner chose to switch the gate off until real wearable frames exist.
+    engine, _ = make_engine()
+    flat: Image.Image = Image.new("RGB", (200, 200), (120, 120, 120))
+    assert not engine.is_blurry(engine.assess_quality(flat))
+
+
+def test_the_engine_matches_regions_with_the_config_values() -> None:
+    engine, _ = make_engine()
+    views: np.ndarray = np.zeros((1, 384), dtype=np.float32)
+    views[0, 0] = 1.0
+    bottle = MatchObject(7, True, ("a bottle",), views, 0.8, 0.9, 0.03)
+    result = engine.match_regions(
+        views.copy(), [MatchRegion(("a bottle",), True)], [bottle]
+    )
+    assert [(s.object_id, s.strong) for s in result] == [(7, True)]

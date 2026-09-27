@@ -1,5 +1,7 @@
 """Fake ai models and an engine for tests that need the flow but not the real models."""
 
+import dataclasses
+
 import numpy as np
 
 from ai.api import AiEngine
@@ -65,11 +67,21 @@ class FakeEmbedder:
 
 
 def make_engine(
-    detector: FakeDetector | None = None, embedder: FakeEmbedder | None = None
+    detector: FakeDetector | None = None,
+    embedder: FakeEmbedder | None = None,
+    blur_min: float | None = None,
 ) -> AiEngine:
-    """An `AiEngine` with fake models. The quality gate and post-processing are real."""
+    """An `AiEngine` with fake models. The quality gate and post-processing are real.
+
+    `blur_min` replaces the limit of the config (the shipped config has the gate off).
+    """
+    config = load_config()
+    if blur_min is not None:
+        config = dataclasses.replace(
+            config, quality=dataclasses.replace(config.quality, blur_min=blur_min)
+        )
     return AiEngine(
-        load_config(),
+        config,
         detector=detector or FakeDetector(),  # type: ignore[arg-type]
         embedder=embedder or FakeEmbedder(),  # type: ignore[arg-type]
     )

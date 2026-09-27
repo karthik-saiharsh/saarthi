@@ -5,8 +5,9 @@ Order of the steps (see `select_candidates`):
 2. Keep the best boxes of each phrase.
 3. Clip the boxes and drop those with a bad size.
 4. Merge duplicate boxes (class-agnostic NMS) and keep the union of labels.
-5. Drop objects that lie inside a screen, a picture frame or a mirror.
+5. Mark objects that lie inside a screen, a picture frame or a mirror.
 6. Flag objects that a hand covers.
+(Step 5 marks the object as not good. It does not drop it.)
 """
 
 import dataclasses
@@ -163,8 +164,9 @@ def select_candidates(
 
     A box whose label names an object phrase is an object, even if the label
     also names a hand or a screen: the detector often adds weak extra phrases.
-    A box that names no object is a hand or a depiction. `quality_ok` is True
-    here. `apply_crop_quality` sets it later.
+    A box that names no object is a hand or a depiction. `quality_ok` is False
+    for an object that lies inside a depiction, and True for the others.
+    `apply_crop_quality` can only lower it.
     """
     assert width > 0 and height > 0, "image size must be positive"
     known: list[str] = [
@@ -207,10 +209,12 @@ def select_candidates(
     candidates: list[Candidate] = []
     for index in kept:
         item: _Item = objects[index]
-        if any(
+        # The detector can box a book cover as a screen, so a real object on it
+        # must not be lost. The candidate stays in the archive, but it is marked
+        # not good, so that it cannot update the last-seen record.
+        inside_depiction: bool = any(
             overlap_fraction(item.box, d) >= config.depiction_inside for d in depictions
-        ):
-            continue
+        )
         phrases_out: list[str] = []
         for other in objects:
             if iou(item.box, other.box) >= config.nms_iou:
@@ -220,7 +224,12 @@ def select_candidates(
         )
         candidates.append(
             Candidate(
-                item.box, item.score, item.source, tuple(phrases_out), in_hand, True
+                item.box,
+                item.score,
+                item.source,
+                tuple(phrases_out),
+                in_hand,
+                not inside_depiction,
             )
         )
     return candidates
@@ -233,7 +242,8 @@ def apply_crop_quality(
     crop_blur_min: float,
 ) -> list[Candidate]:
     """Set `quality_ok`. A candidate is good if its crop is big enough, sharp
-    enough, and not cut by the image edge.
+    enough, and not cut by the image edge. A candidate that is already not good
+    (for example, inside a depiction) stays not good.
     """
     assert isinstance(image, Image.Image), "image must be a PIL image"
     width, height = image.size
@@ -241,7 +251,8 @@ def apply_crop_quality(
     for candidate in candidates:
         box: Box = candidate.box
         good: bool = (
-            min(box.width, box.height) >= min_crop_side
+            candidate.quality_ok
+            and min(box.width, box.height) >= min_crop_side
             and not touches_edge(box, width, height)
             and blur_score(image.crop((box.x0, box.y0, box.x1, box.y1)))
             >= crop_blur_min

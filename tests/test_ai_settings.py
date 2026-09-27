@@ -80,7 +80,7 @@ def test_missing_table_is_refused(tmp_path: Path, table: str) -> None:
 
 
 def test_missing_key_names_the_key(tmp_path: Path) -> None:
-    text: str = replace(DEFAULT_TEXT, "blur_min = 100.0\n", "")
+    text: str = replace(DEFAULT_TEXT, "blur_min = 0.0\n", "")
     with pytest.raises(AiConfigError, match="quality.blur_min"):
         load_config(write(tmp_path, text))
 

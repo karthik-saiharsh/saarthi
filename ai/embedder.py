@@ -45,6 +45,22 @@ def frame_size(
     return snap(width * scale), snap(height * scale)
 
 
+def is_small_box(
+    box: Box, width: int, height: int, model_size: tuple[int, int], min_side: int
+) -> bool:
+    """Return True if the short side of the box is below `min_side` in model pixels.
+
+    The frame is scaled to `model_size` before the model sees it. The patch grid
+    follows the scaled size, so the cutoff must too. A 64 px box on a 12 MP
+    frame covers less than one patch of the model input.
+    """
+    assert width > 0 and height > 0, "frame size must be positive"
+    assert min_side > 0, "min_side must be positive"
+    scaled_width: float = box.width * model_size[0] / width
+    scaled_height: float = box.height * model_size[1] / height
+    return min(scaled_width, scaled_height) < min_side
+
+
 def pool_box(tokens: torch.Tensor, box: Box, width: int, height: int) -> torch.Tensor:
     """Return the mean of the patch vectors that lie inside the box.
 
@@ -146,17 +162,18 @@ class RegionEmbedder:
         started: float = time.perf_counter()
         try:
             vectors: list[torch.Tensor | None] = [None] * len(boxes)
+            size: tuple[int, int] = frame_size(
+                width, height, cfg.frame_short_edge, cfg.frame_long_edge_max
+            )
             small: list[int] = [
                 i
                 for i, b in enumerate(boxes)
-                if min(b.width, b.height) < cfg.small_box_min_side
+                if is_small_box(b, width, height, size, cfg.small_box_min_side)
             ]
-            large: list[int] = [i for i in range(len(boxes)) if i not in set(small)]
+            small_set: set[int] = set(small)
+            large: list[int] = [i for i in range(len(boxes)) if i not in small_set]
 
             if large:
-                size = frame_size(
-                    width, height, cfg.frame_short_edge, cfg.frame_long_edge_max
-                )
                 grid: torch.Tensor = self._patch_grid(self._pixels(image, size))[0]
                 for i in large:
                     vectors[i] = pool_box(grid, boxes[i], width, height)

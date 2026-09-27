@@ -3,7 +3,7 @@
 import pytest
 import torch
 
-from ai.embedder import frame_size, padded_square, pool_box
+from ai.embedder import frame_size, is_small_box, padded_square, pool_box
 from ai.types import Box
 
 
@@ -64,3 +64,26 @@ def test_padded_square_stays_inside_the_frame(box: Box, expected: Box) -> None:
 def test_padded_square_is_cut_to_a_small_frame() -> None:
     result: Box = padded_square(Box(0, 0, 90, 90), 0.5, 100, 80)
     assert result.width == result.height == 80
+
+
+@pytest.mark.parametrize(
+    ("frame", "expected"),
+    [
+        ((968, 728), False),  # Scale 0.61: 100 px become 61 px
+        ((1920, 1080), True),  # Scale 0.41: 100 px become 41 px
+        ((4032, 3024), True),  # Scale 0.15: 100 px become 15 px
+    ],
+)
+def test_small_box_cutoff_uses_the_model_pixels(
+    frame: tuple[int, int], expected: bool
+) -> None:
+    width, height = frame
+    size: tuple[int, int] = frame_size(width, height, 448, 784)
+    box: Box = Box(100, 100, 100 + 100, 100 + 100)  # 100 px in the original frame
+    assert is_small_box(box, width, height, size, 50) is expected
+
+
+def test_small_box_cutoff_checks_the_shorter_side() -> None:
+    size: tuple[int, int] = frame_size(640, 480, 448, 784)
+    assert is_small_box(Box(0, 0, 400, 20), 640, 480, size, 64) is True
+    assert is_small_box(Box(0, 0, 400, 300), 640, 480, size, 64) is False

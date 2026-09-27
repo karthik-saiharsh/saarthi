@@ -52,6 +52,7 @@ The ai module does not import the db module.
 | `engine.is_near_duplicate(phash, recent_phashes)` | A recent hash is `quality.phash_max_distance` bits away or closer | `bool` |
 | `engine.detect_candidates(image, phrases=None, small_phrases=None, include_generic=False, tiling=None)` | Find candidate boxes | List of `Candidate`, best score first |
 | `engine.embed_regions(image, boxes)` | One vector for each box | `float32` array, shape `(n, 384)`, unit length |
+| `engine.match_regions(vectors, regions, objects)` | Match the regions of a frame with the `ready` objects (stage I4) | List of `Sighting` |
 | `engine.embedding_model` | Name for the database, for example `dinov2-small@ed25f3a3` | `str` |
 | `engine.embedding_dimension` | Length of one vector | `int` |
 
@@ -65,6 +66,7 @@ The backend chooses both switches for each frame. The ai module does not count f
 |--------|--------|
 | `Box` | `x0`, `y0`, `x1`, `y1` in pixels. `x1` and `y1` are exclusive |
 | `QualityReport` | `blur_score`, `phash` (16 hex characters) |
+| `MatchRegion`, `MatchObject`, `Sighting` | The input and the result of the matching (see "Stage I4") |
 | `Candidate` | `box`, `det_score`, `source` (`full`, `tile` or `generic`), `phrases`, `in_hand`, `quality_ok` |
 
 `det_score` is for analysis only. Do not use it to decide the identity of an object.
@@ -109,15 +111,17 @@ Every prompt also holds the hand phrase (and the depiction phrases in the full-f
 4. **Sort the boxes.** A box that names an object phrase is an object, even if its label also names a hand or a screen.
    A box without an object phrase is a hand or a depiction (a screen, a frame, a mirror).
 5. **Merge duplicates.** Class-agnostic NMS at `detection.nms_iou`. The merged box keeps the union of the labels.
-6. **Drop depictions.** An object with at least `detection.depiction_inside` of its area inside a depiction box is dropped.
+6. **Mark depictions.** An object with at least `detection.depiction_inside` of its area inside a depiction box gets `quality_ok = False`.
+   The module does not drop it, because the detector can box a book cover as a screen (see "Known limits and open items").
 7. **Flag hands.** An object gets `in_hand` if a hand box covers more than `detection.hand_overlap` of its area.
 
-Hand boxes and depiction boxes are never returned as candidates.
+Hand boxes and depiction boxes are never returned as candidates. An object inside a depiction box is returned with `quality_ok = False`.
 
 ### Crop quality
 
 `apply_crop_quality` sets `quality_ok`. A candidate is good if all three are true:
 
+- It is not inside a depiction box (step 6 of the post-processing). `apply_crop_quality` never sets this flag back to True.
 - Its short side is at least `quality.min_crop_side` pixels.
 - It does not touch the edge of the image.
 - The blur score of its crop is at least `quality.crop_blur_min`.
@@ -134,6 +138,8 @@ The embedder is DINOv2 small. The vector has 384 numbers.
   The vector of a box is the mean of the patches whose centres are in the box.
   If no centre is in the box, the module uses the patch under the centre of the box.
 - **Small boxes.** A box with a side below `embedding.small_box_min_side` is embedded again from a padded square crop.
+  The side is measured in model pixels: the box is scaled with the frame first (`is_small_box`).
+  So the cutoff means the same number of patches for every camera resolution.
   The crop has `embedding.crop_padding` of padding on each side. It is scaled to `embedding.crop_size`.
   The module uses the same mean-of-patches pooling, so all vectors stay in one space.
   Crops go through the model in batches of 16.
@@ -141,6 +147,31 @@ The embedder is DINOv2 small. The vector has 384 numbers.
 
 The vectors are not compared with a model change. A threshold is not portable between two models.
 The name in `Region.embedding_model` tells which model made a vector.
+
+## Stage I4: match
+
+`engine.match_regions(vectors, regions, objects)` compares the region vectors of one frame with the enrolled objects.
+It is pure numpy (`ai/matching.py`). It does not read the database. The backend gives it the vectors, a `MatchRegion` for each region
+(`phrases`, `quality_ok`) and a `MatchObject` for each `ready` object (the views, `tau`, `tau_strong`, `margin_min`, the phrases, `tracked`).
+
+1. **Skip.** A region with `quality_ok = False` is not matched. This includes an object inside a screen, a frame or a mirror.
+2. **Candidate objects.** The phrases of the region choose the objects: the region and the object need one phrase in common.
+   A region without a phrase, and a region from the generic pass ("an object"), are compared with all objects.
+3. **Similarity.** The highest cosine between the region and one view of the object (the owner chose the maximum, not a mean of the best views).
+4. **Margin.** The similarity minus the highest similarity to any other object. The other objects are the negatives of the calibration:
+   all other `ready` objects, also the look-alikes, whatever their phrases are. An object with no other object has the margin `similarity - 0`.
+5. **Accept.** `similarity >= tau` and `margin >= margin_min` of the object. The sighting is **strong** if also
+   `similarity >= tau_strong` and `margin >= enrollment.margin_strong`.
+6. **One sighting for each object.** The region with the highest similarity wins.
+
+An object with `tracked = False` (a look-alike) is a negative only. It never gets a sighting.
+A look-alike that is as close as the owner's object makes the margin too small, so no sighting is made. This is on purpose.
+
+The result is a list of `Sighting` (`object_id`, `region_index`, `similarity`, `margin`, `strong`), sorted by object id.
+A bad vector or view (not finite, not unit length, another size, no views) raises `MatchingError`.
+
+The worker calls it through `MemoryService` after it stores the regions (see `docs/backend/Memory.md`). The rule that updates the last-seen record is there.
+The verification (I5), the ratio test and the one-to-one assignment of the pipeline document are not built.
 
 ## Enrollment stages E2 to E4
 
@@ -206,6 +237,7 @@ All settings are in `ai/config.toml`. The start values come from the pipeline do
 | `ModelLoadError` | A model cannot be loaded |
 | `ImageError` | The file is not an image, is broken or truncated, or has too many pixels |
 | `InferenceError` | A model failed while it worked on an image |
+| `MatchingError` | A vector or a view of the matching is not usable |
 
 ## Security and privacy
 
@@ -248,10 +280,14 @@ The photo shows a phone in a pink case on a book, a charger with a cable, and a 
 
 ## Known limits and open items
 
-- **Blur threshold.** The start value `blur_min = 100` calls the test photo blurry. The photo scores 94.
+- **Blur threshold.** The owner set `blur_min = 0`, so the gate is off until real frames exist.
+  The pipeline start value of 100 calls the test photo blurry. The photo scores 94.
   The score also depends on the JPEG compression: the same photo saved again at another quality scored 117.1.
   Calibrate the value with 20 or more real frames from the wearable, both good and bad.
-  The value `blur_min = 0` turns the gate off.
+- **Depiction rule.** The owner chose to mark, not drop. In a real test, a phone on a book cover got the label
+  "a phone a smartphone a mirror" and a "television screen" box covered it. The phone now stays in the archive with `quality_ok = False`.
+  The later last-seen step must not use a candidate with `quality_ok = False`.
+  The cost: a real object on a book cover also cannot update the last-seen record. A better test for a screen is an open item.
 - **Vocabulary.** The phrases are a placeholder. The labels are only as good as the phrases.
 - **Duplicate boxes.** A lower `nms_iou`, or one box for each object, needs a decision after the vocabulary is real.
 - **Other start values.** `crop_blur_min`, `box_threshold` and `text_threshold` are values from the pipeline document. They are not tuned.
@@ -266,7 +302,7 @@ The photo shows a phone in a pink case on a book, a charger with a cable, and a 
 
 These parts are not built yet:
 
-- Matching of a box with an enrolled object (I4), verification (I5) and the last-seen record (I6).
+- Verification (I5).
 - The search for an object and the answer to the user.
 - Techniques from the pipeline document: pooling over a mask (SAM), background-free enrollment, context negatives, and the calibrated accept and reject model.
   The owner decided that enrollment uses boxes only.
@@ -282,6 +318,7 @@ These parts are not built yet:
 | `tests/test_ai_embedder_math.py` | Frame size, patch pooling, padded crops |
 | `tests/test_ai_api.py` | `AiEngine` with fake models, and `open_image` |
 | `tests/test_ai_calibration.py`, `tests/test_ai_enrollment.py` | The calibration, the box scaling and the brightness |
+| `tests/test_ai_matching.py` | The matching: threshold, margin, look-alikes, phrases, skipped regions, bad data |
 | `tests/test_ai_models.py` (slow) | The real models: vector shape and length, the three passes, the engine |
 | `tests/test_ingestion_chain.py` (slow) | One photo from the upload to the retention, with all modules |
 
