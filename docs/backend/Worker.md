@@ -42,7 +42,8 @@ The db connection is per thread. The worker closes its connection when the threa
 | 6. Detect | `engine.detect_candidates` | A list of candidates |
 | 7. Embed | `engine.embed_regions` | One vector for each candidate |
 | 8. Store | `db.add_regions`, `db.store_region_vectors` | The regions and the vectors |
-| 9. Finish | `db.mark_image_done` | The image is `done` |
+| 9. Remember | `MemoryService.remember` | The regions are matched with the `ready` objects. The sightings and the last-seen records are written (see `docs/backend/Memory.md`) |
+| 10. Finish | `db.mark_image_done` | The image is `done` |
 
 An image with no candidates is also `done`, with no regions.
 
@@ -130,13 +131,14 @@ The log does not show image content or file names.
 
 - The speed is about 10 seconds for each image on the development machine. A frame that arrives faster than this waits in the queue.
   The upload step refuses new images when `ingest.max_pending` images wait. The speed on the Raspberry Pi is not measured.
-- The blur threshold is not set with real frames. The start value of 100 rejects the test photo (score 94.2).
+- The blur gate is off (`quality.blur_min = 0`, a decision of the owner) until there are real frames to calibrate it.
+  The pipeline start value of 100 rejects the test photo (score 94.2).
   The score also depends on the JPEG compression: the same photo saved again at another quality scored 117.1.
 - The worker does not retry a failed image. A helper to retry failed images does not exist.
 - The worker gives no progress report. The number of `pending` images is the only sign of the load.
 - The vocabulary of the detector is a placeholder only while the gallery has no `ready` object (see `ai/docs/AI Ingestion Module.md`).
-- The depiction rule can drop an object that lies on a book, a screen or a poster (see "Known limits" in `docs/backend/Enrollment.md`).
-  In the real test, a frame of the test photo had 0 regions for this reason.
+- An object that lies on a book, a screen or a poster gets `quality_ok = False` (see "Known limits" in `docs/backend/Enrollment.md`).
+  The worker still stores its region and its vector.
 
 ## Tests
 

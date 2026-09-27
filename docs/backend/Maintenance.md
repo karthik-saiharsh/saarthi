@@ -19,6 +19,7 @@ Delete images that are too old.
 
 - The age limit is `retention.days` in `storage/config.toml`. The value 0 (the default) keeps all images, and the job does nothing.
 - The job lists the images that were captured before the limit. It lists only `done`, `rejected` and `failed` images.
+  It skips an image that a last-seen record uses.
   An image that waits for the worker or is in use is never deleted.
 - It deletes the images in groups of `maintenance.retention_batch` (100 by default).
 - The order of the deletes is on purpose:
@@ -93,8 +94,8 @@ The thread closes its database connection when it ends.
 
 - The job runs in the same process as the worker. A run of retention for many images takes time.
   The worker and the upload step keep working during the run.
-- Retention deletes the image of a result that a user may want to see. The database has no table for the last-seen records yet.
-  When it has, the retention job must keep the crop that the answer shows before it deletes a frame.
+- Retention never deletes an image that a last-seen record uses (see `docs/backend/Memory.md`). The answer shows a crop of that frame.
+  So one full frame stays on disk for each object that the system has seen. The frame can expire when a newer sighting replaces the record.
 - A missing file is only reported. There is no helper that repairs the row.
 
 ## Tests

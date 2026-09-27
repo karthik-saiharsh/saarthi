@@ -9,7 +9,7 @@ The server saves each image on disk without its metadata (EXIF).
 The server then records its own metadata in a SQLite database.
 
 This design covers the ingestion data only.
-The object gallery, the last-seen table and the sighting log are not in this design.
+The object gallery and the memory (the sighting log and the last-seen table) have their own sections below.
 
 ## Design rules
 
@@ -63,7 +63,7 @@ One row for each detected box in an image.
 | `source` | text | Detector pass that made the box. See below |
 | `phrases` | JSON list | Detector labels that remain after the merge of duplicate boxes |
 | `in_hand` | boolean | True when a hand covers the object |
-| `quality_ok` | boolean | False when the crop failed the size, blur or edge check |
+| `quality_ok` | boolean | False when the crop failed the size, blur or edge check, or lies inside a screen, a picture frame or a mirror |
 | `embedding_model` | text, index, null | Name of the model that made the vector. Null means the vector is not in the FAISS index |
 
 ### Region source
@@ -117,6 +117,25 @@ One row for each vector of a photo.
 | `augmentation` | How the view was made, for example `original` |
 
 The gallery vectors are in SQLite, not in FAISS. The gallery is small (tens of objects, tens of views each).
+
+## Memory tables
+
+The tables `sighting` and `last_seen` hold what the system saw of the enrolled objects.
+The rule that changes them is in `docs/backend/Memory.md`. The helpers are in `db/sightings.py`. `db/api.py` gives them as `db.sightings`.
+
+| Table | Meaning |
+|-------|---------|
+| `sighting` | One row for each accepted match. `enrolled_object`, `image`, `region` (all cascade), `seen_at` (the time of the frame), `similarity`, `margin`, `strong`, `in_hand`. Index on (`enrolled_object`, `seen_at`) |
+| `last_seen` | One row for each object (the key is `enrolled_object`, cascade). `image` is `RESTRICT`, so the frame stays. `x0`, `y0`, `x1`, `y1` are a copy of the box. Also `seen_at`, `similarity`, `margin`, `strong`, `in_hand`, `updated_at` |
+
+| Helper | Task |
+|--------|------|
+| `add_sighting` | Add a row to the log. `InvalidRecordError` if the object, the image or the region does not exist |
+| `count_recent(object_id, since, until)` | The number of frames with a sighting in the window (both ends included). A frame counts one time |
+| `get_last_seen`, `list_last_seen` | Read the records |
+| `set_last_seen` | Make a sighting the record. An older sighting does not replace a newer record. Returns True if the record changed |
+
+`list_images_older_than` does not list an image that `last_seen` uses. `delete_images` refuses such an image with `InvalidStateError`.
 
 ### Gallery helpers
 

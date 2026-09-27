@@ -14,6 +14,7 @@ from peewee import PeeweeException, SqliteDatabase
 
 from db import (
     gallery,
+    sightings,
 )
 from db.errors import (
     ConfigError,
@@ -28,10 +29,12 @@ from db.schema import (
     EnrolledObject,
     Image,
     ImageStatus,
+    LastSeen,
     ObjectView,
     ReferencePhoto,
     Region,
     RegionSource,
+    Sighting,
     database_proxy,
     utc_now,
 )
@@ -40,7 +43,7 @@ from db.vector_index import VectorIndex
 
 logger: logging.Logger = logging.getLogger(__name__)
 
-# The error classes are part of the public interface of this module.
+# The error classes and the helper modules are part of the public interface of this module.
 __all__ = [
     "ConfigError",
     "DbError",
@@ -49,6 +52,8 @@ __all__ = [
     "InvalidRecordError",
     "InvalidStateError",
     "VectorIndexError",
+    "gallery",
+    "sightings",
 ]
 DB_DIR: Path = Path(__file__).resolve().parent
 DEFAULT_CONFIG_PATH: Path = DB_DIR / "config.toml"
@@ -251,7 +256,16 @@ def init_db(config_path: Path = DEFAULT_CONFIG_PATH) -> tuple[SqliteDatabase, Db
         database.connect(reuse_if_open=True)
         logger.info("Opened database %s", config.sqlite_path)
         database.create_tables(
-            [Image, Region, EnrolledObject, ReferencePhoto, ObjectView], safe=True
+            [
+                Image,
+                Region,
+                EnrolledObject,
+                ReferencePhoto,
+                ObjectView,
+                Sighting,
+                LastSeen,
+            ],
+            safe=True,
         )
     except (OSError, PeeweeException) as error:
         logger.error(
@@ -262,7 +276,8 @@ def init_db(config_path: Path = DEFAULT_CONFIG_PATH) -> tuple[SqliteDatabase, Db
         )
         raise
     logger.info(
-        "Tables ready: image, region, enrolled_object, reference_photo, object_view"
+        "Tables ready: image, region, enrolled_object, reference_photo, object_view, "
+        "sighting, last_seen"
     )
     _replace_vector_index(config)
     gallery.configure(config.vector_dimension)
@@ -691,14 +706,19 @@ def list_images_older_than(cutoff: datetime, limit: int = 100) -> list[Image]:
 
     Only `done`, `rejected` and `failed` images are listed, so an image that
     waits for a worker or is in use is never a candidate. `cutoff` is a naive
-    UTC time. The oldest image comes first.
+    UTC time. The oldest image comes first. An image that a last-seen record
+    uses is never listed: the answer shows a crop of it.
     """
     assert isinstance(cutoff, datetime), "cutoff must be a datetime"
     assert isinstance(limit, int) and limit > 0, "limit must be positive"
     with _translate_errors("list_images_older_than"):
         return list(
             Image.select()
-            .where(Image.status.in_(_FINAL_STATUSES), Image.captured_at < cutoff)
+            .where(
+                Image.status.in_(_FINAL_STATUSES),
+                Image.captured_at < cutoff,
+                Image.id.not_in(LastSeen.select(LastSeen.image)),
+            )
             .order_by(Image.captured_at, Image.id)
             .limit(limit)
         )
@@ -729,7 +749,8 @@ def delete_images(image_ids: list[int]) -> list[str]:
     purpose: a stop in between leaves files that no row owns (found by
     `storage.find_orphan_files`), and not rows without a file.
     Unknown ids are ignored. If one image is `processing`, raise
-    `InvalidStateError` and delete nothing.
+    `InvalidStateError` and delete nothing. The same happens for an image that
+    a last-seen record uses.
     """
     assert isinstance(image_ids, list), "image_ids must be a list"
     assert all(isinstance(i, int) and i > 0 for i in image_ids), "ids must be positive"
@@ -744,6 +765,16 @@ def delete_images(image_ids: list[int]) -> list[str]:
         ]
         if busy:
             raise InvalidStateError(f"Images are in use and cannot be deleted: {busy}")
+        kept: list[int] = [
+            row.image_id
+            for row in LastSeen.select(LastSeen.image).where(
+                LastSeen.image.in_([i.id for i in images])
+            )
+        ]
+        if kept:
+            raise InvalidStateError(
+                f"Images are kept by a last-seen record and cannot be deleted: {kept}"
+            )
         found_ids: list[int] = [i.id for i in images]
         vector_ids: list[int] = [
             row.id

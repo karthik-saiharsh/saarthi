@@ -13,6 +13,11 @@ Enrollment (the gallery of the objects of the owner):
 - `ObjectView`: one vector for each view of an object. The gallery is small,
   so these vectors are stored in SQLite and not in FAISS.
 
+Memory (what the system saw of the objects of the owner):
+- `Sighting`: the log. One row for each accepted match of an object in a frame.
+- `LastSeen`: one row for each object. The newest sighting that the rules accept.
+  It keeps its frame: retention never deletes an image that a `LastSeen` row uses.
+
 All timestamps are naive UTC values.
 """
 
@@ -235,3 +240,55 @@ class ObjectView(BaseModel):
 
     class Meta:
         table_name = "object_view"
+
+
+class Sighting(BaseModel):
+    """An accepted match of an enrolled object in a region of a frame."""
+
+    enrolled_object: ForeignKeyField = ForeignKeyField(
+        EnrolledObject, backref="sightings", on_delete="CASCADE", index=True
+    )
+    # The rows go with the frame (retention) and with the region (recovery).
+    image: ForeignKeyField = ForeignKeyField(
+        Image, backref="sightings", on_delete="CASCADE", index=True
+    )
+    region: ForeignKeyField = ForeignKeyField(
+        Region, backref="sightings", on_delete="CASCADE", index=True
+    )
+    # The time of the frame (`Image.captured_at`), copied for the time window queries.
+    seen_at: DateTimeField = DateTimeField(index=True)
+    similarity: FloatField = FloatField()
+    margin: FloatField = FloatField()
+    # True: above `tau_strong` with the strong margin. It does not need a second hit.
+    strong: BooleanField = BooleanField()
+    in_hand: BooleanField = BooleanField(default=False)
+
+    class Meta:
+        table_name = "sighting"
+        indexes = ((("enrolled_object", "seen_at"), False),)
+
+
+class LastSeen(BaseModel):
+    """Where and when an object was seen last. One row for each object."""
+
+    enrolled_object: ForeignKeyField = ForeignKeyField(
+        EnrolledObject, backref="last_seen", on_delete="CASCADE", primary_key=True
+    )
+    # RESTRICT: the answer shows the crop of this frame, so the frame must stay.
+    image: ForeignKeyField = ForeignKeyField(
+        Image, backref="last_seen", on_delete="RESTRICT", index=True
+    )
+    # The box in the frame. It is a copy: the region row can go away.
+    x0: IntegerField = IntegerField(constraints=[Check("x0 >= 0")])
+    y0: IntegerField = IntegerField(constraints=[Check("y0 >= 0")])
+    x1: IntegerField = IntegerField(constraints=[Check("x1 > x0")])
+    y1: IntegerField = IntegerField(constraints=[Check("y1 > y0")])
+    seen_at: DateTimeField = DateTimeField()
+    similarity: FloatField = FloatField()
+    margin: FloatField = FloatField()
+    strong: BooleanField = BooleanField()
+    in_hand: BooleanField = BooleanField(default=False)
+    updated_at: DateTimeField = DateTimeField(default=utc_now)
+
+    class Meta:
+        table_name = "last_seen"

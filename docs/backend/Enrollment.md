@@ -215,12 +215,12 @@ The test used the real application and the real models on the development machin
 
 ## Known limits
 
-- **The depiction rule drops the object in the frame.** In the test, the phone lay on a book cover.
+- **The depiction rule marks the object in the frame.** In the test, the phone lay on a book cover.
   The detector found the phone with the score 0.57 when the prompt had no extra phrases.
   With the screen, frame and mirror phrases in the prompt, the phone box got the label "a phone a smartphone a mirror" (0.39),
-  and a "television screen" box covered it. The rule drops a box that is inside a depiction for 80 % or more.
-  So the frame had no regions, although the enrollment found the phone in the same photo.
-  Enrollment avoids the problem with `context_phrases=False`. The ingestion does not. This needs a decision of the owner.
+  and a "television screen" box covered it. The old rule dropped such a box, so the frame had no regions.
+  The owner decided to keep the box and set `quality_ok = False`. The region stays in the archive with its vector.
+  The matching step must not use it for the last-seen record. Enrollment uses `context_phrases=False` and is not affected.
 - The detector is not perfect. The carer must check each crop. The system has no automatic check.
 - Boxes only. There are no masks, so the views contain some background. Mask pooling and context negatives are not built.
 - No re-embedding. If the embedding model changes, the carer must add the photos again. The photos are kept for this.
