@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 from typing import Literal
 
+import numpy as np
+
 Source = Literal["full", "tile", "generic"]
 
 
@@ -86,3 +88,35 @@ class Calibration:
     n_views: int
     n_photos: int
     note: str | None  # A short text for the carer, for example a warning
+
+
+@dataclass(frozen=True)
+class MatchRegion:
+    """What the matching step needs to know about one region besides its vector."""
+
+    phrases: tuple[str, ...]  # The detector phrases of the region
+    quality_ok: bool  # False: the region is never matched
+
+
+@dataclass(frozen=True)
+class MatchObject:
+    """An enrolled object as the matching step sees it. The object must be `ready`."""
+
+    object_id: int
+    tracked: bool  # False: a look-alike. It is a negative and is never reported
+    phrases: tuple[str, ...]  # The category phrase and the synonyms
+    views: np.ndarray  # Unit-length vectors, shape (number of views, dimension)
+    tau: float
+    tau_strong: float
+    margin_min: float
+
+
+@dataclass(frozen=True)
+class Sighting:
+    """A region that matches an enrolled object (stage I4)."""
+
+    object_id: int
+    region_index: int  # The position of the region in the call
+    similarity: float  # The highest cosine to a view of the object
+    margin: float  # The similarity minus the highest similarity to any other object
+    strong: bool  # True: above `tau_strong` with the strong margin

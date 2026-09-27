@@ -20,13 +20,24 @@ from ai.errors import (
     CalibrationError,
     ImageError,
     InferenceError,
+    MatchingError,
     ModelLoadError,
 )
+from ai.matching import match_regions
 from ai.postprocess import apply_crop_quality, select_candidates
 from ai.quality import blur_score, hamming_distance, perceptual_hash
 from ai.runtime import configure_threads
 from ai.settings import AiConfig, load_config
-from ai.types import Box, Calibration, Candidate, LocatedObject, QualityReport
+from ai.types import (
+    Box,
+    Calibration,
+    Candidate,
+    LocatedObject,
+    MatchObject,
+    MatchRegion,
+    QualityReport,
+    Sighting,
+)
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -37,6 +48,7 @@ __all__ = [
     "CalibrationError",
     "ImageError",
     "InferenceError",
+    "MatchingError",
     "ModelLoadError",
     "open_image",
 ]
@@ -237,3 +249,24 @@ class AiEngine:
     ) -> Calibration:
         """Calculate the thresholds of an object from its views and the negatives (stage E4)."""
         return calibrate(views, photo_ids, other_views, self._config.enrollment)
+
+    # ---- Matching (stage I4) ----
+
+    def match_regions(
+        self,
+        vectors: np.ndarray,
+        regions: list[MatchRegion],
+        objects: list[MatchObject],
+    ) -> list[Sighting]:
+        """Match the region vectors of one frame with the enrolled objects (stage I4).
+
+        The objects must be `ready`. A region with `quality_ok = False` is
+        skipped. The result has at most one sighting for each object.
+        """
+        return match_regions(
+            vectors,
+            regions,
+            objects,
+            self._config.detection.generic_phrase,
+            self._config.enrollment.margin_strong,
+        )

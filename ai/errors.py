@@ -23,3 +23,7 @@ class InferenceError(AiError):
 
 class CalibrationError(AiError):
     """Raised when the views are not enough for a calibration."""
+
+
+class MatchingError(AiError):
+    """Raised when the vectors or the objects of a matching call are not usable."""

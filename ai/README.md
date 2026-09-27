@@ -18,6 +18,7 @@ The source of the design is `docs/ai/DINO-Based Object Recall Pipeline.md`.
 | `postprocess.py` | Turns detector output into candidates. No model |
 | `detector.py` | `CandidateDetector`: Grounding DINO with three kinds of pass |
 | `embedder.py` | `RegionEmbedder`: DINOv2 small, one vector for each box |
+| `matching.py` | Match region vectors with the enrolled objects (stage I4). No model |
 | `calibration.py` | The thresholds of an object from its views (stage E4). No model |
 | `enrollment.py` | Box scaling and brightness for the views of a photo. No model |
 | `runtime.py` | Safe model loading, device choice, model names |
