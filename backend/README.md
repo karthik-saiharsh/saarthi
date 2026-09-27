@@ -8,12 +8,13 @@ The backend has four jobs:
 1. The upload step. It accepts one image, checks it, stores it, and puts it in the queue.
 2. The worker. It takes the photos and the images from the queue and runs the ai stages on them.
 3. Enrollment. A carer adds the objects that the owner wants to find, with photos. The backend calibrates each object.
-4. The maintenance jobs. They delete old images and orphan files, report missing files, and save the vector index.
+4. The memory. It matches the regions of a frame with the objects, and keeps the sightings and the last-seen records (see `docs/backend/Memory.md`).
+5. The maintenance jobs. They delete old images and orphan files, report missing files, and save the vector index.
 
 `main.py` starts the application and stops it. It calls the backend after all other modules are ready.
 
 For the full design, see `docs/backend/Upload Endpoint.md`, `docs/backend/Enrollment.md`, `docs/backend/Worker.md`,
-`docs/backend/Maintenance.md` and `docs/backend/Lifecycle.md`.
+`docs/backend/Memory.md`, `docs/backend/Maintenance.md` and `docs/backend/Lifecycle.md`.
 
 ## Files
 
@@ -26,6 +27,7 @@ For the full design, see `docs/backend/Upload Endpoint.md`, `docs/backend/Enroll
 | `http_common.py` | What both route files share: the token check, the body reader, the error answers |
 | `enrollment.py` | `EnrollmentService`: objects, reference photos, the carer's confirmation, the calibration |
 | `ui_adapter.py` | Connects the UI to the upload step and to enrollment (`ui.ports.UploadService`, `ui.ports.EnrollmentService`) |
+| `memory.py` | `MemoryService`: matches the regions of a frame, writes the sightings, keeps the last-seen records |
 | `worker.py` | `Worker`: runs the ai stages on `pending` photos and images, in a background thread |
 | `maintenance.py` | `Maintenance`: retention, orphan and missing files, the vector checkpoint |
 | `instance_lock.py` | `InstanceLock`: only one copy of the application may use the data |
@@ -114,6 +116,11 @@ A variable that is set but empty stops the start, so the route cannot open by mi
 | `maintenance.orphan_delete_limit` | The most orphan files that one run deletes. 0 never deletes one |
 | `maintenance.retention_batch` | The number of expired images that are deleted in one group |
 
+| Key (table `[memory]`) | Meaning |
+|------------------------|---------|
+| `memory.hysteresis_window_seconds` | A weak sighting counts the sightings of the object in this time window |
+| `memory.hysteresis_hits` | The number of frames with a sighting that a weak sighting needs. A strong sighting needs none |
+
 The largest upload is `limits.max_bytes` in `storage/config.toml`.
 
 ## Worker
@@ -121,7 +128,7 @@ The largest upload is `limits.max_bytes` in `storage/config.toml`.
 `Worker.process_next()` takes the oldest `pending` reference photo first (see `docs/backend/Enrollment.md`).
 If there is none, it takes the oldest `pending` image and does these steps:
 read and decode the file, check the quality, reject a blurry image or a near duplicate, detect candidates,
-make the vectors, store the regions and the vectors, and mark the image `done`.
+make the vectors, store the regions and the vectors, match the regions with the objects (the memory), and mark the image `done`.
 The detector looks for the phrases of the `ready` objects of the gallery. Without a ready object, it uses the placeholder phrases of `ai/config.toml`.
 An error marks the image `failed`. The reason is only the name of the error class.
 `start()` runs the worker as a background thread. An upload calls `wake()`, so a new image starts at once.

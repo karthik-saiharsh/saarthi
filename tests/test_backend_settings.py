@@ -37,6 +37,9 @@ def test_default_config_loads() -> None:
         ("retention_batch = 100", "retention_batch = true"),
         ("max_photos_per_object = 20", "max_photos_per_object = 0"),
         ("max_objects = 50", "max_objects = true"),
+        ("hysteresis_window_seconds = 60", "hysteresis_window_seconds = 0"),
+        ("hysteresis_hits = 2", "hysteresis_hits = 0"),
+        ("hysteresis_hits = 2", "hysteresis_hits = true"),
         ("port = 8080", "port = 0"),
         ("port = 8080", "port = 70000"),
         ("port = 8080", 'port = "8080"'),
@@ -58,7 +61,8 @@ def test_bad_values_are_refused(tmp_path: Path, old: str, new: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "table", ["ingest", "api", "worker", "server", "maintenance", "enrollment"]
+    "table",
+    ["ingest", "api", "worker", "server", "maintenance", "enrollment", "memory"],
 )
 def test_missing_table_is_refused(tmp_path: Path, table: str) -> None:
     with pytest.raises(BackendConfigError, match=table):

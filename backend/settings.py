@@ -40,6 +40,12 @@ class MaintenanceConfig:
 
 
 @dataclass(frozen=True)
+class MemoryConfig:
+    hysteresis_window_seconds: int
+    hysteresis_hits: int
+
+
+@dataclass(frozen=True)
 class EnrollmentConfig:
     max_photos_per_object: int
     max_objects: int
@@ -53,6 +59,7 @@ class BackendConfig:
     server: ServerConfig
     maintenance: MaintenanceConfig
     enrollment: EnrollmentConfig
+    memory: MemoryConfig
 
 
 def _table(raw: dict, name: str) -> dict:
@@ -152,6 +159,13 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> BackendConfig:
         ),
         max_objects=_integer(enrollment, "enrollment", "max_objects", 1),
     )
+    memory: dict = _table(raw, "memory")
+    memory_config: MemoryConfig = MemoryConfig(
+        hysteresis_window_seconds=_integer(
+            memory, "memory", "hysteresis_window_seconds", 1
+        ),
+        hysteresis_hits=_integer(memory, "memory", "hysteresis_hits", 1),
+    )
     logger.info("Loaded backend config from %s", config_path)
     return BackendConfig(
         max_pending,
@@ -160,4 +174,5 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> BackendConfig:
         server_config,
         maintenance_config,
         enrollment_config,
+        memory_config,
     )

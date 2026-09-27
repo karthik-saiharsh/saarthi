@@ -10,7 +10,9 @@ For each frame the worker does these steps:
 4. Detect candidate boxes.
 5. Make one vector for each box. This comes before any region row is written,
    so a model error leaves no half-written regions.
-6. Add the regions, store the vectors, and mark the image `done`.
+6. Add the regions and store the vectors.
+7. Match the regions with the objects and update the memory (stages I4 and I6).
+8. Mark the image `done`.
 
 Any error marks the image `failed`. The image is not tried again. The worker
 goes on with the next image.
@@ -28,6 +30,7 @@ import storage.api as storage
 from ai.api import AiEngine
 from ai.errors import AiError
 from ai.types import Candidate
+from backend.memory import MemoryService
 from backend.settings import BackendConfig, WorkerConfig
 from db.schema import EnrolledObject, Image, ReferencePhoto, RegionSource, utc_now
 
@@ -62,6 +65,7 @@ class Worker:
         assert isinstance(engine, AiEngine), "engine must be an AiEngine"
         self._config: WorkerConfig = config.worker
         self._engine: AiEngine = engine
+        self._memory: MemoryService = MemoryService(config.memory, engine)
         self._analysed: int = (
             0  # Images that reached the detector. Used for the generic pass
         )
@@ -246,5 +250,7 @@ class Worker:
             db.store_region_vectors(
                 [r.id for r in regions], vectors, self._engine.embedding_model
             )
+            # Stage I4 and I6. An error here marks the image `failed`. Its regions and vectors stay.
+            self._memory.remember(image, candidates, regions, vectors)
         db.mark_image_done(image.id)
         logger.info("Image %d is done with %d region(s)", image.id, len(regions))

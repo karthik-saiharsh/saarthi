@@ -8,6 +8,7 @@ import dataclasses
 import time
 import uuid
 from collections.abc import Callable, Iterator
+from datetime import timedelta
 from io import BytesIO
 
 import numpy as np
@@ -113,12 +114,13 @@ def actual_system() -> Iterator[None]:
         )
     before: set[str] = set(db.list_image_paths())
     yield
-    made: list[Image] = [i for i in Image.select() if i.file_path not in before]
-    if made:
-        storage.delete_images(db.delete_images([i.id for i in made]))
+    # The objects go first. A last-seen record keeps its frame, so the frame cannot go before it.
     for obj in db.gallery.list_objects():
         if obj.name.startswith(PREFIX):
             storage.delete_images(db.gallery.delete_object(obj.id))
+    made: list[Image] = [i for i in Image.select() if i.file_path not in before]
+    if made:
+        storage.delete_images(db.delete_images([i.id for i in made]))
     database.close()
 
 
@@ -531,3 +533,101 @@ def test_the_thread_processes_a_reference_photo_at_once_because_of_the_wake_up()
         )
     finally:
         setup.worker.stop(timeout=15)
+
+
+# ---- Matching and the last-seen record (stages I4 and I6) ----
+
+
+def only_test_objects_are_ready() -> bool:
+    return not db.gallery.gallery_phrases()
+
+
+def bottle_detection() -> RawDetection:
+    return RawDetection(Box(20, 15, 60, 45), 0.6, "bottle", "full")
+
+
+def test_a_frame_with_the_object_sets_the_last_seen_record(setup: Setup) -> None:
+    if not only_test_objects_are_ready():
+        pytest.skip("The actual gallery has ready objects")
+    setup.detector.detections = [bottle_detection()]
+    object_id: int = make_ready(setup, 300)
+    frame_id: int = setup.upload(noise(301))
+    assert setup.worker.process_next() is True
+    assert state(frame_id).status == ImageStatus.DONE.value
+    record = db.sightings.get_last_seen(object_id)
+    assert record is not None and record.image_id == frame_id
+    assert (record.x0, record.y0, record.x1, record.y1) == (20, 15, 60, 45)
+    assert record.strong and record.seen_at == state(frame_id).captured_at
+    assert db.sightings.count_recent(object_id, record.seen_at, record.seen_at) == 1
+
+
+def test_a_look_alike_with_the_same_views_blocks_the_sighting(setup: Setup) -> None:
+    if not only_test_objects_are_ready():
+        pytest.skip("The actual gallery has ready objects")
+    setup.detector.detections = [bottle_detection()]
+    owner_id: int = make_ready(setup, 310)
+    make_ready(setup, 320, tracked=False)
+    frame_id: int = setup.upload(noise(330))
+    assert setup.worker.process_next() is True
+    assert state(frame_id).status == ImageStatus.DONE.value
+    assert db.sightings.get_last_seen(owner_id) is None  # The margin is 0
+
+
+def test_a_look_alike_alone_is_never_reported(setup: Setup) -> None:
+    if not only_test_objects_are_ready():
+        pytest.skip("The actual gallery has ready objects")
+    setup.detector.detections = [bottle_detection()]
+    twin_id: int = make_ready(setup, 340, tracked=False)
+    frame_id: int = setup.upload(noise(341))
+    assert setup.worker.process_next() is True
+    assert state(frame_id).status == ImageStatus.DONE.value
+    assert db.sightings.get_last_seen(twin_id) is None
+
+
+def test_a_region_that_is_not_good_gives_no_sighting(setup: Setup) -> None:
+    if not only_test_objects_are_ready():
+        pytest.skip("The actual gallery has ready objects")
+    setup.detector.detections = [bottle_detection()]
+    object_id: int = make_ready(setup, 350)
+    # This box touches the edge of the image, so the region has quality_ok = False.
+    setup.detector.detections = [
+        RawDetection(Box(0, 15, 40, 45), 0.6, "bottle", "full")
+    ]
+    frame_id: int = setup.upload(noise(351))
+    assert setup.worker.process_next() is True
+    assert state(frame_id).status == ImageStatus.DONE.value
+    assert [r.quality_ok for r in db.get_regions(frame_id)] == [False]
+    assert db.sightings.get_last_seen(object_id) is None
+
+
+def test_an_error_in_the_matching_fails_the_image_and_keeps_its_regions(
+    setup: Setup, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    if not only_test_objects_are_ready():
+        pytest.skip("The actual gallery has ready objects")
+    setup.detector.detections = [bottle_detection()]
+    make_ready(setup, 360)
+
+    def broken(*args: object, **kwargs: object) -> None:
+        raise InferenceError("test")
+
+    monkeypatch.setattr(setup.worker._engine, "match_regions", broken)
+    frame_id: int = setup.upload(noise(361))
+    assert setup.worker.process_next() is True
+    assert state(frame_id).status == ImageStatus.FAILED.value
+    assert state(frame_id).status_detail == "InferenceError"
+    assert len(db.get_regions(frame_id)) == 1
+
+
+def test_retention_keeps_the_frame_of_the_last_seen_record(setup: Setup) -> None:
+    if not only_test_objects_are_ready():
+        pytest.skip("The actual gallery has ready objects")
+    setup.detector.detections = [bottle_detection()]
+    object_id: int = make_ready(setup, 370)
+    frame_id: int = setup.upload(noise(371))
+    assert setup.worker.process_next() is True
+    assert db.sightings.get_last_seen(object_id) is not None
+    cutoff = state(frame_id).captured_at + timedelta(days=1)
+    assert frame_id not in [i.id for i in db.list_images_older_than(cutoff, 10000)]
+    with pytest.raises(db.InvalidStateError):
+        db.delete_images([frame_id])
