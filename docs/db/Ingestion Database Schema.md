@@ -193,6 +193,7 @@ Each helper uses peewee expressions only. No helper builds SQL from text.
 | `mark_image_rejected(image_id, reason)` | Set the status `rejected` | `Image` |
 | `mark_image_failed(image_id, error)` | Set the status `failed` | `Image` |
 | `list_embedded_region_ids()` | List the ids of the regions that have a vector | List of integers |
+| `list_searchable_regions(since, until, embedding_model, limit=5000)` | List the regions that a search can compare, newest frame first. A frame is in the window if `since` < `captured_at` <= `until`. Only regions of `done` frames with `quality_ok` and a vector of `embedding_model` are listed. Each region has its frame in `region.image` | List of `Region` |
 | `list_images_older_than(cutoff, limit=100)` | List the oldest `done`, `rejected` and `failed` images that were captured before `cutoff`. An image that waits or is in use is never listed | List of `Image` |
 | `delete_images(image_ids)` | Delete the images and their regions (by cascade), then remove their vectors from the index. Unknown ids are ignored. If one image is `processing`, the helper raises `InvalidStateError` and deletes nothing | The `file_path` of each deleted image |
 | `list_image_paths()` | List the `file_path` of every image, sorted | List of text |
@@ -251,6 +252,7 @@ The vectors are in a FAISS index. The index file path is `paths.faiss_index` in 
 | `checkpoint_vectors()` | Write the index to disk now | `None`. Raises `VectorIndexError` |
 | `vector_count()` | Count the vectors | Integer |
 | `list_vector_ids()` | List the region ids in the index | Sorted list of integers |
+| `get_region_vectors(region_ids)` | Read the stored vectors of regions, in the order of the ids. Raises `VectorIndexError` if a region has no vector | `float32` array with the shape (number of ids, dimension) |
 
 `vectors` must be a `float32` array with the shape `(number of ids, dimension)`.
 Each row must have a length of 1.0 (a tolerance of 0.001 is allowed).

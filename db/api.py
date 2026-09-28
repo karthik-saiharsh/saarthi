@@ -791,6 +791,47 @@ def delete_images(image_ids: list[int]) -> list[str]:
     return paths
 
 
+def get_region_vectors(region_ids: list[int]) -> np.ndarray:
+    """Return the stored vectors of these regions, one row for each id, in the same order.
+
+    Raise `VectorIndexError` if a region has no vector in the index.
+    """
+    assert isinstance(region_ids, list), "region_ids must be a list"
+    assert all(isinstance(i, int) and i > 0 for i in region_ids), "ids must be positive"
+    return _require_index().get_vectors(region_ids)
+
+
+def list_searchable_regions(
+    since: datetime, until: datetime, embedding_model: str, limit: int = 5000
+) -> list[Region]:
+    """Return the regions of `done` frames that a search can compare, newest frame first.
+
+    A frame is in the window if `since` < `captured_at` <= `until` (naive UTC
+    times). Only regions with `quality_ok` and a vector of `embedding_model`
+    are listed: vectors of other models cannot be compared. Regions of one
+    frame are next to each other, ordered by id. At most `limit` regions are
+    returned. Each region has its frame in `region.image`.
+    """
+    assert isinstance(since, datetime) and isinstance(until, datetime), "datetimes"
+    assert since <= until, "since must not be after until"
+    assert isinstance(embedding_model, str) and embedding_model, "model name needed"
+    assert isinstance(limit, int) and limit > 0, "limit must be positive"
+    with _translate_errors("list_searchable_regions"):
+        return list(
+            Region.select(Region, Image)
+            .join(Image)
+            .where(
+                Image.status == ImageStatus.DONE.value,
+                Image.captured_at > since,
+                Image.captured_at <= until,
+                Region.quality_ok == 1,
+                Region.embedding_model == embedding_model,
+            )
+            .order_by(Image.captured_at.desc(), Image.id.desc(), Region.id)
+            .limit(limit)
+        )
+
+
 def list_vector_ids() -> list[int]:
     """Return the region ids that have a vector in the index, sorted."""
     return sorted(_require_index().ids())

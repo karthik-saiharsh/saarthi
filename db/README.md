@@ -115,6 +115,8 @@ If the status is not correct, the helper raises `InvalidStateError`.
 | `checkpoint_vectors` | Write the index to disk now. Call it when the application stops |
 | `vector_count` | The number of vectors in the index |
 | `list_vector_ids` | The region ids that have a vector in the index |
+| `get_region_vectors` | The stored vectors of regions, in the order of the ids. A search compares them with the views of an object |
+| `list_searchable_regions` | The regions of `done` frames in a time window that a search can compare, newest frame first |
 
 `store_region_vectors` needs a `float32` array with one row of unit length for each region id.
 

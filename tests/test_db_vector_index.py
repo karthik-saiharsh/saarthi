@@ -110,3 +110,27 @@ def test_broken_file_is_refused(tmp_path: Path) -> None:
     (tmp_path / "test.faiss").write_bytes(b"not an index")
     with pytest.raises(VectorIndexError):
         make_index(tmp_path)
+
+
+def test_get_vectors_returns_the_stored_rows_in_the_order_of_the_ids(
+    tmp_path: Path,
+) -> None:
+    index: VectorIndex = make_index(tmp_path)
+    vectors: np.ndarray = unit_vectors(3)
+    index.add([5, 6, 7], vectors)
+    result: np.ndarray = index.get_vectors([7, 5])
+    assert result.shape == (2, DIMENSION) and result.dtype == np.float32
+    assert np.allclose(result[0], vectors[2]) and np.allclose(result[1], vectors[0])
+    result[0, 0] = 99.0  # A copy: the index does not change
+    assert np.allclose(index.get_vectors([7])[0], vectors[2])
+
+
+def test_get_vectors_of_nothing_is_an_empty_array(tmp_path: Path) -> None:
+    assert make_index(tmp_path).get_vectors([]).shape == (0, DIMENSION)
+
+
+def test_get_vectors_refuses_an_unknown_id(tmp_path: Path) -> None:
+    index: VectorIndex = make_index(tmp_path)
+    index.add([1], unit_vectors(1))
+    with pytest.raises(VectorIndexError, match="not in the index"):
+        index.get_vectors([1, 2])

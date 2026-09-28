@@ -74,6 +74,23 @@ class VectorIndex:
         with self._lock:
             return set(self._ids)
 
+    def get_vectors(self, ids: list[int]) -> np.ndarray:
+        """Return the stored vectors of these ids, one row for each id, in the same order.
+
+        Raise `VectorIndexError` if an id is not in the index. The result is a copy.
+        """
+        assert isinstance(ids, list), "ids must be a list"
+        assert all(isinstance(i, int) and i > 0 for i in ids), "ids must be positive"
+        with self._lock:
+            missing: list[int] = [i for i in ids if i not in self._ids]
+            if missing:
+                raise VectorIndexError(f"ids not in the index: {missing[:5]}")
+            if not ids:
+                return np.empty((0, self._dimension), dtype=np.float32)
+            return np.stack([self._index.reconstruct(i) for i in ids]).astype(
+                np.float32
+            )
+
     def add(self, ids: list[int], vectors: np.ndarray) -> None:
         """Add vectors. Refuse the whole call if any id is already in the index."""
         assert isinstance(ids, list) and ids, "ids must be a non-empty list"
