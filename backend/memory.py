@@ -34,6 +34,44 @@ from db.schema import EnrolledObject, Image, ObjectStatus, Region
 logger: logging.Logger = logging.getLogger(__name__)
 
 
+def _to_match_object(obj: EnrolledObject, views: np.ndarray) -> MatchObject:
+    return MatchObject(
+        object_id=obj.id,
+        tracked=obj.tracked,
+        phrases=(obj.category_phrase, *obj.synonyms),
+        views=views,
+        tau=float(obj.tau),
+        tau_strong=float(obj.tau_strong),
+        margin_min=float(obj.margin_min),
+    )
+
+
+def load_match_objects(engine: AiEngine) -> list[MatchObject]:
+    """Return the `ready` objects with the views of the current model.
+
+    The memory and the search use it. An object with no view of the current
+    model is left out. Its calibration is from another model, so its
+    thresholds do not fit.
+    """
+    assert isinstance(engine, AiEngine), "engine must be an AiEngine"
+    model: str = engine.embedding_model
+    objects: list[MatchObject] = []
+    for obj in db.gallery.list_objects():
+        if (
+            obj.status != ObjectStatus.READY.value
+            or obj.tau is None
+            or obj.tau_strong is None
+            or obj.margin_min is None
+        ):
+            continue
+        views, _ = db.gallery.load_views(obj.id, model)
+        if views.shape[0] == 0:
+            logger.debug("Object %d has no views of the current model", obj.id)
+            continue
+        objects.append(_to_match_object(obj, views))
+    return objects
+
+
 class MemoryService:
     """Matches the regions of a frame and keeps the last-seen records."""
 
@@ -74,39 +112,8 @@ class MemoryService:
         return recorded
 
     def load_objects(self) -> list[MatchObject]:
-        """Return the `ready` objects with the views of the current model.
-
-        An object with no view of the current model is left out. Its calibration
-        is from another model, so its thresholds do not fit.
-        """
-        model: str = self._engine.embedding_model
-        objects: list[MatchObject] = []
-        for obj in db.gallery.list_objects():
-            if (
-                obj.status != ObjectStatus.READY.value
-                or obj.tau is None
-                or obj.tau_strong is None
-                or obj.margin_min is None
-            ):
-                continue
-            views, _ = db.gallery.load_views(obj.id, model)
-            if views.shape[0] == 0:
-                logger.debug("Object %d has no views of the current model", obj.id)
-                continue
-            objects.append(self._to_match_object(obj, views))
-        return objects
-
-    @staticmethod
-    def _to_match_object(obj: EnrolledObject, views: np.ndarray) -> MatchObject:
-        return MatchObject(
-            object_id=obj.id,
-            tracked=obj.tracked,
-            phrases=(obj.category_phrase, *obj.synonyms),
-            views=views,
-            tau=float(obj.tau),
-            tau_strong=float(obj.tau_strong),
-            margin_min=float(obj.margin_min),
-        )
+        """Return the `ready` objects with the views of the current model."""
+        return load_match_objects(self._engine)
 
     def _record(
         self,

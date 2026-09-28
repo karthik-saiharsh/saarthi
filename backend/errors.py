@@ -23,3 +23,7 @@ class LimitReachedError(BackendError):
 
 class NotFoundError(BackendError):
     """Raised when an object or a photo does not exist."""
+
+
+class ObjectNotReadyError(BackendError):
+    """Raised when a search asks for an object that is a draft, or a look-alike that is never reported."""

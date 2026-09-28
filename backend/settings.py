@@ -46,6 +46,15 @@ class MemoryConfig:
 
 
 @dataclass(frozen=True)
+class SearchConfig:
+    stale_after_hours: int
+    window_minutes: int
+    max_scan_hours: int
+    max_regions_per_window: int
+    max_frames: int
+
+
+@dataclass(frozen=True)
 class EnrollmentConfig:
     max_photos_per_object: int
     max_objects: int
@@ -60,6 +69,7 @@ class BackendConfig:
     maintenance: MaintenanceConfig
     enrollment: EnrollmentConfig
     memory: MemoryConfig
+    search: SearchConfig
 
 
 def _table(raw: dict, name: str) -> dict:
@@ -166,6 +176,14 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> BackendConfig:
         ),
         hysteresis_hits=_integer(memory, "memory", "hysteresis_hits", 1),
     )
+    search: dict = _table(raw, "search")
+    search_config: SearchConfig = SearchConfig(
+        stale_after_hours=_integer(search, "search", "stale_after_hours", 1),
+        window_minutes=_integer(search, "search", "window_minutes", 1),
+        max_scan_hours=_integer(search, "search", "max_scan_hours", 1),
+        max_regions_per_window=_integer(search, "search", "max_regions_per_window", 1),
+        max_frames=_integer(search, "search", "max_frames", 1),
+    )
     logger.info("Loaded backend config from %s", config_path)
     return BackendConfig(
         max_pending,
@@ -175,4 +193,5 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> BackendConfig:
         maintenance_config,
         enrollment_config,
         memory_config,
+        search_config,
     )

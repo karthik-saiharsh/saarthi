@@ -40,6 +40,11 @@ def test_default_config_loads() -> None:
         ("hysteresis_window_seconds = 60", "hysteresis_window_seconds = 0"),
         ("hysteresis_hits = 2", "hysteresis_hits = 0"),
         ("hysteresis_hits = 2", "hysteresis_hits = true"),
+        ("stale_after_hours = 24", "stale_after_hours = 0"),
+        ("window_minutes = 60", "window_minutes = 0"),
+        ("max_scan_hours = 72", "max_scan_hours = true"),
+        ("max_regions_per_window = 5000", "max_regions_per_window = 0"),
+        ("max_frames = 3000", "max_frames = -1"),
         ("port = 8080", "port = 0"),
         ("port = 8080", "port = 70000"),
         ("port = 8080", 'port = "8080"'),
@@ -62,7 +67,16 @@ def test_bad_values_are_refused(tmp_path: Path, old: str, new: str) -> None:
 
 @pytest.mark.parametrize(
     "table",
-    ["ingest", "api", "worker", "server", "maintenance", "enrollment", "memory"],
+    [
+        "ingest",
+        "api",
+        "worker",
+        "server",
+        "maintenance",
+        "enrollment",
+        "memory",
+        "search",
+    ],
 )
 def test_missing_table_is_refused(tmp_path: Path, table: str) -> None:
     with pytest.raises(BackendConfigError, match=table):

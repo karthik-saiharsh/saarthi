@@ -56,3 +56,16 @@ max_objects = 50
 # The window ends at the time of the new sighting.
 hysteresis_window_seconds = 60
 hysteresis_hits = 2
+
+[search]
+# The record "last seen" of an object is fresh for this many hours. After this, a search
+# also looks in the archive of frames for a newer sighting.
+stale_after_hours = 24
+# The archive is searched in windows of this many minutes, newest window first.
+window_minutes = 60
+# The search never looks further back than this many hours. A search with no record stops here.
+max_scan_hours = 72
+# A window holds at most this many regions. The oldest regions of a longer window are left out.
+max_regions_per_window = 5000
+# A search compares at most this many frames. A longer search stops, and the answer says so.
+max_frames = 3000
