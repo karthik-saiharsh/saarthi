@@ -9,7 +9,7 @@ The backend has four jobs:
 2. The worker. It takes the photos and the images from the queue and runs the ai stages on them.
 3. Enrollment. A carer adds the objects that the owner wants to find, with photos. The backend calibrates each object.
 4. The memory. It matches the regions of a frame with the objects, and keeps the sightings and the last-seen records (see `docs/backend/Memory.md`).
-5. The search. It answers where an object was seen last (see `docs/backend/Search.md`).
+5. The search. It turns the words of a user into an object, and answers where the object was seen last (see `docs/backend/Search.md`).
 6. The maintenance jobs. They delete old images and orphan files, report missing files, and save the vector index.
 
 `main.py` starts the application and stops it. It calls the backend after all other modules are ready.
@@ -30,6 +30,7 @@ For the full design, see `docs/backend/Upload Endpoint.md`, `docs/backend/Enroll
 | `ui_adapter.py` | Connects the UI to the upload step and to enrollment (`ui.ports.UploadService`, `ui.ports.EnrollmentService`) |
 | `memory.py` | `MemoryService`: matches the regions of a frame, writes the sightings, keeps the last-seen records |
 | `search.py` | `SearchService`: answers "where is my object?" from the last-seen record, then from the archive of frames |
+| `query.py` | `QueryResolver`: turns the words of a user into an enrolled object, or a short list to choose from |
 | `worker.py` | `Worker`: runs the ai stages on `pending` photos and images, in a background thread |
 | `maintenance.py` | `Maintenance`: retention, orphan and missing files, the vector checkpoint |
 | `instance_lock.py` | `InstanceLock`: only one copy of the application may use the data |
@@ -131,6 +132,14 @@ A variable that is set but empty stops the start, so the route cannot open by mi
 | `search.max_regions_per_window` | The most regions that one window holds |
 | `search.max_frames` | The search compares at most this number of frames. The answer says if it stopped early |
 
+| Key (table `[query]`) | Meaning |
+|-----------------------|---------|
+| `query.matched_min_score` | The best object is sure if its score is at least this value |
+| `query.matched_min_gap` | ...and at least this value above the second best |
+| `query.suggest_min_score` | Below `matched_min_score`, the user chooses between the objects with at least this score. Below it, no object fits |
+| `query.max_candidates` | The most objects that the user chooses from |
+| `query.max_chars` | A question with more characters is refused |
+
 The largest upload is `limits.max_bytes` in `storage/config.toml`.
 
 ## Worker
@@ -183,6 +192,7 @@ app.on_shutdown(lambda: stop_components(components))
 | `InvalidInputError` | A name or a phrase of an object is not valid |
 | `LimitReachedError` | The gallery has the largest number of objects or photos |
 | `NotFoundError` | An object or a photo does not exist |
+| `InvalidQueryError` | The words of a user are empty, too long or not printable |
 | `ObjectNotReadyError` | A search asks for an object that is a draft, or a look-alike |
 
 The upload step also passes on the errors of the `storage` and `db` modules.

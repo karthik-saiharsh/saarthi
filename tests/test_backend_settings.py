@@ -45,6 +45,15 @@ def test_default_config_loads() -> None:
         ("max_scan_hours = 72", "max_scan_hours = true"),
         ("max_regions_per_window = 5000", "max_regions_per_window = 0"),
         ("max_frames = 3000", "max_frames = -1"),
+        ("matched_min_score = 0.35", "matched_min_score = 2.0"),
+        ("matched_min_score = 0.35", 'matched_min_score = "high"'),
+        ("matched_min_gap = 0.10", "matched_min_gap = -0.1"),
+        (
+            "suggest_min_score = 0.20",
+            "suggest_min_score = 0.5",
+        ),  # Above matched_min_score
+        ("max_candidates = 3", "max_candidates = 0"),
+        ("max_chars = 300", "max_chars = 0"),
         ("port = 8080", "port = 0"),
         ("port = 8080", "port = 70000"),
         ("port = 8080", 'port = "8080"'),

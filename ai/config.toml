@@ -8,6 +8,9 @@ detector_id = "IDEA-Research/grounding-dino-tiny"
 detector_revision = "a2bb814dd30d776dcf7e30523b00659f4f141c71"
 embedder_id = "facebook/dinov2-small"
 embedder_revision = "ed25f3a31f01632728cabb09d1542f84ab7b0056"
+# Turns the words of a user into a vector, to find the object that the user means (Apache-2.0).
+query_encoder_id = "sentence-transformers/all-MiniLM-L6-v2"
+query_encoder_revision = "1110a243fdf4706b3f48f1d95db1a4f5529b4d41"
 # "auto" uses a GPU if one exists, and the CPU if not. Other values: "cpu", "cuda".
 device = "auto"
 # Number of CPU threads for the models. 0 keeps the torch default.
@@ -105,3 +108,7 @@ margin_min = 0.03
 margin_strong = 0.08
 # An object needs at least this number of confirmed photos before it is calibrated.
 min_photos = 3
+
+[query]
+# The encoder cuts a text after this many tokens. The model was trained with 128.
+max_tokens = 128

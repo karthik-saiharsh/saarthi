@@ -18,6 +18,7 @@ The source of the design is `docs/ai/DINO-Based Object Recall Pipeline.md`.
 | `postprocess.py` | Turns detector output into candidates. No model |
 | `detector.py` | `CandidateDetector`: Grounding DINO with three kinds of pass |
 | `embedder.py` | `RegionEmbedder`: DINOv2 small, one vector for each box |
+| `query.py` | `QueryEncoder`: a small sentence encoder. It turns the words of a user into vectors, to find the object that the user means |
 | `matching.py` | Match region vectors with the enrolled objects (stage I4). No model |
 | `calibration.py` | The thresholds of an object from its views (stage E4). No model |
 | `enrollment.py` | Box scaling and brightness for the views of a photo. No model |
@@ -75,6 +76,7 @@ Edit `config.toml`. The file explains each key.
 |------|-------|------|
 | Detect candidates | `IDEA-Research/grounding-dino-tiny` | About 690 MB |
 | Embed regions | `facebook/dinov2-small` | About 90 MB |
+| Understand the words of a user | `sentence-transformers/all-MiniLM-L6-v2` (Apache-2.0) | About 91 MB |
 
 - Each model is fixed to one revision in `config.toml`. Only safetensors files are loaded.
   No code from the model repository is run.

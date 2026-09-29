@@ -27,3 +27,7 @@ class NotFoundError(BackendError):
 
 class ObjectNotReadyError(BackendError):
     """Raised when a search asks for an object that is a draft, or a look-alike that is never reported."""
+
+
+class InvalidQueryError(BackendError):
+    """Raised when the words of a user are empty, too long or not printable."""

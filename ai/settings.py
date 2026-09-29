@@ -23,6 +23,8 @@ class ModelsConfig:
     detector_revision: str
     embedder_id: str
     embedder_revision: str
+    query_encoder_id: str
+    query_encoder_revision: str
     device: str
     cpu_threads: int
     local_files_only: bool
@@ -89,6 +91,11 @@ class EnrollmentConfig:
 
 
 @dataclass(frozen=True)
+class QueryConfig:
+    max_tokens: int
+
+
+@dataclass(frozen=True)
 class AiConfig:
     models: ModelsConfig
     image: ImageConfig
@@ -96,6 +103,7 @@ class AiConfig:
     detection: DetectionConfig
     embedding: EmbeddingConfig
     enrollment: EnrollmentConfig
+    query: QueryConfig
 
 
 class _Table:
@@ -183,6 +191,7 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> AiConfig:
     detection: _Table = _Table(raw, "detection")
     embedding: _Table = _Table(raw, "embedding")
     enrollment: _Table = _Table(raw, "enrollment")
+    query: _Table = _Table(raw, "query")
 
     default_phrases: tuple[str, ...] = detection.texts("default_phrases")
     small_phrases: tuple[str, ...] = detection.texts("small_phrases", allow_empty=True)
@@ -219,6 +228,8 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> AiConfig:
             detector_revision=models.text("detector_revision"),
             embedder_id=models.text("embedder_id"),
             embedder_revision=models.text("embedder_revision"),
+            query_encoder_id=models.text("query_encoder_id"),
+            query_encoder_revision=models.text("query_encoder_revision"),
             device=models.choice("device", DEVICES),
             cpu_threads=models.integer("cpu_threads", minimum=0),
             local_files_only=models.boolean("local_files_only"),
@@ -267,6 +278,7 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> AiConfig:
             margin_strong=margin_strong,
             min_photos=enrollment.integer("min_photos", minimum=2),
         ),
+        query=QueryConfig(max_tokens=query.integer("max_tokens")),
     )
     logger.info("Loaded ai config from %s", config_path)
     return config

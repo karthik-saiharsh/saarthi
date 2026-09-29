@@ -90,3 +90,9 @@ def test_missing_and_broken_files_are_refused(tmp_path: Path) -> None:
         load_config(tmp_path / "none.toml")
     with pytest.raises(AiConfigError):
         load_config(write(tmp_path, "not toml ["))
+
+
+def test_the_query_encoder_is_pinned_to_a_revision() -> None:
+    config = load_config()
+    assert re.fullmatch(r"[0-9a-f]{40}", config.models.query_encoder_revision)
+    assert config.models.query_encoder_id and config.query.max_tokens > 0

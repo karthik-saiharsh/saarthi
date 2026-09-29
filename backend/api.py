@@ -19,6 +19,7 @@ from backend.http import create_router, read_token
 from backend.http_objects import create_objects_router
 from backend.ingest import IngestService
 from backend.maintenance import Maintenance
+from backend.query import QueryResolver
 from backend.search import SearchService
 from backend.settings import (
     DEFAULT_CONFIG_PATH,
@@ -61,6 +62,7 @@ class Backend:
             self._config, engine, on_photo_added=self._worker.wake
         )
         self._search: SearchService = SearchService(self._config, engine)
+        self._query: QueryResolver = QueryResolver(self._config, engine)
         self._maintenance: Maintenance = Maintenance(self._config)
         self._token: str | None = read_token(self._config)
         self._max_upload_bytes: int = storage.current_config().max_bytes
@@ -92,6 +94,11 @@ class Backend:
     def search(self) -> SearchService:
         """The question "where is my object?": the last-seen record, then the archive."""
         return self._search
+
+    @property
+    def query(self) -> QueryResolver:
+        """Turns the words of a user into an object (matched, a choice, or none)."""
+        return self._query
 
     @property
     def maintenance(self) -> Maintenance:

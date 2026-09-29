@@ -69,3 +69,18 @@ max_scan_hours = 72
 max_regions_per_window = 5000
 # A search compares at most this many frames. A longer search stops, and the answer says so.
 max_frames = 3000
+
+[query]
+# The words of a user are turned into vectors and compared with a description of each object
+# (its name, its category phrase and its synonyms). The values are start values.
+# A match is sure if the best score is at least matched_min_score and it is at least
+# matched_min_gap above the second best score.
+matched_min_score = 0.35
+matched_min_gap = 0.10
+# Below matched_min_score, the user sees the best objects to choose from, if the best score is
+# at least suggest_min_score. Below this value, no object fits the words.
+suggest_min_score = 0.20
+# The most objects that the user sees to choose from.
+max_candidates = 3
+# A question with more characters than this is refused.
+max_chars = 300

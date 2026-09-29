@@ -55,6 +55,15 @@ class SearchConfig:
 
 
 @dataclass(frozen=True)
+class QueryConfig:
+    matched_min_score: float
+    matched_min_gap: float
+    suggest_min_score: float
+    max_candidates: int
+    max_chars: int
+
+
+@dataclass(frozen=True)
 class EnrollmentConfig:
     max_photos_per_object: int
     max_objects: int
@@ -70,6 +79,7 @@ class BackendConfig:
     enrollment: EnrollmentConfig
     memory: MemoryConfig
     search: SearchConfig
+    query: QueryConfig
 
 
 def _table(raw: dict, name: str) -> dict:
@@ -98,6 +108,18 @@ def _integer(
         )
         raise BackendConfigError(f"{name}.{key} must be an integer {limit}")
     return value
+
+
+def _number(table: dict, name: str, key: str, low: float, high: float) -> float:
+    """Read a number from a table. Raise `BackendConfigError` if it is missing or out of range."""
+    if key not in table:
+        raise BackendConfigError(f"Missing key {name}.{key} in config")
+    value: object = table[key]
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise BackendConfigError(f"{name}.{key} must be a number")
+    if not low <= value <= high:
+        raise BackendConfigError(f"{name}.{key} must be between {low} and {high}")
+    return float(value)
 
 
 def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> BackendConfig:
@@ -184,6 +206,18 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> BackendConfig:
         max_regions_per_window=_integer(search, "search", "max_regions_per_window", 1),
         max_frames=_integer(search, "search", "max_frames", 1),
     )
+    query: dict = _table(raw, "query")
+    query_config: QueryConfig = QueryConfig(
+        matched_min_score=_number(query, "query", "matched_min_score", -1.0, 1.0),
+        matched_min_gap=_number(query, "query", "matched_min_gap", 0.0, 2.0),
+        suggest_min_score=_number(query, "query", "suggest_min_score", -1.0, 1.0),
+        max_candidates=_integer(query, "query", "max_candidates", 1),
+        max_chars=_integer(query, "query", "max_chars", 1),
+    )
+    if query_config.suggest_min_score > query_config.matched_min_score:
+        raise BackendConfigError(
+            "query.suggest_min_score must not be above query.matched_min_score"
+        )
     logger.info("Loaded backend config from %s", config_path)
     return BackendConfig(
         max_pending,
@@ -194,4 +228,5 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> BackendConfig:
         enrollment_config,
         memory_config,
         search_config,
+        query_config,
     )

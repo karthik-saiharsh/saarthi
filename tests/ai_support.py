@@ -1,6 +1,8 @@
 """Fake ai models and an engine for tests that need the flow but not the real models."""
 
 import dataclasses
+import re
+import zlib
 
 import numpy as np
 
@@ -66,10 +68,38 @@ class FakeEmbedder:
         return vectors
 
 
+class FakeQueryEncoder:
+    """Hashes the words of a text into a vector, so texts that share words are close.
+
+    Deterministic across runs. It is a stand-in for a real sentence encoder.
+    """
+
+    name = "fake-query-encoder@00000000"
+
+    def __init__(self, dimension: int = 64) -> None:
+        self.dimension: int = dimension
+        self.error: Exception | None = None
+        self.calls: list[list[str]] = []
+
+    def encode(self, texts):
+        if self.error is not None:
+            raise self.error
+        self.calls.append(list(texts))
+        vectors: np.ndarray = np.zeros((len(texts), self.dimension), dtype=np.float32)
+        for row, text in enumerate(texts):
+            for word in re.findall(r"[a-z0-9']+", text.lower()):
+                vectors[row, zlib.crc32(word.encode()) % self.dimension] += 1.0
+            norm: float = float(np.linalg.norm(vectors[row]))
+            if norm > 0:
+                vectors[row] /= norm
+        return vectors
+
+
 def make_engine(
     detector: FakeDetector | None = None,
     embedder: FakeEmbedder | None = None,
     blur_min: float | None = None,
+    query_encoder: FakeQueryEncoder | None = None,
 ) -> AiEngine:
     """An `AiEngine` with fake models. The quality gate and post-processing are real.
 
@@ -84,4 +114,5 @@ def make_engine(
         config,
         detector=detector or FakeDetector(),  # type: ignore[arg-type]
         embedder=embedder or FakeEmbedder(),  # type: ignore[arg-type]
+        query_encoder=query_encoder or FakeQueryEncoder(),  # type: ignore[arg-type]
     )

@@ -11,6 +11,7 @@ from ai.api import AiEngine, open_image
 from ai.errors import ImageError
 from ai.settings import AiConfig, load_config
 from ai.types import Box, MatchObject, MatchRegion, RawDetection
+from tests.ai_support import FakeQueryEncoder
 
 CONFIG: AiConfig = load_config()
 
@@ -101,7 +102,7 @@ def make_engine(
     detections: list[RawDetection] | None = None,
 ) -> tuple[AiEngine, FakeDetector]:
     detector: FakeDetector = FakeDetector(detections or [])
-    engine: AiEngine = AiEngine(CONFIG, detector=detector, embedder=FakeEmbedder())  # type: ignore[arg-type]
+    engine: AiEngine = AiEngine(CONFIG, detector=detector, embedder=FakeEmbedder(), query_encoder=FakeQueryEncoder())  # type: ignore[arg-type]
     return engine, detector
 
 
@@ -116,7 +117,7 @@ def test_quality_assessment_and_blur_gate() -> None:
     config: AiConfig = dataclasses.replace(
         CONFIG, quality=dataclasses.replace(CONFIG.quality, blur_min=100.0)
     )
-    engine: AiEngine = AiEngine(config, detector=FakeDetector([]), embedder=FakeEmbedder())  # type: ignore[arg-type]
+    engine: AiEngine = AiEngine(config, detector=FakeDetector([]), embedder=FakeEmbedder(), query_encoder=FakeQueryEncoder())  # type: ignore[arg-type]
     sharp: Image.Image = noise_image()
     blurred: Image.Image = sharp.filter(ImageFilter.GaussianBlur(10))
     sharp_report = engine.assess_quality(sharp)
@@ -196,3 +197,11 @@ def test_the_engine_matches_regions_with_the_config_values() -> None:
         views.copy(), [MatchRegion(("a bottle",), True)], [bottle]
     )
     assert [(s.object_id, s.strong) for s in result] == [(7, True)]
+
+
+def test_the_engine_encodes_texts_with_the_query_encoder() -> None:
+    engine, _ = make_engine()
+    vectors: np.ndarray = engine.encode_texts(["a blue bottle", "my keys"])
+    assert vectors.shape == (2, 64) and vectors.dtype == np.float32
+    assert np.allclose(np.linalg.norm(vectors, axis=1), 1.0)
+    assert engine.query_model == "fake-query-encoder@00000000"

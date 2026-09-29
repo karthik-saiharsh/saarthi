@@ -26,6 +26,7 @@ from ai.errors import (
 from ai.matching import match_regions
 from ai.postprocess import apply_crop_quality, select_candidates
 from ai.quality import blur_score, hamming_distance, perceptual_hash
+from ai.query import QueryEncoder
 from ai.runtime import configure_threads
 from ai.settings import AiConfig, load_config
 from ai.types import (
@@ -90,16 +91,19 @@ class AiEngine:
         config: AiConfig | None = None,
         detector: CandidateDetector | None = None,
         embedder: RegionEmbedder | None = None,
+        query_encoder: QueryEncoder | None = None,
     ) -> None:
-        """Load the models. Pass `detector` or `embedder` only in tests."""
+        """Load the models. Pass `detector`, `embedder` or `query_encoder` only in tests."""
         self._config: AiConfig = config if config is not None else load_config()
         configure_threads(self._config.models.cpu_threads)
         self._detector: CandidateDetector = detector or CandidateDetector(self._config)
         self._embedder: RegionEmbedder = embedder or RegionEmbedder(self._config)
+        self._query_encoder: QueryEncoder = query_encoder or QueryEncoder(self._config)
         logger.info(
-            "AI engine ready: detector %s, embedder %s",
+            "AI engine ready: detector %s, embedder %s, query encoder %s",
             self._detector.name,
             self._embedder.name,
+            self._query_encoder.name,
         )
 
     @property
@@ -270,3 +274,18 @@ class AiEngine:
             self._config.detection.generic_phrase,
             self._config.enrollment.margin_strong,
         )
+
+    # ---- Questions of the user (stage Q1) ----
+
+    @property
+    def query_model(self) -> str:
+        """Name of the query encoder, for example `all-MiniLM-L6-v2@1110a243`."""
+        return self._query_encoder.name
+
+    def encode_texts(self, texts: list[str]) -> np.ndarray:
+        """Return one unit-length float32 vector for each text (a question or a description).
+
+        The vectors of the query encoder are not comparable with the vectors of
+        the regions. Compare them with each other only.
+        """
+        return self._query_encoder.encode(texts)
