@@ -69,6 +69,9 @@ max_scan_hours = 72
 max_regions_per_window = 5000
 # A search compares at most this many frames. A longer search stops, and the answer says so.
 max_frames = 3000
+# The picture of an answer shows the object with this much space around it, as a part of
+# the width and the height of its box. The part is added on each side.
+crop_padding = 0.25
 
 [query]
 # The words of a user are turned into vectors and compared with a description of each object

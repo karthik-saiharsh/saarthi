@@ -25,6 +25,7 @@ For the full design, see `docs/backend/Upload Endpoint.md`, `docs/backend/Enroll
 | `ingest.py` | `IngestService.submit`: the upload step. It uses `storage` and `db` |
 | `http.py` | The HTTP route `POST /api/images` |
 | `http_objects.py` | The HTTP routes of the gallery, `/api/objects` |
+| `http_search.py` | The HTTP routes of the search: `POST /api/search`, `GET /api/objects/{id}/last-seen` and its picture |
 | `http_common.py` | What both route files share: the token check, the body reader, the error answers |
 | `enrollment.py` | `EnrollmentService`: objects, reference photos, the carer's confirmation, the calibration |
 | `ui_adapter.py` | Connects the UI to the upload step and to enrollment (`ui.ports.UploadService`, `ui.ports.EnrollmentService`) |
@@ -81,6 +82,17 @@ The routes under `/api/objects` create objects, add reference photos, show the c
 and confirm, retry or remove a photo. They use the same optional token as the upload route.
 The list of routes and codes is in `docs/backend/Enrollment.md`.
 
+## Search routes
+
+| Route | Does |
+|-------|------|
+| `POST /api/search` | The body is JSON: `{"query": "the blue thing I drink from"}`. The answer has `status` (`matched`, `ambiguous` or `none`), the `candidates` and, for `matched`, the `answer` |
+| `GET /api/objects/{id}/last-seen` | Where and when the object was seen last |
+| `GET /api/objects/{id}/last-seen/picture` | A JPEG of the answer. `?view=crop` (the default) or `frame`, and `?max_side=` from 32 to 1024 |
+
+They use the same optional token and the same fixed messages as the other routes. An object that is a draft or a look-alike gives 409.
+The pictures and the answers have `Cache-Control: no-store`. The words of a user are never logged.
+
 ## Configuration
 
 Edit `config.toml`.
@@ -131,6 +143,7 @@ A variable that is set but empty stops the start, so the route cannot open by mi
 | `search.max_scan_hours` | The search does not look further back than this |
 | `search.max_regions_per_window` | The most regions that one window holds |
 | `search.max_frames` | The search compares at most this number of frames. The answer says if it stopped early |
+| `search.crop_padding` | The picture of an answer shows the object with this much space around it (a part of the size of its box) |
 
 | Key (table `[query]`) | Meaning |
 |-----------------------|---------|

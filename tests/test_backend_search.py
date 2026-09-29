@@ -6,7 +6,6 @@ sightings go by cascade), then the frames and their vectors.
 """
 
 import dataclasses
-import uuid
 from collections.abc import Iterator
 from datetime import datetime, timedelta
 
@@ -17,44 +16,34 @@ import db.api as db
 from backend.errors import NotFoundError, ObjectNotReadyError
 from backend.search import Answer, AnswerSource, SearchService
 from backend.settings import BackendConfig, load_config
-from db.api import gallery, sightings
+from db.api import sightings
 from db.schema import (
     EnrolledObject,
     Image,
     ImageStatus,
-    PhotoStatus,
-    ReferencePhoto,
     Region,
 )
 from tests.ai_support import make_engine
 from tests.db_support import (
-    DIMENSION,
     TEST_PREFIX,
     make_image,
     make_regions,
     set_status,
     skip_if_actual_data_has_problems,
 )
+from tests.search_support import (
+    BOTTLE,
+    OTHER,
+    PREFIX,
+    TAU,
+    TAU_STRONG,
+    WEAK,
+    make_object,
+    model,
+)
 
-PREFIX: str = "__test__ "
 NOW: datetime = datetime(2000, 6, 1, 12, 0, 0)
 BOX: tuple[int, int, int, int] = (10, 20, 60, 80)
-TAU: float = 0.8
-TAU_STRONG: float = 0.99
-
-
-def direction(*numbers: float) -> np.ndarray:
-    """A unit vector. The first numbers are given, the rest is zero."""
-    padded: np.ndarray = np.zeros(DIMENSION, dtype=np.float32)
-    padded[: len(numbers)] = numbers
-    return padded / np.linalg.norm(padded)
-
-
-BOTTLE: np.ndarray = direction(1, 0)
-OTHER: np.ndarray = direction(0, 1)
-WEAK: np.ndarray = direction(
-    1, 0.45
-)  # Cosine 0.91 to the bottle: above tau, below tau_strong
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -80,32 +69,6 @@ def make_service(**changes: int) -> SearchService:
         base, search=dataclasses.replace(base.search, **changes)
     )
     return SearchService(config, make_engine())
-
-
-def model() -> str:
-    return make_engine().embedding_model
-
-
-def make_object(
-    ready: bool = True, tracked: bool = True, views: np.ndarray = BOTTLE
-) -> EnrolledObject:
-    """An object with one confirmed view. `ready` objects are calibrated."""
-    obj: EnrolledObject = gallery.create_object(
-        f"{PREFIX}{uuid.uuid4().hex[:8]}", "a bottle", tracked=tracked
-    )
-    photo = gallery.add_reference_photo(
-        obj.id, f"{TEST_PREFIX}{uuid.uuid4().hex}.jpg", uuid.uuid4().hex * 2, 80, 60
-    )
-    ReferencePhoto.update(status=PhotoStatus.PROCESSING.value).where(
-        ReferencePhoto.id == photo.id
-    ).execute()  # The worker would do this. A claim could take a real photo.
-    gallery.store_photo_views(
-        photo.id, (1, 1, 5, 5), 0.5, [("original", views)], model()
-    )
-    gallery.confirm_photo(photo.id)
-    if ready:
-        gallery.set_calibration(obj.id, TAU, TAU_STRONG, 0.03, model())
-    return obj
 
 
 def make_frame(

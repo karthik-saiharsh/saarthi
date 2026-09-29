@@ -17,6 +17,7 @@ from backend.enrollment import EnrollmentService
 from backend.errors import BackendConfigError
 from backend.http import create_router, read_token
 from backend.http_objects import create_objects_router
+from backend.http_search import create_search_router
 from backend.ingest import IngestService
 from backend.maintenance import Maintenance
 from backend.query import QueryResolver
@@ -118,7 +119,7 @@ class Backend:
         self._worker.stop(timeout=self._config.server.worker_stop_seconds)
 
     def create_router(self) -> APIRouter:
-        """Return the router with all routes (the upload route and the gallery routes).
+        """Return the router with all routes (upload, gallery and search).
 
         Add it with `app.include_router`.
         """
@@ -127,6 +128,9 @@ class Backend:
         )
         router.include_router(
             create_objects_router(self._enrollment, self._max_upload_bytes, self._token)
+        )
+        router.include_router(
+            create_search_router(self._query, self._search, self._token)
         )
         return router
 

@@ -22,14 +22,25 @@ from enum import StrEnum
 from itertools import groupby
 
 import db.api as db
+import storage.api as storage
 from ai.api import AiEngine
 from ai.types import MatchObject, MatchRegion, Sighting
 from backend.errors import NotFoundError, ObjectNotReadyError
 from backend.memory import load_match_objects
 from backend.settings import BackendConfig, SearchConfig
-from db.schema import EnrolledObject, LastSeen, ObjectStatus, Region, utc_now
+from db.schema import (
+    EnrolledObject,
+    Image,
+    LastSeen,
+    ObjectStatus,
+    Region,
+    utc_now,
+)
 
 logger: logging.Logger = logging.getLogger(__name__)
+
+
+PICTURE_VIEWS: tuple[str, str] = ("crop", "frame")
 
 
 class AnswerSource(StrEnum):
@@ -110,7 +121,46 @@ class SearchService:
             False, complete,
         )  # fmt: skip
 
+    def get_picture(
+        self,
+        object_id: int,
+        view: str = "crop",
+        max_side: int = 512,
+        now: datetime | None = None,
+    ) -> bytes:
+        """Return a JPEG of the answer: the object with space around it (`crop`) or the whole frame (`frame`).
+
+        The longest side is at most `max_side`. Raise `NotFoundError` if the
+        object was not seen, or its frame is gone. The other errors are those of `find`.
+        """
+        assert view in PICTURE_VIEWS, f"view must be one of {PICTURE_VIEWS}"
+        assert isinstance(max_side, int) and max_side > 0, "max_side must be positive"
+        answer: Answer = self.find(object_id, now)
+        if not answer.found or answer.image_id is None or answer.box is None:
+            raise NotFoundError("The object was not seen")
+        image: Image | None = db.get_image(answer.image_id)
+        if image is None:
+            raise NotFoundError("The frame of the answer is gone")
+        box: tuple[int, int, int, int] = (0, 0, image.width, image.height)
+        if view == "crop":
+            box = self._padded(answer.box, image.width, image.height)
+        return storage.read_crop(image.file_path, box, max_side)
+
     # ---- Helpers ----
+
+    def _padded(
+        self, box: tuple[int, int, int, int], width: int, height: int
+    ) -> tuple[int, int, int, int]:
+        """Grow the box on each side by `search.crop_padding` of its size. Keep it inside the frame."""
+        x0, y0, x1, y1 = box
+        pad_x: int = round((x1 - x0) * self._config.crop_padding)
+        pad_y: int = round((y1 - y0) * self._config.crop_padding)
+        return (
+            max(0, x0 - pad_x),
+            max(0, y0 - pad_y),
+            min(width, x1 + pad_x),
+            min(height, y1 + pad_y),
+        )
 
     @staticmethod
     def _require_findable(object_id: int) -> EnrolledObject:

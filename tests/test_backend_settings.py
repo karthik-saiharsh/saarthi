@@ -45,6 +45,8 @@ def test_default_config_loads() -> None:
         ("max_scan_hours = 72", "max_scan_hours = true"),
         ("max_regions_per_window = 5000", "max_regions_per_window = 0"),
         ("max_frames = 3000", "max_frames = -1"),
+        ("crop_padding = 0.25", "crop_padding = -0.1"),
+        ("crop_padding = 0.25", 'crop_padding = "wide"'),
         ("matched_min_score = 0.35", "matched_min_score = 2.0"),
         ("matched_min_score = 0.35", 'matched_min_score = "high"'),
         ("matched_min_gap = 0.10", "matched_min_gap = -0.1"),

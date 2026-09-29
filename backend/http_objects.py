@@ -34,8 +34,10 @@ from backend.enrollment import EnrollmentService
 from backend.errors import (
     BackendError,
     InvalidInputError,
+    InvalidQueryError,
     LimitReachedError,
     NotFoundError,
+    ObjectNotReadyError,
 )
 from backend.http_common import (
     MESSAGE_DISK_FULL,
@@ -67,9 +69,10 @@ MESSAGE_WRONG_STATE: str = (
     "The photo or the object is in the wrong state for this action."
 )
 MESSAGE_FILE_MISSING: str = "The file of the photo is missing."
+MESSAGE_NOT_READY: str = "This object cannot be searched yet."
 
 
-def _parse_id(text: str) -> int | None:
+def parse_id(text: str) -> int | None:
     """Return a positive id from a path part, or None."""
     return (
         int(text)
@@ -106,10 +109,14 @@ def _parse_object_body(body: bytes) -> dict[str, Any] | None:
     }
 
 
-def _map_error(error: Exception) -> JSONResponse:
+def map_error(error: Exception) -> JSONResponse:
     """Turn an error of the service into an answer with a fixed message."""
     if isinstance(error, InvalidInputError):
         return error_response(400, str(error))  # The service messages are fixed texts
+    if isinstance(error, InvalidQueryError):
+        return error_response(400, str(error))  # A fixed text
+    if isinstance(error, ObjectNotReadyError):
+        return error_response(409, MESSAGE_NOT_READY)
     if isinstance(error, NotFoundError):
         return error_response(404, MESSAGE_NOT_FOUND)
     if isinstance(error, LimitReachedError):
@@ -165,7 +172,7 @@ def create_objects_router(
             result: Any = await run_in_threadpool(function)
         # The boundary of the server: each error becomes an answer with a fixed message.
         except Exception as error:  # noqa: BLE001
-            return _map_error(error)
+            return map_error(error)
         if build is not None:
             return build(result)
         if success == 204:
@@ -180,8 +187,8 @@ def create_objects_router(
         success: int = 200,
         build: Callable[[Any], Response] | None = None,
     ) -> Response:
-        object_id: int | None = _parse_id(object_text)
-        photo_id: int | None = None if photo_text is None else _parse_id(photo_text)
+        object_id: int | None = parse_id(object_text)
+        photo_id: int | None = None if photo_text is None else parse_id(photo_text)
         if object_id is None or (photo_text is not None and photo_id is None):
             refusal = token_refusal(request, token)
             return refusal or error_response(404, MESSAGE_NOT_FOUND)
@@ -223,7 +230,7 @@ def create_objects_router(
         refusal: JSONResponse | None = token_refusal(request, token)
         if refusal is not None:
             return refusal
-        parsed: int | None = _parse_id(object_id)
+        parsed: int | None = parse_id(object_id)
         if parsed is None:
             return error_response(404, MESSAGE_NOT_FOUND)
         body: bytes | JSONResponse = await read_body(request, max_bytes)
