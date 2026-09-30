@@ -1,17 +1,31 @@
 """Helpers that the tests of the search share. They use the actual database."""
 
 import uuid
+from datetime import timedelta
+from io import BytesIO
 
 import numpy as np
+from PIL import Image as PilImage
 
+import db.api as db
+import storage.api as storage
 from db.api import gallery
-from db.schema import EnrolledObject, PhotoStatus, ReferencePhoto
+from db.schema import (
+    EnrolledObject,
+    Image,
+    ImageStatus,
+    PhotoStatus,
+    ReferencePhoto,
+    utc_now,
+)
 from tests.ai_support import make_engine
 from tests.db_support import DIMENSION, TEST_PREFIX
 
 PREFIX: str = "__test__ "
 TAU: float = 0.8
 TAU_STRONG: float = 0.99
+FRAME_SIZE: tuple[int, int] = (80, 60)
+BOX: tuple[int, int, int, int] = (20, 15, 60, 45)  # 40 x 30 inside the frame
 
 
 def direction(*numbers: float) -> np.ndarray:
@@ -56,3 +70,30 @@ def make_object(
     if ready:
         gallery.set_calibration(obj.id, TAU, TAU_STRONG, 0.03, model())
     return obj
+
+
+def store_frame(
+    minutes_ago: int = 10, vector: np.ndarray = BOTTLE, in_hand: bool = False
+) -> Image:
+    """A `done` frame with a real file and one region (BOX) with a vector."""
+    pixels: np.ndarray = np.random.default_rng(minutes_ago).integers(
+        0, 255, (FRAME_SIZE[1], FRAME_SIZE[0], 3), dtype=np.uint8
+    )
+    buffer: BytesIO = BytesIO()
+    PilImage.fromarray(pixels).save(buffer, "JPEG")
+    prepared = storage.prepare_image(buffer.getvalue())
+    path: str = storage.save_image(prepared)
+    image: Image = db.add_image(path, prepared.sha256, prepared.width, prepared.height)
+    Image.update(status=ImageStatus.PROCESSING.value).where(
+        Image.id == image.id
+    ).execute()
+    region = db.add_regions(
+        image.id,
+        [db.NewRegion(*BOX, 0.5, db.RegionSource.FULL, ["a bottle"], in_hand=in_hand)],
+    )[0]
+    db.store_region_vectors([region.id], vector.reshape(1, -1), model())
+    db.mark_image_done(image.id)
+    Image.update(captured_at=utc_now() - timedelta(minutes=minutes_ago)).where(
+        Image.id == image.id
+    ).execute()
+    return image

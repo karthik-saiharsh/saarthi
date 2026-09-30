@@ -1,0 +1,79 @@
+/* Find page: the object buttons, the question box and the result. Big, calm and clear. */
+
+.up-find-choices {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+  gap: var(--space-3);
+}
+
+/* A tap target that is easy to hit and to read. */
+.up-find-choice {
+  width: 100%;
+  min-height: 4.5rem;
+  font-size: var(--text-l);
+  font-weight: var(--weight-bold);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.up-find-ask {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.up-find-ask__field {
+  width: 100%;
+  font-size: var(--text-l);
+}
+
+.up-find-ask__submit {
+  align-self: flex-start;
+  min-height: 3.5rem;
+  font-size: var(--text-l);
+}
+
+/* The result area. It is live, so a screen reader reads a new result. */
+.up-find-result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 2rem;
+}
+
+.up-find-busy {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--color-text-muted);
+}
+
+.up-find-busy__text {
+  font-size: var(--text-l);
+}
+
+.up-find-name {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+}
+
+.up-find-picture {
+  width: 100%;
+  max-width: 32rem;
+  border-radius: var(--radius-m);
+  border: var(--border-width) solid var(--color-border);
+}
+
+.up-find-when {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+  color: var(--color-accent);
+}
+
+.up-find-text {
+  font-size: var(--text-l);
+  color: var(--color-text);
+}

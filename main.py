@@ -120,7 +120,9 @@ def attach(components: Components, web_app: WebApp) -> None:
 def create_pages(components: Components) -> None:
     """Add the pages of the UI. `/` leads to the upload page."""
     register_pages(
-        components.backend.upload_service, components.backend.enrollment_service
+        components.backend.upload_service,
+        components.backend.enrollment_service,
+        components.backend.find_service,
     )
 
     @ui.page("/")

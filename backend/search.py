@@ -135,9 +135,31 @@ class SearchService:
         """
         assert view in PICTURE_VIEWS, f"view must be one of {PICTURE_VIEWS}"
         assert isinstance(max_side, int) and max_side > 0, "max_side must be positive"
-        answer: Answer = self.find(object_id, now)
-        if not answer.found or answer.image_id is None or answer.box is None:
+        picture: bytes | None = self._render(self.find(object_id, now), view, max_side)
+        if picture is None:
             raise NotFoundError("The object was not seen")
+        return picture
+
+    def find_with_picture(
+        self, object_id: int, max_side: int = 512, now: datetime | None = None
+    ) -> tuple[Answer, bytes | None]:
+        """Find the object and make the `crop` picture of the answer with one search.
+
+        The picture is None if the object was not seen, or if the frame cannot be
+        read: the answer is still true, so the caller can show it without a picture.
+        """
+        assert isinstance(max_side, int) and max_side > 0, "max_side must be positive"
+        answer: Answer = self.find(object_id, now)
+        try:
+            return answer, self._render(answer, "crop", max_side)
+        except (storage.StorageError, NotFoundError):
+            logger.warning("Search for object %d: no picture of the frame", object_id)
+            return answer, None
+
+    def _render(self, answer: Answer, view: str, max_side: int) -> bytes | None:
+        """Cut the picture of an answer from its frame. Return None if there is no answer."""
+        if not answer.found or answer.image_id is None or answer.box is None:
+            return None
         image: Image | None = db.get_image(answer.image_id)
         if image is None:
             raise NotFoundError("The frame of the answer is gone")

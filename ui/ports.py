@@ -120,3 +120,71 @@ class EnrollmentService(Protocol):
     async def get_crop(self, object_id: int, photo_id: int, max_side: int) -> bytes:
         """Return a JPEG of the part of the photo where the object was found."""
         ...
+
+
+class FindStatus(StrEnum):
+    """What the page shows after a search."""
+
+    FOUND = "found"  # The system saw the object. The page shows where and when
+    NOT_SEEN = "not_seen"  # The object is known, but the system did not see it
+    CHOOSE = "choose"  # The words fit several objects. The user chooses
+    NO_MATCH = "no_match"  # The words fit no object
+
+
+class FindError(Exception):
+    """An expected problem of a search. `str(error)` is a short text that the UI shows.
+
+    The text must not contain personal data or internal error text.
+    """
+
+
+@dataclass(frozen=True)
+class FindChoice:
+    """An object that the user can look for."""
+
+    object_id: int
+    name: str
+
+
+@dataclass(frozen=True)
+class Sighting:
+    """Where and when the system saw an object, ready to show."""
+
+    age_seconds: int  # The time since the frame was received
+    in_hand: bool  # The person held the object
+    strong: bool  # False: the system is not sure. The page says "maybe"
+    stale: bool  # An old sighting, and nothing newer was found
+    picture: bytes | None  # A JPEG of the object with some space around it
+
+
+@dataclass(frozen=True)
+class FindResult:
+    """The result of one search."""
+
+    status: FindStatus
+    # The name of the object, for FOUND and NOT_SEEN.
+    object_name: str | None = None
+    sighting: Sighting | None = None
+    # The objects to choose from, for CHOOSE. Best first.
+    choices: tuple[FindChoice, ...] = ()
+    # False: the search stopped early, so "not seen" may be wrong.
+    complete: bool = True
+
+
+class FindService(Protocol):
+    """The search: choose an object, or write what you look for.
+
+    Every method raises `FindError` for an expected problem.
+    """
+
+    async def list_choices(self) -> list[FindChoice]:
+        """Return the objects that a search can find, in a stable order."""
+        ...
+
+    async def ask(self, text: str) -> FindResult:
+        """Find the object that the words mean, and where it was seen."""
+        ...
+
+    async def find(self, object_id: int) -> FindResult:
+        """Find where an object was seen last."""
+        ...

@@ -9,10 +9,8 @@ import dataclasses
 import json
 import logging
 from collections.abc import Iterator
-from datetime import timedelta
 from io import BytesIO
 
-import numpy as np
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -29,14 +27,19 @@ from backend.http_search import (
 from backend.query import QueryResolver
 from backend.search import SearchService
 from backend.settings import BackendConfig, load_config
-from db.schema import EnrolledObject, Image, ImageStatus, utc_now
+from db.schema import EnrolledObject, Image
 from tests.ai_support import make_engine
 from tests.db_support import skip_if_actual_data_has_problems
-from tests.search_support import BOTTLE, OTHER, PREFIX, make_object, model
+from tests.search_support import (
+    BOX,
+    FRAME_SIZE,
+    OTHER,
+    PREFIX,
+    make_object,
+    store_frame,
+)
 
 TOKEN: str = "correct-horse-battery-staple"
-FRAME_SIZE: tuple[int, int] = (80, 60)
-BOX: tuple[int, int, int, int] = (20, 15, 60, 45)  # 40 x 30 inside the frame
 
 
 @pytest.fixture(autouse=True)
@@ -70,33 +73,6 @@ def build_client(token: str | None = None) -> TestClient:
         )
     )
     return TestClient(app)
-
-
-def store_frame(
-    minutes_ago: int = 10, vector: np.ndarray = BOTTLE, in_hand: bool = False
-) -> Image:
-    """A `done` frame with a real file and one region (BOX) with a vector."""
-    pixels: np.ndarray = np.random.default_rng(minutes_ago).integers(
-        0, 255, (FRAME_SIZE[1], FRAME_SIZE[0], 3), dtype=np.uint8
-    )
-    buffer: BytesIO = BytesIO()
-    PilImage.fromarray(pixels).save(buffer, "JPEG")
-    prepared = storage.prepare_image(buffer.getvalue())
-    path: str = storage.save_image(prepared)
-    image: Image = db.add_image(path, prepared.sha256, prepared.width, prepared.height)
-    Image.update(status=ImageStatus.PROCESSING.value).where(
-        Image.id == image.id
-    ).execute()
-    region = db.add_regions(
-        image.id,
-        [db.NewRegion(*BOX, 0.5, db.RegionSource.FULL, ["a bottle"], in_hand=in_hand)],
-    )[0]
-    db.store_region_vectors([region.id], vector.reshape(1, -1), model())
-    db.mark_image_done(image.id)
-    Image.update(captured_at=utc_now() - timedelta(minutes=minutes_ago)).where(
-        Image.id == image.id
-    ).execute()
-    return image
 
 
 def jpeg_size(data: bytes) -> tuple[int, int]:

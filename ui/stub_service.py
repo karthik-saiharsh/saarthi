@@ -4,7 +4,7 @@
 `duplicate` -> DUPLICATE, `reject` -> REJECTED, `fail` -> FAILED.
 Any other name -> STORED.
 
-`StubEnrollmentService`: keeps the gallery in memory. A new photo is
+`StubFindService`: four fixed objects. The words select the result: "bottle" or "drink"\nfinds the bottle, "key" is not seen, "cup" or "mug" asks which one, anything else fits no object.\n\n`StubEnrollmentService`: keeps the gallery in memory. A new photo is
 `pending` for 1 s, `processing` for 1.5 s, and then `located`. Every fourth
 photo of an object fails with "object not found".
 """
@@ -20,11 +20,16 @@ from PIL import Image
 
 from ui.ports import (
     EnrollmentError,
+    FindChoice,
+    FindError,
+    FindResult,
+    FindStatus,
     ObjectDetail,
     ObjectInfo,
     OutcomeStatus,
     PhotoInfo,
     PhotoState,
+    Sighting,
     UploadOutcome,
 )
 
@@ -218,4 +223,63 @@ class StubEnrollmentService:
             ready,
             note,
             counts,
+        )
+
+
+_STUB_OBJECTS: dict[int, str] = {
+    1: "Blue bottle",
+    2: "House keys",
+    3: "Tea cup",
+    4: "Grey mug",
+}
+
+
+class StubFindService:
+    """Implements `FindService` with fixed objects and a short delay."""
+
+    async def list_choices(self) -> list[FindChoice]:
+        return [FindChoice(i, name) for i, name in _STUB_OBJECTS.items()]
+
+    async def ask(self, text: str) -> FindResult:
+        assert isinstance(text, str) and text, "text must be a non-empty string"
+        await asyncio.sleep(0.4)
+        lowered: str = text.lower()
+        if "bottle" in lowered or "drink" in lowered:
+            return await self.find(1)
+        if "key" in lowered:
+            return await self.find(2)
+        if "cup" in lowered or "mug" in lowered:
+            return FindResult(
+                FindStatus.CHOOSE,
+                choices=(
+                    FindChoice(3, _STUB_OBJECTS[3]),
+                    FindChoice(4, _STUB_OBJECTS[4]),
+                ),
+            )
+        return FindResult(FindStatus.NO_MATCH)
+
+    async def find(self, object_id: int) -> FindResult:
+        assert isinstance(object_id, int), "object_id must be an int"
+        name: str | None = _STUB_OBJECTS.get(object_id)
+        if name is None:
+            raise FindError("This object does not exist any more.")
+        await asyncio.sleep(0.6)
+        if object_id == 2:  # Never seen, and the search stopped early
+            return FindResult(FindStatus.NOT_SEEN, object_name=name, complete=False)
+        image: Image.Image = Image.new("RGB", (640, 480))
+        image.paste(
+            (40 + object_id * 30, 120, 200 - object_id * 20), (0, 0, *image.size)
+        )
+        buffer: io.BytesIO = io.BytesIO()
+        image.save(buffer, format="JPEG", quality=70)
+        return FindResult(
+            FindStatus.FOUND,
+            object_name=name,
+            sighting=Sighting(
+                age_seconds={1: 12 * 60, 3: 3 * 3600, 4: 2 * 86400}[object_id],
+                in_hand=object_id == 3,
+                strong=object_id != 3,  # The cup is a weak match: "maybe"
+                stale=object_id == 4,  # The mug is an old sighting
+                picture=buffer.getvalue(),
+            ),
         )

@@ -247,3 +247,26 @@ def test_the_search_does_not_change_any_data() -> None:
     before: int = db.vector_count()
     make_service().find(obj.id, NOW)
     assert sightings.get_last_seen(obj.id) is None and db.vector_count() == before
+
+
+def test_find_with_picture_searches_once_and_keeps_the_answer_without_a_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    obj = make_object()
+    make_frame(minutes(15))
+    service: SearchService = make_service()
+    calls: list[int] = []
+    original = service.find
+    monkeypatch.setattr(
+        service, "find", lambda *a, **k: calls.append(1) or original(*a, **k)
+    )
+    # The frame of this test has no real file: the answer stays, the picture is None.
+    answer, picture = service.find_with_picture(obj.id, 128, NOW)
+    assert answer.found and picture is None
+    assert calls == [1]
+
+
+def test_find_with_picture_gives_none_when_the_object_was_not_seen() -> None:
+    obj = make_object()
+    answer, picture = make_service().find_with_picture(obj.id, 128, NOW)
+    assert not answer.found and picture is None

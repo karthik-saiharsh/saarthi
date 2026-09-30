@@ -28,7 +28,7 @@ from backend.settings import (
     ServerConfig,
     load_config,
 )
-from backend.ui_adapter import UiEnrollmentService, UiUploadService
+from backend.ui_adapter import UiEnrollmentService, UiFindService, UiUploadService
 from backend.worker import Worker
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -143,3 +143,8 @@ class Backend:
     def enrollment_service(self) -> UiEnrollmentService:
         """The gallery service that the UI calls. It implements `ui.ports.EnrollmentService`."""
         return UiEnrollmentService(self._enrollment)
+
+    @property
+    def find_service(self) -> UiFindService:
+        """The search that the UI calls. It implements `ui.ports.FindService`."""
+        return UiFindService(self._query, self._search, self._enrollment)

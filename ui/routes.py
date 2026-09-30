@@ -2,3 +2,4 @@
 
 UPLOAD_ROUTE: str = "/upload"
 ENROLL_ROUTE: str = "/enroll"
+FIND_ROUTE: str = "/find"

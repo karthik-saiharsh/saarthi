@@ -28,7 +28,7 @@ For the full design, see `docs/backend/Upload Endpoint.md`, `docs/backend/Enroll
 | `http_search.py` | The HTTP routes of the search: `POST /api/search`, `GET /api/objects/{id}/last-seen` and its picture |
 | `http_common.py` | What both route files share: the token check, the body reader, the error answers |
 | `enrollment.py` | `EnrollmentService`: objects, reference photos, the carer's confirmation, the calibration |
-| `ui_adapter.py` | Connects the UI to the upload step and to enrollment (`ui.ports.UploadService`, `ui.ports.EnrollmentService`) |
+| `ui_adapter.py` | Connects the UI to the upload step, to enrollment and to the search (`ui.ports.UploadService`, `EnrollmentService`, `FindService`) |
 | `memory.py` | `MemoryService`: matches the regions of a frame, writes the sightings, keeps the last-seen records |
 | `search.py` | `SearchService`: answers "where is my object?" from the last-seen record, then from the archive of frames |
 | `query.py` | `QueryResolver`: turns the words of a user into an enrolled object, or a short list to choose from |
@@ -188,7 +188,7 @@ engine = AiEngine()
 backend = Backend(engine)          # It checks the size of the vectors
 
 app.include_router(backend.create_router())     # The HTTP routes
-register_pages(backend.upload_service, backend.enrollment_service)  # The UI
+register_pages(backend.upload_service, backend.enrollment_service, backend.find_service)  # The UI
 app.on_startup(backend.start)                   # The worker and the maintenance thread
 app.on_shutdown(lambda: stop_components(components))
 # stop_components stops the backend, saves the vector index, closes the database and releases the lock

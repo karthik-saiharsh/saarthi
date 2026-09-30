@@ -31,19 +31,28 @@ from backend.enrollment import (
 from backend.errors import (
     BackendError,
     InvalidInputError,
+    InvalidQueryError,
     LimitReachedError,
     NotFoundError,
+    ObjectNotReadyError,
     QueueFullError,
 )
 from backend.ingest import IngestResult, IngestService, IngestStatus
+from backend.query import QueryCandidate, QueryResolver, QueryResult, QueryStatus
+from backend.search import Answer, SearchService
 from db.schema import ObjectStatus
 from ui.ports import (
     EnrollmentError,
+    FindChoice,
+    FindError,
+    FindResult,
+    FindStatus,
     ObjectDetail,
     ObjectInfo,
     OutcomeStatus,
     PhotoInfo,
     PhotoState,
+    Sighting,
     UploadOutcome,
 )
 
@@ -229,3 +238,112 @@ class UiEnrollmentService:
     async def get_crop(self, object_id: int, photo_id: int, max_side: int) -> bytes:
         assert isinstance(object_id, int) and isinstance(photo_id, int), "ids are int"
         return await self._call(self._service.get_crop, object_id, photo_id, max_side)
+
+
+MESSAGE_FIND_FAILED: str = "The search did not work. Please try again."
+MESSAGE_FIND_NOT_READY: str = "This object cannot be searched yet."
+MESSAGE_FIND_NOT_FOUND: str = "This object does not exist any more."
+# The longest side of the picture on the find page, in pixels.
+FIND_PICTURE_SIDE: int = 640
+
+
+def _find_error(error: Exception) -> FindError:
+    """Turn an error of the search into an error with a fixed text for the UI."""
+    if isinstance(error, InvalidQueryError):
+        return FindError(str(error))  # A fixed text
+    if isinstance(error, ObjectNotReadyError):
+        return FindError(MESSAGE_FIND_NOT_READY)
+    if isinstance(error, NotFoundError):
+        return FindError(MESSAGE_FIND_NOT_FOUND)
+    if isinstance(error, (storage.StorageError, db.DbError, BackendError, AiError)):
+        logger.error("Search failed: %s", type(error).__name__, exc_info=error)
+        return FindError(MESSAGE_FIND_FAILED)
+    logger.error("Search failed unexpectedly", exc_info=error)
+    return FindError(MESSAGE_FIND_FAILED)
+
+
+class UiFindService:
+    """Implements `ui.ports.FindService` with the real resolver and the real search.
+
+    The work blocks, so each call runs in a thread. Each error becomes a
+    `FindError` with a fixed text. The words of the user are never logged.
+    """
+
+    def __init__(
+        self,
+        resolver: QueryResolver,
+        search: SearchService,
+        enrollment: EnrollmentService,
+    ) -> None:
+        assert isinstance(resolver, QueryResolver), "resolver must be a QueryResolver"
+        assert isinstance(search, SearchService), "search must be a SearchService"
+        assert isinstance(
+            enrollment, EnrollmentService
+        ), "enrollment must be an EnrollmentService"
+        self._resolver: QueryResolver = resolver
+        self._search: SearchService = search
+        self._enrollment: EnrollmentService = enrollment
+
+    async def _call(
+        self, function: Callable[..., _Result], *arguments: object
+    ) -> _Result:
+        try:
+            return await asyncio.to_thread(function, *arguments)
+        except Exception as error:  # The boundary to the UI: map every error.
+            raise _find_error(error) from error
+
+    async def list_choices(self) -> list[FindChoice]:
+        summaries: list[ObjectSummary] = await self._call(self._enrollment.list_objects)
+        return [
+            FindChoice(s.id, s.name)
+            for s in summaries
+            if s.status == ObjectStatus.READY.value and s.tracked
+        ]
+
+    async def ask(self, text: str) -> FindResult:
+        assert isinstance(text, str), "text must be a string"
+        return await self._call(self._ask, text)
+
+    async def find(self, object_id: int) -> FindResult:
+        assert isinstance(object_id, int), "object_id must be an int"
+        return await self._call(self._find, object_id, None)
+
+    def _ask(self, text: str) -> FindResult:
+        result: QueryResult = self._resolver.resolve(text)
+        if result.status == QueryStatus.MATCHED:
+            best: QueryCandidate = result.candidates[0]
+            return self._find(best.object_id, best.name)
+        if result.status == QueryStatus.AMBIGUOUS:
+            return FindResult(
+                FindStatus.CHOOSE,
+                choices=tuple(
+                    FindChoice(c.object_id, c.name) for c in result.candidates
+                ),
+            )
+        return FindResult(FindStatus.NO_MATCH)
+
+    def _find(self, object_id: int, name: str | None) -> FindResult:
+        if name is None:
+            obj = db.gallery.get_object(object_id)
+            if obj is None:
+                raise NotFoundError("The object does not exist")
+            name = obj.name
+        answer: Answer
+        picture: bytes | None
+        answer, picture = self._search.find_with_picture(object_id, FIND_PICTURE_SIDE)
+        if not answer.found or answer.age_seconds is None:
+            return FindResult(
+                FindStatus.NOT_SEEN, object_name=name, complete=answer.complete
+            )
+        return FindResult(
+            FindStatus.FOUND,
+            object_name=name,
+            sighting=Sighting(
+                age_seconds=answer.age_seconds,
+                in_hand=bool(answer.in_hand),
+                strong=bool(answer.strong),
+                stale=answer.stale,
+                picture=picture,
+            ),
+            complete=answer.complete,
+        )

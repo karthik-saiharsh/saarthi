@@ -16,6 +16,7 @@ Edge Efficient Episodic Memory Aid
 
 1. Run: `uv run python main.py`
 1. Open `http://<address of this computer>:8080/upload` in a browser to upload pictures.
+1. Open `http://<address of this computer>:8080/find` to ask where an object is. Choose the object, or write it in your own words.
 1. The wearable (or a script) sends one picture at a time: `curl -X POST --data-binary @photo.jpg http://<address>:8080/api/images`
 
 - The first start downloads the AI models (about 870 MB). It needs internet one time.

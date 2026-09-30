@@ -197,6 +197,7 @@ def test_the_pages_use_the_real_upload_service_and_the_home_page_leads_to_it(
     assert [type(s).__name__ for s in registered] == [
         "UiUploadService",
         "UiEnrollmentService",
+        "UiFindService",
     ]
     answer = pages["/"]()
     assert (
