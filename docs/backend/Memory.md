@@ -4,7 +4,7 @@
 
 The memory answers one question: where did the system last see each object of the owner?
 It does the stages I4 (match) and I6 (update memory) of `docs/guide/DINO-Based Object Recall Pipeline.md`.
-The search that reads the memory (stage Q1) is not built yet.
+The search (stage Q1) reads the memory. See `docs/backend/Search.md`.
 
 ## Where it fits
 

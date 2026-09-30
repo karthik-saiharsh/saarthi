@@ -3,15 +3,17 @@
 ## Purpose
 
 The ai module turns one stored image into data for the database.
-It does three things:
+It does these things:
 
 1. It checks the quality of the image (stage I1).
 2. It finds boxes that can show an object that the user may lose (stage I2).
 3. It makes one vector for each box (stage I3).
+4. It matches the boxes with the enrolled objects (stage I4).
+5. It turns the words of a user into a vector, to find the object that the user means (stage Q1).
 
 The design follows `docs/ai/DINO-Based Object Recall Pipeline.md`.
-The ingestion pipeline covers the stages I1, I2 and I3.
-The stages that need a gallery of enrolled objects are not in this module yet (see "Not in this module").
+The enrollment stages E2 to E4 are in the section "Enrollment stages E2 to E4".
+The stages that use the results are in `docs/backend/Memory.md` and `docs/backend/Search.md`.
 
 ## Where it fits
 
@@ -44,7 +46,7 @@ The ai module does not import the db module.
 
 | Helper | Task | Result |
 |--------|------|--------|
-| `AiEngine(config=None)` | Load both models | The engine. Call it one time at start-up |
+| `AiEngine(config=None)` | Load the three models | The engine. Call it one time at start-up |
 | `open_image(data, max_pixels)` | Decode image bytes. Apply the EXIF orientation. Convert to RGB | A PIL image. Raises `ImageError` |
 | `engine.open_image(data)` | The same, with `image.max_pixels` of the config | A PIL image |
 | `engine.assess_quality(image)` | Blur score and perceptual hash | `QualityReport` |
@@ -53,6 +55,8 @@ The ai module does not import the db module.
 | `engine.detect_candidates(image, phrases=None, small_phrases=None, include_generic=False, tiling=None)` | Find candidate boxes | List of `Candidate`, best score first |
 | `engine.embed_regions(image, boxes)` | One vector for each box | `float32` array, shape `(n, 384)`, unit length |
 | `engine.match_regions(vectors, regions, objects)` | Match the regions of a frame with the `ready` objects (stage I4) | List of `Sighting` |
+| `engine.encode_texts(texts)` | One vector for each text (stage Q1) | `float32` array, shape `(n, 384)`, unit length |
+| `engine.query_model` | Name of the query encoder, for example `all-MiniLM-L6-v2@1110a243` | `str` |
 | `engine.embedding_model` | Name for the database, for example `dinov2-small@ed25f3a3` | `str` |
 | `engine.embedding_dimension` | Length of one vector | `int` |
 
@@ -173,6 +177,21 @@ A bad vector or view (not finite, not unit length, another size, no views) raise
 The worker calls it through `MemoryService` after it stores the regions (see `docs/backend/Memory.md`). The rule that updates the last-seen record is there.
 The verification (I5), the ratio test and the one-to-one assignment of the pipeline document are not built.
 
+## Query encoder (stage Q1)
+
+`engine.encode_texts(texts)` turns texts into unit-length vectors. The backend uses it for two kinds of text:
+the words of a user, and the description of each enrolled object (`docs/backend/Search.md`).
+The cosine between two vectors is the score of a pair.
+
+- The model is `sentence-transformers/all-MiniLM-L6-v2` (Apache-2.0, about 22 million parameters, about 91 MB). The vector has 384 numbers.
+- The module cuts a text after `query.max_tokens` tokens (128, the length that the model learned with).
+- The vector is the mean of the token vectors. The padding does not count. The module scales it to unit length.
+- The module loads the model one time, with the other two. One lock protects it.
+- These vectors are not comparable with the vectors of the regions. Compare them with each other only.
+- The encoder reads text only. It never sees an image. It runs on the device, so the words stay on the device.
+
+An error raises `InferenceError`. A model that cannot be loaded raises `ModelLoadError`.
+
 ## Enrollment stages E2 to E4
 
 The enrollment gives the system the objects that it looks for (see `docs/backend/Enrollment.md`).
@@ -199,11 +218,12 @@ All settings are in `ai/config.toml`. The start values come from the pipeline do
 
 | Table | Keys |
 |-------|------|
-| `[models]` | `detector_id`, `detector_revision`, `embedder_id`, `embedder_revision`, `device` (`auto`, `cpu` or `cuda`), `cpu_threads`, `local_files_only` |
+| `[models]` | `detector_id`, `detector_revision`, `embedder_id`, `embedder_revision`, `query_encoder_id`, `query_encoder_revision`, `device` (`auto`, `cpu` or `cuda`), `cpu_threads`, `local_files_only` |
 | `[image]` | `max_pixels` |
 | `[quality]` | `blur_min`, `analysis_max_side`, `phash_max_distance`, `min_crop_side`, `crop_blur_min` |
 | `[detection]` | `box_threshold`, `text_threshold`, `input_short_edge`, `max_per_phrase`, `chunk_size`, `nms_iou`, `max_frame_fraction`, `min_box_side`, `hand_overlap`, `depiction_inside`, `default_phrases`, `small_phrases`, `hand_phrase`, `depiction_phrases`, `generic_phrase`, `tiling_enabled`, `tile_overlap` |
 | `[embedding]` | `frame_short_edge`, `frame_long_edge_max`, `crop_size`, `small_box_min_side`, `crop_padding` |
+| `[query]` | `max_tokens` |
 
 - `embedding.frame_short_edge`, `embedding.frame_long_edge_max` and `embedding.crop_size` must be multiples of 14.
 - Each phrase in `detection.small_phrases` must also be in `detection.default_phrases`.
@@ -218,6 +238,7 @@ All settings are in `ai/config.toml`. The start values come from the pipeline do
 |------|-------|------|
 | Detect | `IDEA-Research/grounding-dino-tiny` | About 690 MB |
 | Embed | `facebook/dinov2-small` | About 90 MB |
+| Understand the words of a user | `sentence-transformers/all-MiniLM-L6-v2` | About 91 MB |
 
 - The first start downloads the models to the Hugging Face cache, `~/.cache/huggingface/hub/`.
   Set the variable `HF_HOME` (or `HF_HUB_CACHE`) to use another folder.
@@ -225,7 +246,8 @@ All settings are in `ai/config.toml`. The start values come from the pipeline do
 - The module loads only safetensors files. It never runs code from the model repository.
 - After the first download, set `models.local_files_only = true`. The module then never uses the internet.
 - The cache is per user and per machine. For the Raspberry Pi, run the application one time with internet, or copy the `hub/` folder.
-- The module loads the models one time. Loading both takes about 6 seconds on the development machine.
+- The module loads the models one time. Loading the detector and the embedder takes about 6 seconds on the development machine.
+  The query encoder takes about 2 seconds more (measured once, with the files in the cache).
 - One lock protects each model, so two threads cannot use the same model at the same time.
 
 ## Errors
@@ -303,7 +325,6 @@ The photo shows a phone in a pink case on a book, a charger with a cable, and a 
 These parts are not built yet:
 
 - Verification (I5).
-- The search for an object and the answer to the user.
 - Techniques from the pipeline document: pooling over a mask (SAM), background-free enrollment, context negatives, and the calibrated accept and reject model.
   The owner decided that enrollment uses boxes only.
 
@@ -319,6 +340,7 @@ These parts are not built yet:
 | `tests/test_ai_api.py` | `AiEngine` with fake models, and `open_image` |
 | `tests/test_ai_calibration.py`, `tests/test_ai_enrollment.py` | The calibration, the box scaling and the brightness |
 | `tests/test_ai_matching.py` | The matching: threshold, margin, look-alikes, phrases, skipped regions, bad data |
+| `tests/test_ai_query_model.py` (slow) | The real query encoder: the vectors, the padding, four vague questions |
 | `tests/test_ai_models.py` (slow) | The real models: vector shape and length, the three passes, the engine |
 | `tests/test_ingestion_chain.py` (slow) | One photo from the upload to the retention, with all modules |
 

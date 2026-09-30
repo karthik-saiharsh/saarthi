@@ -4,6 +4,8 @@ This is the ai module.
 It looks at one image and gives the data that the database needs:
 a quality check, the boxes of candidate objects, and one vector for each box.
 It also gives the stages of enrollment: find one object in a photo, make its views, and calibrate its thresholds.
+It matches the boxes of a frame with the enrolled objects.
+It turns the words of a user into a vector, to find the object that the user means.
 
 For the full design, see `ai/docs/AI Ingestion Module.md`.
 The source of the design is `docs/ai/DINO-Based Object Recall Pipeline.md`.
@@ -58,7 +60,7 @@ The source of the design is `docs/ai/DINO-Based Object Recall Pipeline.md`.
 ```python
 from ai.api import AiEngine
 
-engine = AiEngine()  # Loads both models. Do this one time.
+engine = AiEngine()  # Loads the three models. Do this one time.
 image = engine.open_image(data)
 report = engine.assess_quality(image)
 candidates = engine.detect_candidates(image)

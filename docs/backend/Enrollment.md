@@ -11,7 +11,9 @@ These are the stages E1 to E4 of `docs/guide/DINO-Based Object Recall Pipeline.m
 The gallery is not the archive. The archive holds the regions of the frames from the wearable.
 The gallery holds the objects that the system looks for.
 The ingestion uses the gallery only for the detector phrases (see "Link to ingestion").
-Matching, verification and search are not built yet.
+Matching and the last-seen record are in `docs/backend/Memory.md`. The search is in `docs/backend/Search.md`.
+The search uses the names and the phrases of the objects to find the object that a user means.
+The verification (I5) is not built.
 
 ## Where it fits
 
