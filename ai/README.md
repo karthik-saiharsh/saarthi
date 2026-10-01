@@ -83,6 +83,8 @@ Edit `config.toml`. The file explains each key.
 - Each model is fixed to one revision in `config.toml`. Only safetensors files are loaded.
   No code from the model repository is run.
 - The first start downloads the models to the Hugging Face cache, `~/.cache/huggingface/hub/`.
+  On a slow network the download can take about 15 minutes. If the download does not start (the partial file stays at 0 bytes),
+  set `HF_HUB_DISABLE_XET=1` and start again. This helped on the development machine.
   Set the variable `HF_HOME` to use another folder.
 - After the first download, set `models.local_files_only = true` for a start without internet.
 

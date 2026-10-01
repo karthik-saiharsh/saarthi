@@ -41,7 +41,7 @@ A `FindResult` has a `status`:
 
 | Status | Meaning | What the page shows |
 |--------|---------|---------------------|
-| `found` | The system saw the object | The name, the picture and the time |
+| `found` | The system saw the object | The name, the time and the picture |
 | `not_seen` | The object is known, but the system did not see it | "The computer has not seen it lately." |
 | `choose` | The words fit several objects | "Which one do you mean?" and a button for each object |
 | `no_match` | The words fit no object | "The computer does not know which object you mean. Choose an object from the list." |
@@ -62,6 +62,10 @@ The result card is the first card on purpose. On a phone, a card below the butto
 When a search starts, the page also scrolls to the top, so the person sees the result.
 
 ### The lines of a result
+
+The lines come before the picture. A tall object, for example a bottle, makes a tall picture.
+On a phone, such a picture can fill the whole screen. The page limits the height of the picture to 45 % of the screen.
+The picture is shown whole, and is never cut.
 
 | Line | When |
 |------|------|
@@ -131,3 +135,5 @@ The test chose objects, wrote words, and covered all four results and the empty-
 The page had no horizontal scroll. The test did not read the browser console.
 The test found two faults, and both are fixed:
 the result was below the buttons, and the page did not scroll to it.
+A later run with the real application and real photos found a third fault: the picture of a bottle pushed the time off the screen.
+The lines now come first.

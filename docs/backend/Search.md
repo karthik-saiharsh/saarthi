@@ -183,6 +183,32 @@ The route and the UI turn each error into a fixed message.
 - The search cannot show an arbitrary frame. Each picture belongs to the answer for an object.
 - The names of objects are in the descriptions that the encoder reads. They stay in memory.
 
+## First run with the real models
+
+The test used the real application and the real models, through the HTTP routes. The machine had a CPU and no GPU.
+The photos were 10 first-person photos of a corridor and a balcony. A white speckled bottle is in 5 of them.
+
+- **Enrollment.** The object "Speckled bottle" got 3 photos. The detector found the bottle in all 3 (about 8 seconds for each photo).
+  The three crops were correct. The object was `ready` with `tau` 0.418 and `tau_strong` 0.468.
+- **Frames.** Seven other photos went through `POST /api/images` and took 55 seconds in total.
+
+| Frame | Content | Result |
+|-------|---------|--------|
+| 10 | The bottle in a hand. Not used for enrollment | A strong sighting, similarity 0.634, `in_hand` |
+| 8 | The bottle, cut by the edge of the picture | Not matched. The region has `quality_ok = False` because it touches the edge. Its best similarity was 0.511, above `tau` |
+| 1, 4, 5 | A notebook, a balcony, a backpack and chairs | The detector made boxes with the label "a bottle". Their best similarity was 0.14 to 0.32. No sighting |
+| 6, 7 | An empty corridor | No region |
+
+- **Questions.** "where is my speckled bottle" scored 0.77 (`matched`). "where did I leave my water flask" scored 0.39 (`matched`).
+  "I can't find the white thing with black dots that I drink water from" scored 0.32. This is `ambiguous`: the user confirms.
+  "where are my keys", "where is my phone" and "hello how are you" gave `none`.
+- **Answer.** The answer came from the `last_seen` record. The crop showed the bottle with its surroundings, and the frame view showed the scene.
+- **The page** `/find` showed the same result with the real picture.
+- **Restart.** A stop with Ctrl+C saved 12 vectors. The next start loaded the 12 vectors, and the recovery changed nothing.
+
+This is a very small test. It shows that the chain works. It does not show how good the thresholds are.
+The test found one picture problem, which is fixed (see `docs/ui/Find Page.md`).
+
 ## Known limits
 
 - **The cutoffs are not tuned.** The values of `[query]` come from a test with 10 objects. A developer wrote their descriptions.
@@ -192,6 +218,8 @@ The route and the UI turn each error into a fixed message.
   The verification (I5) is not built.
 - **The clock.** The time is the time of the server. A frame that the wearable sends late gets a wrong time.
   The page shows an age ("12 minutes ago"), not a time of day.
+- **The edge rule.** A region that touches the edge of the frame is not matched. A wearable often sees a held object cut by the edge.
+  In the first run, this rule hid a correct sighting. The rule is a decision for the calibration phase.
 - **A held object.** If the person held the object, the place is the person. The answer says so with `in_hand`.
 - **Cost.** The search matches each frame alone, because the newest match must win. It is exact and not fast.
   The frame limit and the time limit bound it. The speed on the Raspberry Pi is not measured.

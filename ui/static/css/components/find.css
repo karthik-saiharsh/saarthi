@@ -60,9 +60,12 @@
   font-weight: var(--weight-bold);
 }
 
+/* A tall object (a bottle) makes a tall picture. The height is capped, so the page stays easy to read. */
 .up-find-picture {
   width: 100%;
   max-width: 32rem;
+  height: min(45vh, 28rem);
+  background: var(--color-page);
   border-radius: var(--radius-m);
   border: var(--border-width) solid var(--color-border);
 }

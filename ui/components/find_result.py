@@ -88,16 +88,17 @@ def find_result(
 
 def _found(result: FindResult, sighting: Sighting) -> None:
     ui.label(result.object_name or "").classes("up-find-name")
-    if sighting.picture is not None:
-        ui.image(picture_source(sighting.picture)).props(
-            f'alt="{PICTURE_ALT}"'
-        ).classes("up-find-picture")
-    else:
-        ui.label(NO_PICTURE_TEXT).classes("up-find-text")
+    # The words come before the picture. A tall picture (a bottle) can fill a whole phone screen.
     lines = sighting_lines(sighting)
     ui.label(lines[0]).classes("up-find-when")
     for line in lines[1:]:
         ui.label(line).classes("up-find-text")
+    if sighting.picture is not None:
+        ui.image(picture_source(sighting.picture)).props(
+            f'fit=contain alt="{PICTURE_ALT}"'
+        ).classes("up-find-picture")
+    else:
+        ui.label(NO_PICTURE_TEXT).classes("up-find-text")
 
 
 def _not_seen(result: FindResult) -> None:
