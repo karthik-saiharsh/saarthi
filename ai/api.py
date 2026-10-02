@@ -38,7 +38,9 @@ from ai.types import (
     MatchRegion,
     QualityReport,
     Sighting,
+    VerifyResult,
 )
+from ai.verifier import KeypointVerifier
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -92,18 +94,28 @@ class AiEngine:
         detector: CandidateDetector | None = None,
         embedder: RegionEmbedder | None = None,
         query_encoder: QueryEncoder | None = None,
+        verifier: KeypointVerifier | None = None,
     ) -> None:
-        """Load the models. Pass `detector`, `embedder` or `query_encoder` only in tests."""
+        """Load the models. Pass `detector`, `embedder`, `query_encoder` or `verifier` only in tests.
+
+        The verifier loads only if `verification.enabled` is true.
+        """
         self._config: AiConfig = config if config is not None else load_config()
         configure_threads(self._config.models.cpu_threads)
         self._detector: CandidateDetector = detector or CandidateDetector(self._config)
         self._embedder: RegionEmbedder = embedder or RegionEmbedder(self._config)
         self._query_encoder: QueryEncoder = query_encoder or QueryEncoder(self._config)
+        self._verifier: KeypointVerifier | None = verifier or (
+            KeypointVerifier(self._config)
+            if self._config.verification.enabled
+            else None
+        )
         logger.info(
-            "AI engine ready: detector %s, embedder %s, query encoder %s",
+            "AI engine ready: detector %s, embedder %s, query encoder %s, verifier %s",
             self._detector.name,
             self._embedder.name,
             self._query_encoder.name,
+            self._verifier.name if self._verifier is not None else "off",
         )
 
     @property
@@ -289,3 +301,59 @@ class AiEngine:
         the regions. Compare them with each other only.
         """
         return self._query_encoder.encode(texts)
+
+    # ---- Verification (stage I5) ----
+
+    @property
+    def verification_enabled(self) -> bool:
+        """True if the verifier is loaded. If False, `verify_match` must not be called."""
+        return self._verifier is not None
+
+    def verification_crop(self, image: Image.Image, box: Box) -> Image.Image:
+        """Cut the picture that the verifier compares: the box with `verification.crop_padding` around it.
+
+        Use it for the reference photos and for the candidate, so both are cut in the same way.
+        """
+        assert isinstance(image, Image.Image), "image must be a PIL image"
+        assert isinstance(box, Box), "box must be a Box"
+        pad: float = self._config.verification.crop_padding
+        pad_x: int = round(box.width * pad)
+        pad_y: int = round(box.height * pad)
+        return image.crop(
+            (
+                max(0, box.x0 - pad_x),
+                max(0, box.y0 - pad_y),
+                min(image.width, box.x1 + pad_x),
+                min(image.height, box.y1 + pad_y),
+            )
+        )
+
+    def verify_match(
+        self, references: list[Image.Image], candidate: Image.Image
+    ) -> VerifyResult:
+        """Check a candidate against the reference pictures of an object (stage I5).
+
+        Compare in the given order. Stop at the first reference with at least
+        `verification.min_matches` matching keypoints, so put the most likely
+        reference first. The pictures come from `verification_crop`.
+        """
+        assert self._verifier is not None, "the verifier is switched off"
+        assert isinstance(references, list), "references must be a list"
+        assert isinstance(candidate, Image.Image), "candidate must be a PIL image"
+        needed: int = self._config.verification.min_matches
+        best: int = 0
+        compared: int = 0
+        for reference in references:
+            best = max(best, self._verifier.count_matches(reference, candidate))
+            compared += 1
+            if best >= needed:
+                break
+        result: VerifyResult = VerifyResult(best >= needed, best, compared)
+        logger.info(
+            "Verification: %s (best %d of %d needed, %d reference(s) compared)",
+            "passed" if result.verified else "not passed",
+            best,
+            needed,
+            compared,
+        )
+        return result

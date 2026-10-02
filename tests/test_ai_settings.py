@@ -36,6 +36,9 @@ def test_default_config_loads_and_is_consistent() -> None:
         ("local_files_only = false", 'local_files_only = "no"'),
         ("box_threshold = 0.25", "box_threshold = 1.5"),
         ("chunk_size = 30", "chunk_size = 0"),
+        ("min_matches = 30", "min_matches = 0"),
+        ("match_threshold = 0.2", "match_threshold = 1.5"),
+        ("enabled = true", 'enabled = "yes"'),
         (
             'augmentations = ["original", "box_smaller", "box_larger", "brighter"]',
             'augmentations = ["original", "flip"]',
@@ -71,7 +74,16 @@ def test_bad_values_are_refused(tmp_path: Path, old: str, new: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "table", ["models", "image", "quality", "detection", "embedding", "enrollment"]
+    "table",
+    [
+        "models",
+        "image",
+        "quality",
+        "detection",
+        "embedding",
+        "enrollment",
+        "verification",
+    ],
 )
 def test_missing_table_is_refused(tmp_path: Path, table: str) -> None:
     text: str = DEFAULT_TEXT.replace(f"[{table}]", f"[{table}_renamed]")
@@ -96,3 +108,10 @@ def test_the_query_encoder_is_pinned_to_a_revision() -> None:
     config = load_config()
     assert re.fullmatch(r"[0-9a-f]{40}", config.models.query_encoder_revision)
     assert config.models.query_encoder_id and config.query.max_tokens > 0
+
+
+def test_the_verifier_is_pinned_to_a_revision() -> None:
+    config = load_config()
+    assert re.fullmatch(r"[0-9a-f]{40}", config.models.verifier_revision)
+    assert config.models.verifier_id and config.verification.enabled
+    assert config.verification.min_matches > 0

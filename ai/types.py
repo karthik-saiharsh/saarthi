@@ -120,3 +120,14 @@ class Sighting:
     similarity: float  # The highest cosine to a view of the object
     margin: float  # The similarity minus the highest similarity to any other object
     strong: bool  # True: above `tau_strong` with the strong margin
+
+
+@dataclass(frozen=True)
+class VerifyResult:
+    """The result of the check of a sighting against the reference pictures (stage I5)."""
+
+    verified: (
+        bool  # True: a reference picture has at least `min_matches` matching keypoints
+    )
+    matches: int  # The highest number of matching keypoints that was found
+    compared: int  # The number of reference pictures that were compared

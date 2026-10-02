@@ -10,7 +10,7 @@ from ai.api import AiEngine, CalibrationError
 from ai.enrollment import MIN_BOX_SIDE, brighten, scale_box
 from ai.settings import AiConfig, load_config
 from ai.types import Box, RawDetection
-from tests.ai_support import FakeDetector, FakeEmbedder, FakeQueryEncoder
+from tests.ai_support import FakeDetector, FakeEmbedder, FakeQueryEncoder, FakeVerifier
 
 CONFIG: AiConfig = load_config()
 
@@ -28,7 +28,7 @@ def engine_with(
                 CONFIG.enrollment, augmentations=augmentations
             ),
         )
-    return AiEngine(config, detector=detector or FakeDetector(), embedder=embedder or FakeEmbedder(), query_encoder=FakeQueryEncoder())  # type: ignore[arg-type]
+    return AiEngine(config, detector=detector or FakeDetector(), embedder=embedder or FakeEmbedder(), query_encoder=FakeQueryEncoder(), verifier=FakeVerifier())  # type: ignore[arg-type]
 
 
 def photo(width: int = 200, height: int = 150, grey: int = 100) -> Image.Image:

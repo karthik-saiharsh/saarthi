@@ -95,11 +95,33 @@ class FakeQueryEncoder:
         return vectors
 
 
+class FakeVerifier:
+    """Returns a number of matching keypoints that the test sets. It records the calls.
+
+    `answers` is a queue: each call takes the first number. When it is empty, the call gives `answer`.
+    """
+
+    name = "fake-verifier@00000000"
+
+    def __init__(self, answer: int = 100) -> None:
+        self.answer: int = answer
+        self.answers: list[int] = []
+        self.error: Exception | None = None
+        self.calls: list[tuple[tuple[int, int], tuple[int, int]]] = []
+
+    def count_matches(self, first, second) -> int:
+        if self.error is not None:
+            raise self.error
+        self.calls.append((first.size, second.size))
+        return self.answers.pop(0) if self.answers else self.answer
+
+
 def make_engine(
     detector: FakeDetector | None = None,
     embedder: FakeEmbedder | None = None,
     blur_min: float | None = None,
     query_encoder: FakeQueryEncoder | None = None,
+    verifier: FakeVerifier | None = None,
 ) -> AiEngine:
     """An `AiEngine` with fake models. The quality gate and post-processing are real.
 
@@ -115,4 +137,5 @@ def make_engine(
         detector=detector or FakeDetector(),  # type: ignore[arg-type]
         embedder=embedder or FakeEmbedder(),  # type: ignore[arg-type]
         query_encoder=query_encoder or FakeQueryEncoder(),  # type: ignore[arg-type]
+        verifier=verifier or FakeVerifier(),  # type: ignore[arg-type]
     )

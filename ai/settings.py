@@ -25,6 +25,8 @@ class ModelsConfig:
     embedder_revision: str
     query_encoder_id: str
     query_encoder_revision: str
+    verifier_id: str
+    verifier_revision: str
     device: str
     cpu_threads: int
     local_files_only: bool
@@ -96,6 +98,14 @@ class QueryConfig:
 
 
 @dataclass(frozen=True)
+class VerificationConfig:
+    enabled: bool
+    min_matches: int
+    match_threshold: float
+    crop_padding: float
+
+
+@dataclass(frozen=True)
 class AiConfig:
     models: ModelsConfig
     image: ImageConfig
@@ -104,6 +114,7 @@ class AiConfig:
     embedding: EmbeddingConfig
     enrollment: EnrollmentConfig
     query: QueryConfig
+    verification: VerificationConfig
 
 
 class _Table:
@@ -192,6 +203,7 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> AiConfig:
     embedding: _Table = _Table(raw, "embedding")
     enrollment: _Table = _Table(raw, "enrollment")
     query: _Table = _Table(raw, "query")
+    verification: _Table = _Table(raw, "verification")
 
     default_phrases: tuple[str, ...] = detection.texts("default_phrases")
     small_phrases: tuple[str, ...] = detection.texts("small_phrases", allow_empty=True)
@@ -230,6 +242,8 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> AiConfig:
             embedder_revision=models.text("embedder_revision"),
             query_encoder_id=models.text("query_encoder_id"),
             query_encoder_revision=models.text("query_encoder_revision"),
+            verifier_id=models.text("verifier_id"),
+            verifier_revision=models.text("verifier_revision"),
             device=models.choice("device", DEVICES),
             cpu_threads=models.integer("cpu_threads", minimum=0),
             local_files_only=models.boolean("local_files_only"),
@@ -279,6 +293,12 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> AiConfig:
             min_photos=enrollment.integer("min_photos", minimum=2),
         ),
         query=QueryConfig(max_tokens=query.integer("max_tokens")),
+        verification=VerificationConfig(
+            enabled=verification.boolean("enabled"),
+            min_matches=verification.integer("min_matches"),
+            match_threshold=verification.number("match_threshold", 0.0, 1.0),
+            crop_padding=verification.number("crop_padding", 0.0, 1.0),
+        ),
     )
     logger.info("Loaded ai config from %s", config_path)
     return config

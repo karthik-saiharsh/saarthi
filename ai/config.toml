@@ -11,6 +11,11 @@ embedder_revision = "ed25f3a31f01632728cabb09d1542f84ab7b0056"
 # Turns the words of a user into a vector, to find the object that the user means (Apache-2.0).
 query_encoder_id = "sentence-transformers/all-MiniLM-L6-v2"
 query_encoder_revision = "1110a243fdf4706b3f48f1d95db1a4f5529b4d41"
+# Checks a borderline sighting: it counts the keypoints that match between two pictures (LightGlue with SuperPoint).
+# LICENCE: these weights are for academic or non-profit NON-COMMERCIAL RESEARCH use only. The owner confirmed that
+# this project is for academic research. Change the verifier if the use changes (see docs/backend/Verification.md).
+verifier_id = "ETH-CVG/lightglue_superpoint"
+verifier_revision = "5f5f626efee99f37dbc9eafea879d24d297aeab8"
 # "auto" uses a GPU if one exists, and the CPU if not. Other values: "cpu", "cuda".
 device = "auto"
 # Number of CPU threads for the models. 0 keeps the torch default.
@@ -112,3 +117,14 @@ min_photos = 3
 [query]
 # The encoder cuts a text after this many tokens. The model was trained with 128.
 max_tokens = 128
+
+[verification]
+# false: the model is not loaded, and no sighting is verified.
+enabled = true
+# A candidate is the same object as a reference picture if at least this many keypoints match.
+# In the first test, the true object had 59 to 215 matches. Other things had 5 to 13.
+min_matches = 30
+# A match counts if its confidence is at least this value.
+match_threshold = 0.2
+# Both pictures are cut from the box of the object, with this much space around it (a part of the box).
+crop_padding = 0.15
