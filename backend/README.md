@@ -135,6 +135,8 @@ A variable that is set but empty stops the start, so the route cannot open by mi
 |------------------------|---------|
 | `memory.hysteresis_window_seconds` | A weak sighting counts the sightings of the object in this time window |
 | `memory.hysteresis_hits` | The number of frames with a sighting that a weak sighting needs. A strong sighting needs none |
+| `memory.verify_weak` | Check a weak sighting against the reference photos of the object (stage I5). A sighting that passes counts as strong. The check never rejects a sighting |
+| `memory.verify_max_references` | The check compares with at most this many reference photos, the most similar first |
 
 | Key (table `[search]`) | Meaning |
 |------------------------|---------|

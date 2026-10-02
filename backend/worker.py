@@ -251,6 +251,6 @@ class Worker:
                 [r.id for r in regions], vectors, self._engine.embedding_model
             )
             # Stage I4 and I6. An error here marks the image `failed`. Its regions and vectors stay.
-            self._memory.remember(image, candidates, regions, vectors)
+            self._memory.remember(image, candidates, regions, vectors, picture)
         db.mark_image_done(image.id)
         logger.info("Image %d is done with %d region(s)", image.id, len(regions))

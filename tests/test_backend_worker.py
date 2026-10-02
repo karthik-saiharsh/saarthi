@@ -633,3 +633,23 @@ def test_retention_keeps_the_frame_of_the_last_seen_record(setup: Setup) -> None
     assert frame_id not in [i.id for i in db.list_images_older_than(cutoff, 10000)]
     with pytest.raises(db.InvalidStateError):
         db.delete_images([frame_id])
+
+
+def test_the_worker_gives_the_decoded_frame_to_the_memory(
+    setup: Setup, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Without the picture, the memory cannot check a weak sighting (stage I5).
+    setup.detector.detections = [bottle_detection()]
+    calls: list[tuple[tuple, dict]] = []
+
+    def remember(*args: object, **kwargs: object) -> int:
+        calls.append((args, kwargs))
+        return 0
+
+    monkeypatch.setattr(setup.worker._memory, "remember", remember)
+    frame_id: int = setup.upload(noise(500))
+    assert setup.worker.process_next() is True
+    assert state(frame_id).status == ImageStatus.DONE.value
+    assert len(calls) == 1
+    picture = calls[0][0][4]
+    assert isinstance(picture, PilImage.Image) and picture.size == (80, 60)

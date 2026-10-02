@@ -43,6 +43,8 @@ class MaintenanceConfig:
 class MemoryConfig:
     hysteresis_window_seconds: int
     hysteresis_hits: int
+    verify_weak: bool = True
+    verify_max_references: int = 3
 
 
 @dataclass(frozen=True)
@@ -108,6 +110,16 @@ def _integer(
             f"between {minimum} and {maximum}" if maximum else f"{minimum} or more"
         )
         raise BackendConfigError(f"{name}.{key} must be an integer {limit}")
+    return value
+
+
+def _boolean(table: dict, name: str, key: str) -> bool:
+    """Read true or false from a table. Raise `BackendConfigError` if it is missing or not a boolean."""
+    if key not in table:
+        raise BackendConfigError(f"Missing key {name}.{key} in config")
+    value: object = table[key]
+    if not isinstance(value, bool):
+        raise BackendConfigError(f"{name}.{key} must be true or false")
     return value
 
 
@@ -198,6 +210,8 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> BackendConfig:
             memory, "memory", "hysteresis_window_seconds", 1
         ),
         hysteresis_hits=_integer(memory, "memory", "hysteresis_hits", 1),
+        verify_weak=_boolean(memory, "memory", "verify_weak"),
+        verify_max_references=_integer(memory, "memory", "verify_max_references", 1),
     )
     search: dict = _table(raw, "search")
     search_config: SearchConfig = SearchConfig(

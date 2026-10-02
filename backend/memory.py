@@ -5,29 +5,42 @@ The service does these steps:
 
 1. It loads the `ready` objects of the gallery with their views.
 2. It matches the regions with the objects (`AiEngine.match_regions`).
-3. It writes each accepted match to the sighting log.
-4. It changes the last-seen record of an object only by the rule below.
+3. It checks each weak match against the reference photos of the object (stage I5).
+4. It writes each accepted match to the sighting log.
+5. It changes the last-seen record of an object only by the rule below.
 
 The rule (hysteresis) stops a single false match from replacing a correct answer:
 
-- A **strong** sighting changes the record at once.
+- A **strong** sighting changes the record at once. A weak sighting that passes the check (stage I5) also counts as strong.
 - A **weak** sighting changes the record only if the object has `hysteresis_hits`
   sightings in different frames within `hysteresis_window_seconds`. The new sighting counts.
 
+The check can only promote a weak sighting. A sighting that fails stays weak, and an error of the check changes nothing.
 The count reads the sighting log. A restart loses nothing.
 The time of a sighting is the time at which the server received the frame.
 Names and phrases are never written to the log.
 """
 
+import dataclasses
 import logging
 from collections.abc import Sequence
 from datetime import timedelta
 
 import numpy as np
+from PIL import Image as PilImage
 
 import db.api as db
+import storage.api as storage
 from ai.api import AiEngine
-from ai.types import Candidate, MatchObject, MatchRegion, Sighting
+from ai.errors import AiError
+from ai.types import (
+    Box,
+    Candidate,
+    MatchObject,
+    MatchRegion,
+    Sighting,
+    VerifyResult,
+)
 from backend.settings import MemoryConfig
 from db.schema import EnrolledObject, Image, ObjectStatus, Region
 
@@ -87,11 +100,13 @@ class MemoryService:
         candidates: Sequence[Candidate],
         regions: Sequence[Region],
         vectors: np.ndarray,
+        picture: PilImage.Image | None = None,
     ) -> int:
         """Match the regions of one frame and update the memory. Return the number of sightings.
 
         `candidates`, `regions` and `vectors` have the same order. The regions
-        must be stored, with their vectors, before this call.
+        must be stored, with their vectors, before this call. `picture` is the
+        decoded frame. Without it, no weak sighting is checked.
         Raise `AiError` or `DbError` for a problem of the data. The worker marks the image `failed`.
         """
         assert len(candidates) == len(regions) == len(vectors), "one row per region"
@@ -107,9 +122,89 @@ class MemoryService:
         )
         recorded: int = 0
         for sighting in found:
+            sighting = self._verified(sighting, candidates, vectors, picture)
             if self._record(image, sighting, candidates, regions):
                 recorded += 1
         return recorded
+
+    def _verified(
+        self,
+        sighting: Sighting,
+        candidates: Sequence[Candidate],
+        vectors: np.ndarray,
+        picture: PilImage.Image | None,
+    ) -> Sighting:
+        """Check a weak sighting (stage I5). Return it as a strong sighting if the check passes.
+
+        A strong sighting, or a frame without picture, or a switched-off check
+        gives the sighting back as it is. An error of the check does the same:
+        the check is an extra, so it must not fail the image.
+        """
+        if (
+            sighting.strong
+            or picture is None
+            or not self._config.verify_weak
+            or not self._engine.verification_enabled
+        ):
+            return sighting
+        box: Box = candidates[sighting.region_index].box
+        try:
+            references: list[PilImage.Image] = self._reference_crops(
+                sighting.object_id, vectors[sighting.region_index]
+            )
+            result: VerifyResult = self._engine.verify_match(
+                references, self._engine.verification_crop(picture, box)
+            )
+        except (AiError, storage.StorageError):
+            logger.warning(
+                "The check of a weak sighting of object %d failed. It stays weak",
+                sighting.object_id,
+            )
+            return sighting
+        if not result.verified:
+            return sighting
+        logger.info(
+            "A weak sighting of object %d passed the check (%d matching keypoints)",
+            sighting.object_id,
+            result.matches,
+        )
+        return dataclasses.replace(sighting, strong=True)
+
+    def _reference_crops(
+        self, object_id: int, vector: np.ndarray
+    ) -> list[PilImage.Image]:
+        """Return the pictures of the confirmed reference photos of an object, the most similar first.
+
+        A photo is as similar as its most similar view. At most `verify_max_references`
+        photos are used. A photo that cannot be read is left out.
+        """
+        views, photo_ids = db.gallery.load_views(
+            object_id, self._engine.embedding_model
+        )
+        if not len(views):
+            return []
+        similarity: dict[int, float] = {}
+        for photo_id, value in zip(photo_ids, views @ vector):
+            similarity[photo_id] = max(similarity.get(photo_id, -1.0), float(value))
+        order: list[int] = sorted(similarity, key=lambda i: -similarity[i])
+        crops: list[PilImage.Image] = []
+        for photo_id in order[: self._config.verify_max_references]:
+            photo = db.gallery.get_photo(photo_id)
+            if photo is None or photo.x0 is None:
+                continue
+            try:
+                picture: PilImage.Image = self._engine.open_image(
+                    storage.read_image(photo.file_path)
+                )
+            except (AiError, storage.StorageError):
+                logger.warning("Reference photo %d cannot be read", photo_id)
+                continue
+            crops.append(
+                self._engine.verification_crop(
+                    picture, Box(photo.x0, photo.y0, photo.x1, photo.y1)
+                )
+            )
+        return crops
 
     def load_objects(self) -> list[MatchObject]:
         """Return the `ready` objects with the views of the current model."""

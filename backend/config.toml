@@ -56,6 +56,11 @@ max_objects = 50
 # The window ends at the time of the new sighting.
 hysteresis_window_seconds = 60
 hysteresis_hits = 2
+# A weak sighting is checked against the reference photos of the object (stage I5, see ai/config.toml).
+# A sighting that passes counts as strong. A sighting that fails stays weak. The check never rejects a sighting.
+verify_weak = true
+# The check compares the sighting with at most this many reference photos, the most similar first.
+verify_max_references = 3
 
 [search]
 # The record "last seen" of an object is fresh for this many hours. After this, a search

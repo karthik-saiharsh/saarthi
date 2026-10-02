@@ -40,6 +40,8 @@ def test_default_config_loads() -> None:
         ("hysteresis_window_seconds = 60", "hysteresis_window_seconds = 0"),
         ("hysteresis_hits = 2", "hysteresis_hits = 0"),
         ("hysteresis_hits = 2", "hysteresis_hits = true"),
+        ("verify_weak = true", 'verify_weak = "yes"'),
+        ("verify_max_references = 3", "verify_max_references = 0"),
         ("stale_after_hours = 24", "stale_after_hours = 0"),
         ("window_minutes = 60", "window_minutes = 0"),
         ("max_scan_hours = 72", "max_scan_hours = true"),
