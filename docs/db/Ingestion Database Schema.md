@@ -125,7 +125,7 @@ The rule that changes them is in `docs/backend/Memory.md`. The helpers are in `d
 
 | Table | Meaning |
 |-------|---------|
-| `sighting` | One row for each accepted match. `enrolled_object`, `image`, `region` (all cascade), `seen_at` (the time of the frame), `similarity`, `margin`, `strong`, `in_hand`. Index on (`enrolled_object`, `seen_at`) |
+| `sighting` | One row for each accepted match. `enrolled_object`, `image`, `region` (all cascade), `seen_at` (the time of the frame), `similarity`, `margin`, `strong` (true for a strong sighting and for a weak sighting that passed the check), `in_hand`. Index on (`enrolled_object`, `seen_at`) |
 | `last_seen` | One row for each object (the key is `enrolled_object`, cascade). `image` is `RESTRICT`, so the frame stays. `x0`, `y0`, `x1`, `y1` are a copy of the box. Also `seen_at`, `similarity`, `margin`, `strong`, `in_hand`, `updated_at` |
 
 | Helper | Task |

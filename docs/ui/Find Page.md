@@ -118,7 +118,7 @@ The CSS file is `components/find.css`. It uses the tokens of `tokens.css` only. 
 - The page does not show the whole frame. The route `GET /api/objects/{id}/last-seen/picture?view=frame` gives it. No button uses it yet.
 - The page does not speak. Speech input and speech output are not built.
 - The page cannot ask the wearable to take a new picture.
-- A weak match is shown as "maybe". The verification (I5) is not built.
+- A weak match is shown as "maybe". If the check (I5) passes, the match counts as strong and the page does not say "maybe".
 
 ## Tests
 

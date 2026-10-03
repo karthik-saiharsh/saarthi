@@ -78,6 +78,8 @@ So the resolver uses the gap, and it asks the user when it is not sure.
 3. **The archive.** Otherwise the search goes back in time, one window of `search.window_minutes` at a time, newest window first.
    - A window holds the good regions of `done` frames that have a vector of the present model.
    - Each frame is matched with `AiEngine.match_regions`. The first frame with an accepted match for the object is the answer.
+   - A weak match is checked against the reference photos of the object (stage I5, see `docs/backend/Verification.md`).
+     If it passes, it counts as strong, and the answer has no "maybe". If it fails, the answer stays a "maybe".
    - With an old record, the search looks only for a frame that is newer than the record.
    - Without a record, the search goes back up to `search.max_scan_hours`.
 4. **An old record.** If the archive has nothing newer, the old record is the answer. It is marked `stale`.
@@ -152,6 +154,8 @@ curl -o answer.jpg "http://<server>:8080/api/objects/1/last-seen/picture?view=fr
 | `max_regions_per_window` | 5000 | A window holds at most this number of regions. The oldest regions are left out |
 | `max_frames` | 3000 | The search compares at most this number of frames |
 | `crop_padding` | 0.25 | Space around the object in the picture, as a part of the size of its box |
+| `verify_weak` | true | Check a weak hit of the archive against the reference photos (stage I5) |
+| `verify_max_references` | 3 | The check compares with at most this number of reference photos |
 
 | Key (table `[query]`) | Default | Meaning |
 |-----------------------|---------|---------|
@@ -215,7 +219,8 @@ The test found one picture problem, which is fixed (see `docs/ui/Find Page.md`).
   Calibrate them with the real objects of a home.
 - **Names and phrases matter.** A good name and good synonyms give better results. The carer writes them at enrollment.
 - **Weak matches.** The archive search can return a match that is not strong. The answer marks it, and the page says "maybe".
-  The verification (I5) is not built.
+  The check (I5) turns some of them into firm answers. A plain object, for example keys, seldom passes it.
+  The search checks only the newest weak hit. If the check fails, the search does not look for an older strong hit.
 - **The clock.** The time is the time of the server. A frame that the wearable sends late gets a wrong time.
   The page shows an age ("12 minutes ago"), not a time of day.
 - **The edge rule.** A region that touches the edge of the frame is not matched. A wearable often sees a held object cut by the edge.
@@ -233,6 +238,7 @@ The test found one picture problem, which is fixed (see `docs/ui/Find Page.md`).
 |------|---------------|
 | `tests/test_db_search.py` | The window listing and the vector reading of the db |
 | `tests/test_backend_search.py` | The record, the stale record, the archive, the windows, weak matches, the limits, look-alikes, draft objects, one search for the picture |
+| `tests/test_backend_search_verification.py` | The check of weak hits: a firm answer after a pass, a "maybe" after a fail, the cases without a check |
 | `tests/test_backend_query.py` | The three results, the choice, the cache, bad words, no logging of the words |
 | `tests/test_backend_http_search.py` | Every route, the picture sizes, bad options, the token, fixed messages |
 | `tests/test_backend_ui_find.py` | The UI adapter with the real database |

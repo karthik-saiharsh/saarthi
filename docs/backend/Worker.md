@@ -42,7 +42,7 @@ The db connection is per thread. The worker closes its connection when the threa
 | 6. Detect | `engine.detect_candidates` | A list of candidates |
 | 7. Embed | `engine.embed_regions` | One vector for each candidate |
 | 8. Store | `db.add_regions`, `db.store_region_vectors` | The regions and the vectors |
-| 9. Remember | `MemoryService.remember` | The regions are matched with the `ready` objects. The sightings and the last-seen records are written (see `docs/backend/Memory.md`) |
+| 9. Remember | `MemoryService.remember` | The regions are matched with the `ready` objects. A weak sighting is checked against the reference photos (see `docs/backend/Verification.md`). The sightings and the last-seen records are written (see `docs/backend/Memory.md`). The worker gives the decoded frame, so the check can cut the object from it |
 | 10. Finish | `db.mark_image_done` | The image is `done` |
 
 An image with no candidates is also `done`, with no regions.

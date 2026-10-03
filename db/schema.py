@@ -259,7 +259,8 @@ class Sighting(BaseModel):
     seen_at: DateTimeField = DateTimeField(index=True)
     similarity: FloatField = FloatField()
     margin: FloatField = FloatField()
-    # True: above `tau_strong` with the strong margin. It does not need a second hit.
+    # True: above `tau_strong` with the strong margin, or a weak match that passed the check
+    # of stage I5. It does not need a second hit.
     strong: BooleanField = BooleanField()
     in_hand: BooleanField = BooleanField(default=False)
 

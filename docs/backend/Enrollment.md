@@ -13,7 +13,8 @@ The gallery holds the objects that the system looks for.
 The ingestion uses the gallery only for the detector phrases (see "Link to ingestion").
 Matching and the last-seen record are in `docs/backend/Memory.md`. The search is in `docs/backend/Search.md`.
 The search uses the names and the phrases of the objects to find the object that a user means.
-The verification (I5) is not built.
+The reference photos are also used by the verification (I5), which checks a weak sighting (see `docs/backend/Verification.md`).
+The verification needs the confirmed photos and their files.
 
 ## Where it fits
 

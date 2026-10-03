@@ -22,15 +22,17 @@ Worker: frame ──▶ regions and vectors stored ──▶ MemoryService.remem
 
 1. Load the `ready` objects of the gallery with their views. An object with no view of the current model is left out.
 2. Match the regions with the objects (`AiEngine.match_regions`). A region with `quality_ok = False` is never matched.
-3. Write each accepted match to the table `sighting`. The time is the time at which the server received the frame (`Image.captured_at`).
-4. Apply the rule below. It decides if the match changes the record `last_seen` of the object.
+3. Check each weak match against the reference photos of the object (stage I5, see `docs/backend/Verification.md`).
+   A match that passes the check counts as strong.
+4. Write each accepted match to the table `sighting`. The time is the time at which the server received the frame (`Image.captured_at`).
+5. Apply the rule below. It decides if the match changes the record `last_seen` of the object.
 
 ## The rule (hysteresis)
 
 | Sighting | What happens |
 |----------|--------------|
-| Strong (`similarity >= tau_strong` and `margin >= margin_strong`) | The record changes at once |
-| Weak (accepted, but not strong) | The record changes only if the object has enough sightings in different frames inside the time window. The new sighting counts |
+| Strong (`similarity >= tau_strong` and `margin >= margin_strong`), or weak and verified | The record changes at once |
+| Weak (accepted, not strong, and not verified) | The record changes only if the object has enough sightings in different frames inside the time window. The new sighting counts |
 
 The settings are in `[memory]` of `backend/config.toml`:
 
@@ -38,12 +40,15 @@ The settings are in `[memory]` of `backend/config.toml`:
 |-----|---------|---------|
 | `hysteresis_window_seconds` | 60 | The window ends at the time of the new sighting |
 | `hysteresis_hits` | 2 | The number of frames with a sighting that a weak sighting needs. 1 means that every accepted sighting changes the record |
+| `verify_weak` | true | Check a weak sighting against the reference photos (stage I5) |
+| `verify_max_references` | 3 | The check compares with at most this number of reference photos |
 
 - The count reads the table `sighting`. A restart loses nothing.
 - A frame counts one time, also after a repair that processes it again.
 - An older sighting never replaces a newer record. This protects the record if the frames are not in order.
-- The pipeline document uses "verified" for a sighting that needs no second hit. Verification (I5) is not built.
-  The owner decided that "strong" takes its place.
+- The pipeline document uses "verified" for a sighting that needs no second hit. Here, a strong sighting and a verified sighting
+  are the same in the data: `strong = true`. The check can only promote a weak sighting. It never rejects one.
+  A sighting that fails the check stays weak and follows the rule of the hysteresis. An error of the check changes nothing.
 - A sighting with `in_hand` is stored with the flag. It changes the record by the same rule.
 
 ## The tables
