@@ -77,6 +77,11 @@ max_frames = 3000
 # The picture of an answer shows the object with this much space around it, as a part of
 # the width and the height of its box. The part is added on each side.
 crop_padding = 0.25
+# A weak hit in the archive is checked against the reference photos of the object (stage I5, see ai/config.toml).
+# A hit that passes counts as strong, so the answer does not say "maybe". A hit that fails stays weak.
+verify_weak = true
+# The check compares with at most this many reference photos, the most similar first.
+verify_max_references = 3
 
 [query]
 # The words of a user are turned into vectors and compared with a description of each object

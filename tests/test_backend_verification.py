@@ -7,10 +7,8 @@ Every object has a name that starts with `__test__ `. The objects go first, then
 """
 
 import dataclasses
-import uuid
 from collections.abc import Iterator
 from datetime import datetime
-from io import BytesIO
 
 import numpy as np
 import pytest
@@ -29,8 +27,6 @@ from db.schema import (
     EnrolledObject,
     Image,
     ImageStatus,
-    PhotoStatus,
-    ReferencePhoto,
     Region,
 )
 from db.schema import Sighting as SightingRow
@@ -49,6 +45,7 @@ from tests.db_support import (
     skip_if_actual_data_has_problems,
 )
 from tests.search_support import PREFIX, direction
+from tests.search_support import make_object_with_references as make_object
 
 NOW: datetime = datetime(2000, 1, 1, 12, 0, 0)
 CANDIDATE: Candidate = Candidate(
@@ -90,45 +87,6 @@ def cleanup() -> Iterator[list[str]]:
         [i.id for i in Image.select().where(Image.file_path.startswith(TEST_PREFIX))]
     )
     storage.delete_images(files)
-
-
-def stored_photo() -> tuple[str, str, int, int]:
-    """Store a real file. Return its path, hash, width and height."""
-    noise: np.ndarray = np.random.default_rng(uuid.uuid4().int % 2**32).integers(
-        0, 255, (400, 400, 3), dtype=np.uint8
-    )
-    buffer: BytesIO = BytesIO()
-    PilImage.fromarray(noise).save(buffer, "JPEG")
-    prepared = storage.prepare_image(buffer.getvalue())
-    return (
-        storage.save_image(prepared),
-        prepared.sha256,
-        prepared.width,
-        prepared.height,
-    )
-
-
-def make_object(
-    files: list[str], references: list[tuple[int, np.ndarray]]
-) -> EnrolledObject:
-    """A ready object. Each reference is (the side of its square box, its view vector)."""
-    obj: EnrolledObject = gallery.create_object(
-        f"{PREFIX}{uuid.uuid4().hex[:8]}", "a bottle"
-    )
-    model: str = make_engine().embedding_model
-    for side, vector in references:
-        path, sha, width, height = stored_photo()
-        files.append(path)
-        photo = gallery.add_reference_photo(obj.id, path, sha, width, height)
-        ReferencePhoto.update(status=PhotoStatus.PROCESSING.value).where(
-            ReferencePhoto.id == photo.id
-        ).execute()  # The worker would do this
-        gallery.store_photo_views(
-            photo.id, (40, 40, 40 + side, 40 + side), 0.5, [("original", vector)], model
-        )
-        gallery.confirm_photo(photo.id)
-    gallery.set_calibration(obj.id, 0.8, 0.85, 0.03, model)
-    return obj
 
 
 def make_frame() -> tuple[Image, list[Region]]:

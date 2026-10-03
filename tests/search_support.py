@@ -97,3 +97,42 @@ def store_frame(
         Image.id == image.id
     ).execute()
     return image
+
+
+def stored_photo() -> tuple[str, str, int, int]:
+    """Store a real file. Return its path, hash, width and height."""
+    noise: np.ndarray = np.random.default_rng(uuid.uuid4().int % 2**32).integers(
+        0, 255, (400, 400, 3), dtype=np.uint8
+    )
+    buffer: BytesIO = BytesIO()
+    PilImage.fromarray(noise).save(buffer, "JPEG")
+    prepared = storage.prepare_image(buffer.getvalue())
+    return (
+        storage.save_image(prepared),
+        prepared.sha256,
+        prepared.width,
+        prepared.height,
+    )
+
+
+def make_object_with_references(
+    files: list[str], references: list[tuple[int, np.ndarray]]
+) -> EnrolledObject:
+    """A ready object. Each reference is (the side of its square box, its view vector)."""
+    obj: EnrolledObject = gallery.create_object(
+        f"{PREFIX}{uuid.uuid4().hex[:8]}", "a bottle"
+    )
+    model: str = make_engine().embedding_model
+    for side, vector in references:
+        path, sha, width, height = stored_photo()
+        files.append(path)
+        photo = gallery.add_reference_photo(obj.id, path, sha, width, height)
+        ReferencePhoto.update(status=PhotoStatus.PROCESSING.value).where(
+            ReferencePhoto.id == photo.id
+        ).execute()  # The worker would do this
+        gallery.store_photo_views(
+            photo.id, (40, 40, 40 + side, 40 + side), 0.5, [("original", vector)], model
+        )
+        gallery.confirm_photo(photo.id)
+    gallery.set_calibration(obj.id, TAU, TAU_STRONG, 0.03, model)
+    return obj

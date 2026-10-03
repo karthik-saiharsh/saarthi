@@ -118,3 +118,21 @@ def test_missing_and_broken_files_are_refused(tmp_path: Path) -> None:
         load_config(tmp_path / "none.toml")
     with pytest.raises(BackendConfigError):
         load_config(write(tmp_path, "not toml ["))
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("verify_weak = true", "verify_weak = 1"),
+        ("verify_weak = true", 'verify_weak = "yes"'),
+        ("verify_max_references = 3", "verify_max_references = 0"),
+    ],
+)
+def test_the_verify_keys_of_the_search_are_checked(
+    tmp_path: Path, old: str, new: str
+) -> None:
+    # Change only the table [search]. The table [memory] has the same keys.
+    before, _, after = DEFAULT_TEXT.partition("[search]")
+    text: str = before + "[search]" + after.replace(old, new, 1)
+    with pytest.raises(BackendConfigError, match="search.verify"):
+        load_config(write(tmp_path, text))

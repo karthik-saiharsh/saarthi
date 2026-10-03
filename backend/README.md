@@ -30,6 +30,7 @@ For the full design, see `docs/backend/Upload Endpoint.md`, `docs/backend/Enroll
 | `enrollment.py` | `EnrollmentService`: objects, reference photos, the carer's confirmation, the calibration |
 | `ui_adapter.py` | Connects the UI to the upload step, to enrollment and to the search (`ui.ports.UploadService`, `EnrollmentService`, `FindService`) |
 | `memory.py` | `MemoryService`: matches the regions of a frame, writes the sightings, keeps the last-seen records |
+| `verification.py` | `ReferenceVerifier`: the check of a sighting against the reference photos of an object (stage I5). The memory and the search use it |
 | `search.py` | `SearchService`: answers "where is my object?" from the last-seen record, then from the archive of frames |
 | `query.py` | `QueryResolver`: turns the words of a user into an enrolled object, or a short list to choose from |
 | `worker.py` | `Worker`: runs the ai stages on `pending` photos and images, in a background thread |
@@ -145,6 +146,8 @@ A variable that is set but empty stops the start, so the route cannot open by mi
 | `search.max_scan_hours` | The search does not look further back than this |
 | `search.max_regions_per_window` | The most regions that one window holds |
 | `search.max_frames` | The search compares at most this number of frames. The answer says if it stopped early |
+| `search.verify_weak` | Check a weak hit in the archive against the reference photos (stage I5). A hit that passes counts as strong. The check never rejects a hit |
+| `search.verify_max_references` | The check compares with at most this many reference photos, the most similar first |
 | `search.crop_padding` | The picture of an answer shows the object with this much space around it (a part of the size of its box) |
 
 | Key (table `[query]`) | Meaning |

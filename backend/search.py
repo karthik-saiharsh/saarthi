@@ -7,27 +7,33 @@
 2. The archive of frames. The search goes back in time, one window at a time,
    newest first. It matches the stored regions of each frame with the same
    rule as the ingestion (`AiEngine.match_regions`). The first frame with an
-   accepted match is the answer. A match that is not strong stays marked as
-   weak, so the caller can say "maybe".
+   accepted match is the answer. A match that is not strong is checked against
+   the reference photos of the object (stage I5). If the check passes, the match counts as
+   strong. If not, it stays weak, so the caller can say "maybe".
 3. The old record, marked `stale`, if the archive has nothing newer.
 4. No answer: the object was not seen.
 
 The search never writes data. The log shows ids and counts, never names.
 """
 
+import dataclasses
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import StrEnum
 from itertools import groupby
 
+import numpy as np
+
 import db.api as db
 import storage.api as storage
 from ai.api import AiEngine
-from ai.types import MatchObject, MatchRegion, Sighting
+from ai.errors import AiError
+from ai.types import Box, MatchObject, MatchRegion, Sighting, VerifyResult
 from backend.errors import NotFoundError, ObjectNotReadyError
 from backend.memory import load_match_objects
 from backend.settings import BackendConfig, SearchConfig
+from backend.verification import ReferenceVerifier
 from db.schema import (
     EnrolledObject,
     Image,
@@ -75,6 +81,7 @@ class _Hit:
     box: tuple[int, int, int, int]
     sighting: Sighting
     in_hand: bool
+    vector: np.ndarray  # The vector of the region. It orders the reference photos
 
 
 class SearchService:
@@ -85,6 +92,9 @@ class SearchService:
         assert isinstance(engine, AiEngine), "engine must be an AiEngine"
         self._config: SearchConfig = config.search
         self._engine: AiEngine = engine
+        self._verifier: ReferenceVerifier = ReferenceVerifier(
+            engine, self._config.verify_max_references
+        )
 
     def find(self, object_id: int, now: datetime | None = None) -> Answer:
         """Find the last sighting of an object.
@@ -219,10 +229,44 @@ class SearchService:
                 checked += 1
                 hit: _Hit | None = self._match_frame(object_id, objects, list(group))
                 if hit is not None:
-                    return hit, True
+                    return self._checked(object_id, hit), True
             until = since
         logger.info("The search compared %d frame(s) and found nothing", checked)
         return None, True
+
+    def _checked(self, object_id: int, hit: _Hit) -> _Hit:
+        """Check a weak hit against the reference photos (stage I5). A hit that passes counts as strong.
+
+        A strong hit, a switched-off check, a frame that cannot be read, or an error of the
+        check gives the hit back as it is. The check is an extra, so it never fails a search.
+        """
+        if (
+            hit.sighting.strong
+            or not self._config.verify_weak
+            or not self._verifier.enabled
+        ):
+            return hit
+        image: Image | None = db.get_image(hit.image_id)
+        if image is None:
+            return hit
+        try:
+            picture = self._engine.open_image(storage.read_image(image.file_path))
+        except (AiError, storage.StorageError):
+            logger.warning("Search for object %d: the frame cannot be read", object_id)
+            return hit
+        result: VerifyResult | None = self._verifier.verify(
+            object_id, hit.vector, picture, Box(*hit.box)
+        )
+        if result is None or not result.verified:
+            return hit
+        logger.info(
+            "Search for object %d: a weak hit passed the check (%d matching keypoints)",
+            object_id,
+            result.matches,
+        )
+        return dataclasses.replace(
+            hit, sighting=dataclasses.replace(hit.sighting, strong=True)
+        )
 
     def _match_frame(
         self, object_id: int, objects: list[MatchObject], regions: list[Region]
@@ -242,6 +286,7 @@ class SearchService:
                 (region.x0, region.y0, region.x1, region.y1),
                 sighting,
                 region.in_hand,
+                vectors[sighting.region_index],
             )
         return None
 

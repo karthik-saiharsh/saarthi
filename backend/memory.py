@@ -30,11 +30,8 @@ import numpy as np
 from PIL import Image as PilImage
 
 import db.api as db
-import storage.api as storage
 from ai.api import AiEngine
-from ai.errors import AiError
 from ai.types import (
-    Box,
     Candidate,
     MatchObject,
     MatchRegion,
@@ -42,6 +39,7 @@ from ai.types import (
     VerifyResult,
 )
 from backend.settings import MemoryConfig
+from backend.verification import ReferenceVerifier
 from db.schema import EnrolledObject, Image, ObjectStatus, Region
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -93,6 +91,9 @@ class MemoryService:
         assert isinstance(engine, AiEngine), "engine must be an AiEngine"
         self._config: MemoryConfig = config
         self._engine: AiEngine = engine
+        self._verifier: ReferenceVerifier = ReferenceVerifier(
+            engine, config.verify_max_references
+        )
 
     def remember(
         self,
@@ -144,24 +145,16 @@ class MemoryService:
             sighting.strong
             or picture is None
             or not self._config.verify_weak
-            or not self._engine.verification_enabled
+            or not self._verifier.enabled
         ):
             return sighting
-        box: Box = candidates[sighting.region_index].box
-        try:
-            references: list[PilImage.Image] = self._reference_crops(
-                sighting.object_id, vectors[sighting.region_index]
-            )
-            result: VerifyResult = self._engine.verify_match(
-                references, self._engine.verification_crop(picture, box)
-            )
-        except (AiError, storage.StorageError):
-            logger.warning(
-                "The check of a weak sighting of object %d failed. It stays weak",
-                sighting.object_id,
-            )
-            return sighting
-        if not result.verified:
+        result: VerifyResult | None = self._verifier.verify(
+            sighting.object_id,
+            vectors[sighting.region_index],
+            picture,
+            candidates[sighting.region_index].box,
+        )
+        if result is None or not result.verified:
             return sighting
         logger.info(
             "A weak sighting of object %d passed the check (%d matching keypoints)",
@@ -169,42 +162,6 @@ class MemoryService:
             result.matches,
         )
         return dataclasses.replace(sighting, strong=True)
-
-    def _reference_crops(
-        self, object_id: int, vector: np.ndarray
-    ) -> list[PilImage.Image]:
-        """Return the pictures of the confirmed reference photos of an object, the most similar first.
-
-        A photo is as similar as its most similar view. At most `verify_max_references`
-        photos are used. A photo that cannot be read is left out.
-        """
-        views, photo_ids = db.gallery.load_views(
-            object_id, self._engine.embedding_model
-        )
-        if not len(views):
-            return []
-        similarity: dict[int, float] = {}
-        for photo_id, value in zip(photo_ids, views @ vector):
-            similarity[photo_id] = max(similarity.get(photo_id, -1.0), float(value))
-        order: list[int] = sorted(similarity, key=lambda i: -similarity[i])
-        crops: list[PilImage.Image] = []
-        for photo_id in order[: self._config.verify_max_references]:
-            photo = db.gallery.get_photo(photo_id)
-            if photo is None or photo.x0 is None:
-                continue
-            try:
-                picture: PilImage.Image = self._engine.open_image(
-                    storage.read_image(photo.file_path)
-                )
-            except (AiError, storage.StorageError):
-                logger.warning("Reference photo %d cannot be read", photo_id)
-                continue
-            crops.append(
-                self._engine.verification_crop(
-                    picture, Box(photo.x0, photo.y0, photo.x1, photo.y1)
-                )
-            )
-        return crops
 
     def load_objects(self) -> list[MatchObject]:
         """Return the `ready` objects with the views of the current model."""

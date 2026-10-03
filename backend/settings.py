@@ -55,6 +55,8 @@ class SearchConfig:
     max_regions_per_window: int
     max_frames: int
     crop_padding: float
+    verify_weak: bool = True
+    verify_max_references: int = 3
 
 
 @dataclass(frozen=True)
@@ -221,6 +223,8 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> BackendConfig:
         max_regions_per_window=_integer(search, "search", "max_regions_per_window", 1),
         max_frames=_integer(search, "search", "max_frames", 1),
         crop_padding=_number(search, "search", "crop_padding", 0.0, 5.0),
+        verify_weak=_boolean(search, "search", "verify_weak"),
+        verify_max_references=_integer(search, "search", "verify_max_references", 1),
     )
     query: dict = _table(raw, "query")
     query_config: QueryConfig = QueryConfig(
