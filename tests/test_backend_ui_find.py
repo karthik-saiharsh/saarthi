@@ -13,6 +13,7 @@ import pytest
 
 import db.api as db
 import storage.api as storage
+from backend.describe import DescribeService
 from backend.enrollment import EnrollmentService
 from backend.query import QueryResolver
 from backend.search import SearchService
@@ -64,6 +65,7 @@ def make_service() -> tuple[UiFindService, QueryResolver]:
         resolver,
         SearchService(config, engine),
         EnrollmentService(config, engine),
+        DescribeService(config, engine),
     )
     return service, resolver
 
@@ -87,6 +89,8 @@ def test_words_for_a_seen_object_give_the_sighting_with_a_picture() -> None:
     result: FindResult = ask(make_service()[0], "where is my blue bottle")
     assert result.status == FindStatus.FOUND and result.complete
     assert result.object_name == PREFIX + "blue bottle"
+    assert result.description is not None and "blue bottle" in result.description
+    assert "holding" in result.description  # The frame shows the bottle in a hand
     sighting = result.sighting
     assert sighting is not None and sighting.strong and sighting.in_hand
     assert not sighting.stale and 12 * 60 <= sighting.age_seconds < 12 * 60 + 60

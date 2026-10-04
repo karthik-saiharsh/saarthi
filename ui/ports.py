@@ -169,6 +169,8 @@ class FindResult:
     choices: tuple[FindChoice, ...] = ()
     # False: the search stopped early, so "not seen" may be wrong.
     complete: bool = True
+    # The sentence that describes the answer, for FOUND. The place can be left out of it.
+    description: str | None = None
 
 
 class FindService(Protocol):

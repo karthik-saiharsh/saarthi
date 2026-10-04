@@ -70,6 +70,7 @@ The picture is shown whole, and is never cut.
 | Line | When |
 |------|------|
 | "Seen 12 minutes ago." | Always (large text). The time is an age: just now, minutes, hours or days |
+| The sentence of the description | When the system saw the object. It says the time, the surface and the room, for example "It was on a table." The voice will say the same text |
 | "You were holding it." | `in_hand` is true |
 | "Maybe. The computer is not sure. Look at the picture." | `strong` is false |
 | "This was a long time ago. The computer found nothing newer." | `stale` is true |

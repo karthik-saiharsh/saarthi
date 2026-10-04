@@ -18,6 +18,7 @@ from typing import TypeVar
 import db.api as db
 import storage.api as storage
 from ai.api import AiError
+from backend.describe import DescribeService
 from backend.enrollment import (
     EnrollmentService,
     ObjectSummary,
@@ -274,15 +275,20 @@ class UiFindService:
         resolver: QueryResolver,
         search: SearchService,
         enrollment: EnrollmentService,
+        describer: DescribeService,
     ) -> None:
         assert isinstance(resolver, QueryResolver), "resolver must be a QueryResolver"
         assert isinstance(search, SearchService), "search must be a SearchService"
         assert isinstance(
             enrollment, EnrollmentService
         ), "enrollment must be an EnrollmentService"
+        assert isinstance(
+            describer, DescribeService
+        ), "describer must be a DescribeService"
         self._resolver: QueryResolver = resolver
         self._search: SearchService = search
         self._enrollment: EnrollmentService = enrollment
+        self._describer: DescribeService = describer
 
     async def _call(
         self, function: Callable[..., _Result], *arguments: object
@@ -335,6 +341,7 @@ class UiFindService:
             return FindResult(
                 FindStatus.NOT_SEEN, object_name=name, complete=answer.complete
             )
+        description: str = self._describer.describe(name, answer).text
         return FindResult(
             FindStatus.FOUND,
             object_name=name,
@@ -346,4 +353,5 @@ class UiFindService:
                 picture=picture,
             ),
             complete=answer.complete,
+            description=description,
         )

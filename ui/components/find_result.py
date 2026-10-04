@@ -93,6 +93,9 @@ def _found(result: FindResult, sighting: Sighting) -> None:
     ui.label(lines[0]).classes("up-find-when")
     for line in lines[1:]:
         ui.label(line).classes("up-find-text")
+    if result.description:
+        # The sentence is the text that the voice will say. It names the place.
+        ui.label(result.description).classes("up-find-text up-find-description")
     if sighting.picture is not None:
         ui.image(picture_source(sighting.picture)).props(
             f'fit=contain alt="{PICTURE_ALT}"'

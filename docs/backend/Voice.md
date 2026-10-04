@@ -5,7 +5,7 @@
 This feature is **partly built**. Built: the scene classifier in the `ai` component (`ai/scene.py`, phase 1a),
 the cache of the room scores and the lookup of neighbouring frames in the `db` component (`db/scenes.py`, phase 1b),
 and the room rule, the sentence and the service in `backend/describe.py` (phase 1c).
-Not built: the sentence on the page (phase 1d), the voice and the listening.
+The sentence is on the `/find` page (phase 1d). Not built: the voice and the listening.
 This document records the flow that the owner described and the stages that it adds to the pipeline.
 It also lists the decisions that are still open.
 

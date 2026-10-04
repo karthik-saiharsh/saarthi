@@ -282,4 +282,5 @@ class StubFindService:
                 stale=object_id == 4,  # The mug is an old sighting
                 picture=buffer.getvalue(),
             ),
+            description=f"Your {name.lower()} was last seen a while ago. It was on a table.",
         )

@@ -13,6 +13,7 @@ from fastapi import APIRouter
 import db.api as db
 import storage.api as storage
 from ai.api import AiEngine
+from backend.describe import DescribeService
 from backend.enrollment import EnrollmentService
 from backend.errors import BackendConfigError
 from backend.http import create_router, read_token
@@ -64,6 +65,7 @@ class Backend:
         )
         self._search: SearchService = SearchService(self._config, engine)
         self._query: QueryResolver = QueryResolver(self._config, engine)
+        self._describe: DescribeService = DescribeService(self._config, engine)
         self._maintenance: Maintenance = Maintenance(self._config)
         self._token: str | None = read_token(self._config)
         self._max_upload_bytes: int = storage.current_config().max_bytes
@@ -147,4 +149,6 @@ class Backend:
     @property
     def find_service(self) -> UiFindService:
         """The search that the UI calls. It implements `ui.ports.FindService`."""
-        return UiFindService(self._query, self._search, self._enrollment)
+        return UiFindService(
+            self._query, self._search, self._enrollment, self._describe
+        )
