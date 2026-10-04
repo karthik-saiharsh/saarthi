@@ -116,12 +116,49 @@ class FakeVerifier:
         return self.answers.pop(0) if self.answers else self.answer
 
 
+class FakeSceneClassifier:
+    """Gives the scores that the test sets. It records the size of each picture that it gets."""
+
+    name = "fake-scene@00000000"
+
+    def __init__(
+        self,
+        rooms: dict[str, float] | None = None,
+        surfaces: list[tuple[str, float]] | None = None,
+    ) -> None:
+        scene = load_config().scene
+        even: float = 1.0 / len(scene.rooms)
+        self.rooms: dict[str, float] = rooms or {room: even for room in scene.rooms}
+        chosen = surfaces or [
+            (surface, 1.0 / len(scene.surfaces)) for surface in scene.surfaces
+        ]
+        self.surfaces: list[tuple[str, float]] = sorted(
+            chosen, key=lambda item: -item[1]
+        )
+        self.error: Exception | None = None
+        self.room_calls: list[tuple[int, int]] = []
+        self.surface_calls: list[tuple[int, int]] = []
+
+    def room_scores(self, image):
+        if self.error is not None:
+            raise self.error
+        self.room_calls.append(image.size)
+        return dict(self.rooms)
+
+    def surface_scores(self, image):
+        if self.error is not None:
+            raise self.error
+        self.surface_calls.append(image.size)
+        return list(self.surfaces)
+
+
 def make_engine(
     detector: FakeDetector | None = None,
     embedder: FakeEmbedder | None = None,
     blur_min: float | None = None,
     query_encoder: FakeQueryEncoder | None = None,
     verifier: FakeVerifier | None = None,
+    scene_classifier: FakeSceneClassifier | None = None,
 ) -> AiEngine:
     """An `AiEngine` with fake models. The quality gate and post-processing are real.
 
@@ -138,4 +175,5 @@ def make_engine(
         embedder=embedder or FakeEmbedder(),  # type: ignore[arg-type]
         query_encoder=query_encoder or FakeQueryEncoder(),  # type: ignore[arg-type]
         verifier=verifier or FakeVerifier(),  # type: ignore[arg-type]
+        scene_classifier=scene_classifier or FakeSceneClassifier(),  # type: ignore[arg-type]
     )

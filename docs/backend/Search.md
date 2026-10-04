@@ -5,6 +5,9 @@
 The search answers one question: where did the system last see my object?
 It is stage Q1 of `docs/guide/DINO-Based Object Recall Pipeline.md`.
 
+A later change adds speech to this flow: a recognizer before the resolver, and a description and a voice after the answer.
+It is planned and not built (see `docs/backend/Voice.md`).
+
 The user can say which object in two ways. The user can choose it from a list.
 The user can also write it in any words, for example "the blue thing I use to drink stuff".
 The search has two parts:
@@ -190,6 +193,7 @@ The route and the UI turn each error into a fixed message.
 ## First run with the real models
 
 The test used the real application and the real models, through the HTTP routes. The machine had a CPU and no GPU.
+The run is from before the calibration. The object had `tau` 0.418. The calibrated values are in `benchmarks/calibration/README.md`.
 The photos were 10 first-person photos of a corridor and a balcony. A white speckled bottle is in 5 of them.
 
 - **Enrollment.** The object "Speckled bottle" got 3 photos. The detector found the bottle in all 3 (about 8 seconds for each photo).
@@ -199,7 +203,7 @@ The photos were 10 first-person photos of a corridor and a balcony. A white spec
 | Frame | Content | Result |
 |-------|---------|--------|
 | 10 | The bottle in a hand. Not used for enrollment | A strong sighting, similarity 0.634, `in_hand` |
-| 8 | The bottle, cut by the edge of the picture | Not matched. The region has `quality_ok = False` because it touches the edge. Its best similarity was 0.511, above `tau` |
+| 8 | The bottle, partly out of the picture and blurred by motion | Not matched. The regions have `quality_ok = False`. A later check found the reason: the crop blur check (the crops score 8 to 11, the minimum is 20). The best similarity was 0.511, above `tau` |
 | 1, 4, 5 | A notebook, a balcony, a backpack and chairs | The detector made boxes with the label "a bottle". Their best similarity was 0.14 to 0.32. No sighting |
 | 6, 7 | An empty corridor | No region |
 
@@ -223,8 +227,8 @@ The test found one picture problem, which is fixed (see `docs/ui/Find Page.md`).
   The search checks only the newest weak hit. If the check fails, the search does not look for an older strong hit.
 - **The clock.** The time is the time of the server. A frame that the wearable sends late gets a wrong time.
   The page shows an age ("12 minutes ago"), not a time of day.
-- **The edge rule.** A region that touches the edge of the frame is not matched. A wearable often sees a held object cut by the edge.
-  In the first run, this rule hid a correct sighting. The rule is a decision for the calibration phase.
+- **The blur check of the crop.** A region is not matched if its crop is blurred (`quality.crop_blur_min`). A wearable moves, so held objects are often blurred.
+  In the first run, this check hid a correct sighting (photo 8). The first report of this limit named the edge of the picture. That was wrong: the edge was not the reason.
 - **A held object.** If the person held the object, the place is the person. The answer says so with `in_hand`.
 - **Cost.** The search matches each frame alone, because the newest match must win. It is exact and not fast.
   The frame limit and the time limit bound it. The speed on the Raspberry Pi is not measured.

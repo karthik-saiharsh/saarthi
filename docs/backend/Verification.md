@@ -67,15 +67,18 @@ A licence-clean choice is SIFT features with a RANSAC filter (OpenCV). The check
 ## Why 30 matches
 
 The start value in the pipeline document is 15 matches that survive a RANSAC filter. This module has no RANSAC filter.
-The value was chosen from a small test with the photos of a speckled bottle:
+The value was checked with the photos of a speckled bottle (see `benchmarks/calibration/README.md`).
+For each candidate, the best count over the 3 most similar reference photos counts. The reference photos are other photos than the candidate.
 
-| Pair | Matches |
-|------|---------|
-| The same bottle in another photo (held in a hand), against the reference crops | 215 (also 59 against another reference) |
-| Boxes of other things that the detector marked as "a bottle" (a backpack, chairs, a notebook) | 5 to 13 |
-| The bottle, cut by the edge of the picture and not sharp | 8 to 15 |
+| Candidates | Matches |
+|------------|---------|
+| The bottle in a sharp crop (8 candidates in 4 photos, one of them a small bottle on a desk) | 81 to 264 |
+| False candidates that look like the object (20 candidates with a similarity of 0.35 or more) | 1 to 17 |
+| The bottle in a blurred crop (photos 3 and 8) | 4 to 11 |
 
-At 15, a wrong box (13 matches) is close to the limit. At 30, both groups have room. The value is a start value. Calibrate it with more photos.
+Any limit from 18 to 80 separates the sharp bottles from the false candidates. The value 30 is inside this gap.
+At 15, a false candidate (17 matches) would pass. A blurred crop cannot be verified: blur removes the keypoints.
+The value is a start value. A set with more objects, and with look-alikes, can move it.
 
 ## Configuration
 

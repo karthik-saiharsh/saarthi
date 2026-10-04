@@ -47,7 +47,7 @@ The ai module does not import the db module.
 
 | Helper | Task | Result |
 |--------|------|--------|
-| `AiEngine(config=None)` | Load the four models (the verifier only if `verification.enabled`) | The engine. Call it one time at start-up |
+| `AiEngine(config=None)` | Load the five models (the verifier only if `verification.enabled`, the scene model only if `scene.enabled`) | The engine. Call it one time at start-up |
 | `open_image(data, max_pixels)` | Decode image bytes. Apply the EXIF orientation. Convert to RGB | A PIL image. Raises `ImageError` |
 | `engine.open_image(data)` | The same, with `image.max_pixels` of the config | A PIL image |
 | `engine.assess_quality(image)` | Blur score and perceptual hash | `QualityReport` |
@@ -59,6 +59,9 @@ The ai module does not import the db module.
 | `engine.verify_match(references, candidate)` | Compare a candidate picture with reference pictures (stage I5) | `VerifyResult` |
 | `engine.verification_crop(image, box)` | Cut the picture that the verifier compares: the box with `verification.crop_padding` around it | A PIL image |
 | `engine.verification_enabled` | The verifier is loaded | `bool` |
+| `engine.score_rooms(image)` | The probability of each room of `scene.rooms` for a whole picture (stage Q2) | `dict`, the values add up to 1 |
+| `engine.score_surfaces(image, box)` | The surfaces of `scene.surfaces` that fit the place of the object, the best first | List of (word, probability) |
+| `engine.scene_enabled`, `engine.scene_model` | The scene model is loaded. Its name, for the cache | `bool`, `str` |
 | `engine.encode_texts(texts)` | One vector for each text (stage Q1) | `float32` array, shape `(n, 384)`, unit length |
 | `engine.query_model` | Name of the query encoder, for example `all-MiniLM-L6-v2@1110a243` | `str` |
 | `engine.embedding_model` | Name for the database, for example `dinov2-small@ed25f3a3` | `str` |
@@ -196,6 +199,25 @@ The backend gives the pictures. It cuts all of them with `engine.verification_cr
 - With `verification.enabled = false`, the module does not load the model. `verify_match` must not be called then.
 - An error of the model raises `InferenceError`. A model that cannot be loaded raises `ModelLoadError`.
 
+## Stage Q2: the place of an object
+
+`engine.score_rooms(image)` and `engine.score_surfaces(image, box)` describe the place of an object with words from fixed lists.
+The planned voice uses them (see `docs/backend/Voice.md`). The backend builds the sentence and chooses the room from neighbouring frames.
+
+- The model is SigLIP (`google/siglip-base-patch16-224`, Apache-2.0, about 813 MB). It scores a picture against one sentence for each word.
+  The sentence is `scene.prompt` with the word. The scores become probabilities that add up to 1.
+- The lists are `scene.rooms` and `scene.surfaces` in `config.toml`. The description can only use these words.
+  A wrong word from a closed list is a safer error than a text that a model invented (see `benchmarks/scene/README.md`).
+- The model encodes the sentences of the lists one time, when it loads. Then a picture costs one run of the image side of the model.
+  The result equals a full run of the model. A test checks this. One picture takes about 0.3 seconds on the development machine.
+- **The room** comes from the whole picture. **The surface** comes from the box of the object with space around it:
+  `scene.surface_context` times the size of the box on each side and below it, and half of this above it.
+- The scores are not a safe sign that a word is right. In the test, a floor was called "a bathroom" with a probability of 0.93.
+  The backend must take the room from neighbouring frames, and must say nothing when they disagree.
+- With `scene.enabled = false`, the module does not load the model. The two methods must not be called then.
+- The model reads pictures and fixed texts only. It uses the safetensors file and the fast tokenizer file of the repository. It needs no new library.
+- An error of the model raises `InferenceError`. A model that cannot be loaded raises `ModelLoadError`.
+
 ## Query encoder (stage Q1)
 
 `engine.encode_texts(texts)` turns texts into unit-length vectors. The backend uses it for two kinds of text:
@@ -224,11 +246,12 @@ The module gives three helpers. The `backend` module calls them.
   `original`, `box_smaller` and `box_larger` (the box scaled by `box_scale`), and `brighter` (`brightness`).
   The three box views use one model run.
 - **E4 `engine.calibrate_object(views, photo_ids, others)`.** Pure numpy functions in `calibration.py`.
-  `own` is the list of similarities between views of different photos. `tau = mean - tau_std_factor * std`.
+  `own` is the list of similarities between views of different photos. `tau = max(mean - tau_std_factor * std, tau_min)`.
   With negatives, `tau = max(tau, neg_max + margin_min)`. `tau_strong = tau + tau_strong_offset`. No value is above 1.0.
   The result has a note when another object is too similar.
+  It has another note when the photos of the object look very different from each other.
 
-The table `[enrollment]` in `config.toml` has `augmentations`, `box_scale`, `brightness`, `tau_std_factor`, `tau_strong_offset`,
+The table `[enrollment]` in `config.toml` has `augmentations`, `box_scale`, `brightness`, `tau_std_factor`, `tau_strong_offset`, `tau_min`,
 `margin_min`, `margin_strong` and `min_photos`.
 
 ## Configuration
@@ -237,13 +260,14 @@ All settings are in `ai/config.toml`. The start values come from the pipeline do
 
 | Table | Keys |
 |-------|------|
-| `[models]` | `detector_id`, `detector_revision`, `embedder_id`, `embedder_revision`, `query_encoder_id`, `query_encoder_revision`, `verifier_id`, `verifier_revision`, `device` (`auto`, `cpu` or `cuda`), `cpu_threads`, `local_files_only` |
+| `[models]` | `detector_id`, `detector_revision`, `embedder_id`, `embedder_revision`, `query_encoder_id`, `query_encoder_revision`, `verifier_id`, `verifier_revision`, `scene_id`, `scene_revision`, `device` (`auto`, `cpu` or `cuda`), `cpu_threads`, `local_files_only` |
 | `[image]` | `max_pixels` |
 | `[quality]` | `blur_min`, `analysis_max_side`, `phash_max_distance`, `min_crop_side`, `crop_blur_min` |
 | `[detection]` | `box_threshold`, `text_threshold`, `input_short_edge`, `max_per_phrase`, `chunk_size`, `nms_iou`, `max_frame_fraction`, `min_box_side`, `hand_overlap`, `depiction_inside`, `default_phrases`, `small_phrases`, `hand_phrase`, `depiction_phrases`, `generic_phrase`, `tiling_enabled`, `tile_overlap` |
 | `[embedding]` | `frame_short_edge`, `frame_long_edge_max`, `crop_size`, `small_box_min_side`, `crop_padding` |
 | `[query]` | `max_tokens` |
 | `[verification]` | `enabled`, `min_matches`, `match_threshold`, `crop_padding` |
+| `[scene]` | `enabled`, `prompt`, `rooms`, `surfaces`, `surface_context` |
 
 - `embedding.frame_short_edge`, `embedding.frame_long_edge_max` and `embedding.crop_size` must be multiples of 14.
 - Each phrase in `detection.small_phrases` must also be in `detection.default_phrases`.
@@ -260,6 +284,7 @@ All settings are in `ai/config.toml`. The start values come from the pipeline do
 | Embed | `facebook/dinov2-small` | About 90 MB |
 | Understand the words of a user | `sentence-transformers/all-MiniLM-L6-v2` | About 91 MB |
 | Check a borderline sighting | `ETH-CVG/lightglue_superpoint` (non-commercial research use only) | About 55 MB |
+| Describe the place | `google/siglip-base-patch16-224` | About 813 MB |
 
 - The first start downloads the models to the Hugging Face cache, `~/.cache/huggingface/hub/`.
   Set the variable `HF_HOME` (or `HF_HUB_CACHE`) to use another folder.
@@ -332,8 +357,9 @@ The photo shows a phone in a pink case on a book, a charger with a cable, and a 
   The later last-seen step must not use a candidate with `quality_ok = False`.
   The cost: a real object on a book cover also cannot update the last-seen record. A better test for a screen is an open item.
 - **Vocabulary.** The phrases are a placeholder. The labels are only as good as the phrases.
-- **Duplicate boxes.** A lower `nms_iou`, or one box for each object, needs a decision after the vocabulary is real.
-- **Other start values.** `crop_blur_min`, `box_threshold` and `text_threshold` are values from the pipeline document. They are not tuned.
+- **Duplicate boxes.** The value `nms_iou = 0.5` came from the calibration (`benchmarks/calibration/README.md`). One box for each object needs a decision after the vocabulary is real.
+- **Calibration.** The values were tuned on 14 photos with one object. The README of `benchmarks/calibration` lists what was set, what was kept, and what the data could not decide.
+  `text_threshold` was not tuned.
 - **Speed on the Raspberry Pi.** It is not measured. The installation of the aarch64 wheels of torch is not tested.
 - **Not tested.** `device = "cuda"`, `local_files_only = true`, `cpu_threads`, and two threads that call a model at the same time.
 - **Stored image.** The storage module saves the image again as a JPEG. On the test photo, the number of candidates changed from 13 to 14.
@@ -361,6 +387,8 @@ These parts are not built yet:
 | `tests/test_ai_api.py` | `AiEngine` with fake models, and `open_image` |
 | `tests/test_ai_calibration.py`, `tests/test_ai_enrollment.py` | The calibration, the box scaling and the brightness |
 | `tests/test_ai_matching.py` | The matching: threshold, margin, look-alikes, phrases, skipped regions, bad data |
+| `tests/test_ai_scene.py` | The context box, the rooms and the surfaces in the engine (a fake model), errors, the switch-off |
+| `tests/test_ai_scene_model.py` (slow) | The real scene model on real photos: probabilities, equality with the full model, rooms and surfaces |
 | `tests/test_ai_verification.py` | The check in the engine: the first pass stops it, the best count, the limit, the crop at the edge, the switch-off |
 | `tests/test_ai_verifier_model.py` (slow) | The real verifier on real photos: the bottle passes, other parts of the photos do not |
 | `tests/test_ai_query_model.py` (slow) | The real query encoder: the vectors, the padding, four vague questions |

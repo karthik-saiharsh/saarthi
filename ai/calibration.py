@@ -5,7 +5,8 @@ inner product (the cosine).
 
 - `own`: the similarities between views of **different photos** of the object.
   Views of one photo are almost the same picture, so they are left out.
-- `tau = mean(own) - tau_std_factor * std(own)`.
+- `tau = mean(own) - tau_std_factor * std(own)`. It is at least `tau_min`: with few photos, the
+  formula alone can give a very low value (see `benchmarks/calibration`).
 - If other objects are enrolled, their views are the negatives. The highest
   similarity between an own view and a negative is `negative_max`.
   `tau` is at least `negative_max + margin_min`.
@@ -20,6 +21,11 @@ from ai.types import Calibration
 
 # How far the length of a vector may be from 1.0.
 NORM_TOLERANCE: float = 1e-3
+
+NOTE_PHOTOS_DIFFER: str = (
+    "The photos of this object look very different from each other. Matches may be missed. "
+    "Add clearer photos of the object."
+)
 
 NOTE_LOOK_ALIKE: str = (
     "Another enrolled object looks very similar. Matches for this object may be missed or confused."
@@ -72,12 +78,16 @@ def calibrate(
     own_mean: float = float(own.mean())
     own_std: float = float(own.std())
 
-    tau: float = own_mean - config.tau_std_factor * own_std
+    tau: float = max(own_mean - config.tau_std_factor * own_std, config.tau_min)
     negative_max: float | None = None
     if others.shape[0]:
         negative_max = float((views @ others.T).max())
         tau = max(tau, negative_max + config.margin_min)
-    note: str | None = NOTE_LOOK_ALIKE if tau > own_mean else None
+    note: str | None = None
+    if negative_max is not None and negative_max + config.margin_min > own_mean:
+        note = NOTE_LOOK_ALIKE
+    elif own_mean < config.tau_min:
+        note = NOTE_PHOTOS_DIFFER
 
     tau = min(tau, 1.0)
     return Calibration(

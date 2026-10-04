@@ -1,0 +1,25 @@
+{
+  "note": "Ground truth for the photos in the folder Dataset. A person (assisted by a tool) looked at each photo with the boxes of the detector drawn on it, and chose the box that frames the speckled bottle. A photo with an empty list has no speckled bottle. The boxes are in the pixels of the stored image (the photo after storage.prepare_image).",
+  "object": "speckled bottle",
+  "boxes": {
+    "1": [],
+    "2": [[803, 518, 1029, 949]],
+    "3": [[875, 441, 1595, 1324]],
+    "4": [],
+    "5": [],
+    "6": [],
+    "7": [],
+    "8": [[1023, 630, 1596, 1596]],
+    "9": [[650, 501, 817, 1072]],
+    "10": [[415, 71, 728, 998]],
+    "11": [],
+    "12": [],
+    "13": [],
+    "14": [[324, 18, 472, 326]]
+  },
+  "remarks": {
+    "3": "The bottle is in a hand, close to the camera, and blurred by motion.",
+    "8": "The bottle is held right against the camera. It is huge, out of focus and cut by the corner of the picture.",
+    "14": "The bottle is small and far away, at the back of a desk."
+  }
+}

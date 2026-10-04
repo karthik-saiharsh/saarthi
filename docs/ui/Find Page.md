@@ -137,3 +137,12 @@ The test found two faults, and both are fixed:
 the result was below the buttons, and the page did not scroll to it.
 A later run with the real application and real photos found a third fault: the picture of a bottle pushed the time off the screen.
 The lines now come first.
+
+## Planned: voice
+
+The page will get a voice input and a voice output. They are planned and not built. The design is in `docs/backend/Voice.md`.
+
+- A large "Talk" button. The patient speaks, and the page shows the words that the system heard.
+- The result card keeps the picture. The page also says the answer with a voice, and describes the place. A "Say it again" button repeats it.
+- The microphone works only on `localhost` or on a page with HTTPS. This decides where the UI must run.
+- The first version keeps the buttons and the text box. They are the way for a carer to use the page.

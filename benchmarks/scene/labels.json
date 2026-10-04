@@ -1,0 +1,24 @@
+{
+  "note": "What a person sees in each photo of the folder Dataset. These judgements are subjective. A photo can have more than one acceptable room (for example a balcony and a corridor look alike). 'rooms' lists the rooms that count as right.",
+  "rooms": {
+    "1": ["a balcony", "a corridor", "an outdoor area"],
+    "2": ["a balcony", "a corridor", "an outdoor area"],
+    "3": ["a balcony", "a corridor", "an outdoor area"],
+    "4": ["a balcony", "a corridor", "an outdoor area"],
+    "5": ["a balcony", "a study room", "a corridor", "an outdoor area"],
+    "6": ["a corridor"],
+    "7": ["a corridor"],
+    "8": ["a balcony", "a corridor", "an outdoor area"],
+    "9": ["a balcony", "a corridor", "an outdoor area"],
+    "10": ["a balcony", "a corridor", "an outdoor area"],
+    "11": ["a bedroom"],
+    "12": ["a bedroom"],
+    "13": ["a bedroom", "a study room"],
+    "14": ["a study room", "a bedroom"]
+  },
+  "remarks": {
+    "3": "A close-up of a marble floor. The photo does not show the room.",
+    "8": "A close-up of a marble floor. The photo does not show the room.",
+    "11": "A window sill with a soap dispenser. A bed is at the bottom of the photo."
+  }
+}

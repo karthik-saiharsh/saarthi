@@ -99,14 +99,16 @@ The functions are in `ai/calibration.py`. They use numpy only. The service calls
 
 1. `own` is the list of the cosine similarities between the views of different photos of the object.
    Views of the same photo are too alike, so they are not used.
-2. `tau = mean(own) - 0.5 * std(own)`.
+2. `tau = mean(own) - 0.5 * std(own)`, but at least `tau_min` (0.45). With 3 or 4 photos, the formula alone is not stable.
+   In a test with 14 photos, it gave values from 0.18 to 0.54, and a low value let many wrong boxes pass.
 3. The negatives are the views of all other objects. Let `neg_max` be the highest similarity between an own view and a negative.
    Then `tau = max(tau, neg_max + margin_min)`.
-4. `tau_strong = tau + 0.05`. The values are not larger than 1.0.
-5. If `neg_max` is at or above the mean of `own`, the object is still `ready`. It has a note: it is too similar to another object.
+4. `tau_strong = tau + 0.10`. The values are not larger than 1.0.
+5. If `neg_max + margin_min` is above the mean of `own`, the object is still `ready`. It has a note: it is too similar to another object.
+6. If the mean of `own` is below `tau_min`, the object is still `ready`. It has a note: the photos look very different from each other.
 
-The values are in `[enrollment]` of `ai/config.toml`: `tau_std_factor`, `tau_strong_offset`, `margin_min` (0.03),
-`margin_strong` (0.08) and `min_photos` (3).
+The values are in `[enrollment]` of `ai/config.toml`: `tau_std_factor`, `tau_min`, `tau_strong_offset`, `margin_min` (0.03),
+`margin_strong` (0.08) and `min_photos` (3). The reasons for `tau_min` and `tau_strong_offset` are in `benchmarks/calibration/README.md`.
 
 Every change of a photo or an object calibrates all objects again. The negatives of an object change when another object changes.
 
@@ -211,7 +213,7 @@ The test used the real application and the real models on the development machin
   The worker found the phone in all four photos in 33 seconds (about 8 seconds for each photo).
   The crop of the first photo showed the phone.
 - The same photo sent again gave 409.
-- After the carer accepted the four photos, the object was `ready`. `tau` was 0.98 and `tau_strong` was 1.0.
+- After the carer accepted the four photos, the object was `ready`. `tau` was 0.98 and `tau_strong` was 1.0 (the values of that time, before `tau_min`).
   The value is high because the four variants are almost the same picture. Real photos from different places give lower values.
 - A frame (the same test photo) used the gallery phrases: the detector made one pass. The default list needs more passes.
   But the frame had 0 candidates (see "Known limits").

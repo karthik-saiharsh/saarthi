@@ -27,6 +27,8 @@ class ModelsConfig:
     query_encoder_revision: str
     verifier_id: str
     verifier_revision: str
+    scene_id: str
+    scene_revision: str
     device: str
     cpu_threads: int
     local_files_only: bool
@@ -87,6 +89,7 @@ class EnrollmentConfig:
     brightness: float
     tau_std_factor: float
     tau_strong_offset: float
+    tau_min: float
     margin_min: float
     margin_strong: float
     min_photos: int
@@ -106,6 +109,15 @@ class VerificationConfig:
 
 
 @dataclass(frozen=True)
+class SceneConfig:
+    enabled: bool
+    prompt: str
+    rooms: tuple[str, ...]
+    surfaces: tuple[str, ...]
+    surface_context: float
+
+
+@dataclass(frozen=True)
 class AiConfig:
     models: ModelsConfig
     image: ImageConfig
@@ -115,6 +127,7 @@ class AiConfig:
     enrollment: EnrollmentConfig
     query: QueryConfig
     verification: VerificationConfig
+    scene: SceneConfig
 
 
 class _Table:
@@ -204,6 +217,7 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> AiConfig:
     enrollment: _Table = _Table(raw, "enrollment")
     query: _Table = _Table(raw, "query")
     verification: _Table = _Table(raw, "verification")
+    scene: _Table = _Table(raw, "scene")
 
     default_phrases: tuple[str, ...] = detection.texts("default_phrases")
     small_phrases: tuple[str, ...] = detection.texts("small_phrases", allow_empty=True)
@@ -234,6 +248,22 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> AiConfig:
     if margin_strong < margin_min:
         raise AiConfigError("enrollment.margin_strong must not be below margin_min")
 
+    rooms: tuple[str, ...] = scene.texts("rooms")
+    surfaces: tuple[str, ...] = scene.texts("surfaces")
+    for name, words in (("rooms", rooms), ("surfaces", surfaces)):
+        if len(set(words)) != len(words):
+            raise AiConfigError(f"scene.{name} must not repeat a word")
+    prompt: str = scene.text("prompt")
+    if "{label}" not in prompt:
+        raise AiConfigError("scene.prompt must contain {label}")
+    scene_config: SceneConfig = SceneConfig(
+        enabled=scene.boolean("enabled"),
+        prompt=prompt,
+        rooms=rooms,
+        surfaces=surfaces,
+        surface_context=scene.number("surface_context", 0.0, 5.0),
+    )
+
     config: AiConfig = AiConfig(
         models=ModelsConfig(
             detector_id=models.text("detector_id"),
@@ -244,6 +274,8 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> AiConfig:
             query_encoder_revision=models.text("query_encoder_revision"),
             verifier_id=models.text("verifier_id"),
             verifier_revision=models.text("verifier_revision"),
+            scene_id=models.text("scene_id"),
+            scene_revision=models.text("scene_revision"),
             device=models.choice("device", DEVICES),
             cpu_threads=models.integer("cpu_threads", minimum=0),
             local_files_only=models.boolean("local_files_only"),
@@ -288,6 +320,7 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> AiConfig:
             brightness=enrollment.number("brightness", 0.01, 1.0),
             tau_std_factor=enrollment.number("tau_std_factor", 0.0, 5.0),
             tau_strong_offset=enrollment.number("tau_strong_offset", 0.0, 1.0),
+            tau_min=enrollment.number("tau_min", 0.0, 1.0),
             margin_min=margin_min,
             margin_strong=margin_strong,
             min_photos=enrollment.integer("min_photos", minimum=2),
@@ -299,6 +332,7 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> AiConfig:
             match_threshold=verification.number("match_threshold", 0.0, 1.0),
             crop_padding=verification.number("crop_padding", 0.0, 1.0),
         ),
+        scene=scene_config,
     )
     logger.info("Loaded ai config from %s", config_path)
     return config

@@ -16,6 +16,9 @@ query_encoder_revision = "1110a243fdf4706b3f48f1d95db1a4f5529b4d41"
 # this project is for academic research. Change the verifier if the use changes (see docs/backend/Verification.md).
 verifier_id = "ETH-CVG/lightglue_superpoint"
 verifier_revision = "5f5f626efee99f37dbc9eafea879d24d297aeab8"
+# Describes the place of an object: it chooses the best room and the best surface from fixed lists of words (Apache-2.0).
+scene_id = "google/siglip-base-patch16-224"
+scene_revision = "7fd15f0689c79d79e38b1c2e2e2370a7bf2761ed"
 # "auto" uses a GPU if one exists, and the CPU if not. Other values: "cpu", "cuda".
 device = "auto"
 # Number of CPU threads for the models. 0 keeps the torch default.
@@ -50,7 +53,7 @@ max_per_phrase = 10
 # Number of phrases in one detector pass. Each pass is a full model run.
 chunk_size = 30
 # Boxes with an IoU at or above this value are merged.
-nms_iou = 0.7
+nms_iou = 0.5
 # A box larger than this part of the frame, or with a side shorter than min_box_side, is dropped.
 max_frame_fraction = 0.6
 min_box_side = 12
@@ -105,9 +108,13 @@ augmentations = ["original", "box_smaller", "box_larger", "brighter"]
 box_scale = 0.10
 brightness = 0.15
 # E4: the threshold of an object is mean - tau_std_factor * std of the similarities between
-# its views of different photos. The strong threshold is tau + tau_strong_offset.
+# its views of different photos, but at least tau_min. The strong threshold is tau + tau_strong_offset.
+# The formula alone is not stable with 3 or 4 photos. On 14 test photos (see benchmarks/calibration),
+# it gave between 0.18 and 0.54, and a low value let half of the wrong boxes pass. The floor of 0.45 and
+# the offset of 0.10 gave no wrong strong match, at the same recall.
 tau_std_factor = 0.5
-tau_strong_offset = 0.05
+tau_strong_offset = 0.10
+tau_min = 0.45
 # The margin that a match must have over the nearest look-alike (the doc starts with 0.03 and 0.08).
 margin_min = 0.03
 margin_strong = 0.08
@@ -128,3 +135,36 @@ min_matches = 30
 match_threshold = 0.2
 # Both pictures are cut from the box of the object, with this much space around it (a part of the box).
 crop_padding = 0.15
+
+[scene]
+# false: the model is not loaded, and no place is described.
+enabled = true
+# The model scores a picture against one sentence for each word in the lists.
+prompt = "a photo of {label}"
+# Fixed lists. The description can only use these words. A wrong word from a list is a safer error than an invented text.
+rooms = [
+  "a bedroom",
+  "a living room",
+  "a kitchen",
+  "a bathroom",
+  "a corridor",
+  "a balcony",
+  "a study room",
+  "a dining room",
+  "an outdoor area",
+]
+surfaces = [
+  "a table",
+  "a desk",
+  "a shelf",
+  "the floor",
+  "a bed",
+  "a chair",
+  "a window sill",
+  "a kitchen counter",
+  "a sofa",
+  "a cupboard",
+]
+# To find the surface, the model looks at the box of the object with space around it. The space is this part of
+# the size of the box: on each side of the box, and below it. Above the box, the space is half of this.
+surface_context = 1.0

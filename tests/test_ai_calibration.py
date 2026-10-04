@@ -1,9 +1,11 @@
 """Tests of the calibration math. Pure numpy, no model."""
 
+import dataclasses
+
 import numpy as np
 import pytest
 
-from ai.calibration import NOTE_LOOK_ALIKE, calibrate
+from ai.calibration import NOTE_LOOK_ALIKE, NOTE_PHOTOS_DIFFER, calibrate
 from ai.errors import CalibrationError
 from ai.settings import EnrollmentConfig, load_config
 
@@ -32,7 +34,9 @@ def expected_pairs(views: np.ndarray, photo_ids: list[int]) -> np.ndarray:
     return np.asarray(found)
 
 
-def test_tau_is_mean_minus_half_a_std_of_the_similarities_between_photos() -> None:
+def test_tau_is_mean_minus_a_part_of_the_std_of_the_similarities_between_photos() -> (
+    None
+):
     views: np.ndarray = stack(
         vector(1, 0.0), vector(1, 0.2), vector(1, 0.4), vector(1, 0.7)
     )
@@ -41,8 +45,12 @@ def test_tau_is_mean_minus_half_a_std_of_the_similarities_between_photos() -> No
     pairs: np.ndarray = expected_pairs(views, photo_ids)
     assert result.own_mean == pytest.approx(pairs.mean(), abs=1e-6)
     assert result.own_std == pytest.approx(pairs.std(), abs=1e-6)
-    assert result.tau == pytest.approx(pairs.mean() - 0.5 * pairs.std(), abs=1e-6)
-    assert result.tau_strong == pytest.approx(result.tau + 0.05, abs=1e-6)
+    assert result.tau == pytest.approx(
+        pairs.mean() - CONFIG.tau_std_factor * pairs.std(), abs=1e-6
+    )
+    assert result.tau_strong == pytest.approx(
+        min(result.tau + CONFIG.tau_strong_offset, 1.0), abs=1e-6
+    )
     assert result.margin_min == CONFIG.margin_min
     assert (result.n_views, result.n_photos) == (4, 4)
     assert result.negative_max is None and result.note is None
@@ -132,3 +140,49 @@ def test_the_parameters_are_checked() -> None:
         calibrate(views, [1], stack(), CONFIG)  # One photo id for two views
     with pytest.raises(AssertionError):
         calibrate(views.tolist(), [1, 2], stack(), CONFIG)  # type: ignore[arg-type]
+
+
+def test_tau_is_never_below_the_floor() -> None:
+    # Three photos that look different from each other: the formula alone gives a very low value.
+    views: np.ndarray = stack(vector(1, 0), vector(0.3, 1), vector(-0.4, 1))
+    no_floor = dataclasses.replace(CONFIG, tau_min=0.0)
+    low = calibrate(views, [1, 2, 3], stack(), no_floor)
+    floored = calibrate(views, [1, 2, 3], stack(), CONFIG)
+    assert low.tau < CONFIG.tau_min  # The formula alone is below the floor
+    assert floored.tau == CONFIG.tau_min
+    assert floored.tau_strong == pytest.approx(
+        CONFIG.tau_min + CONFIG.tau_strong_offset
+    )
+
+
+def test_the_floor_does_not_lower_a_higher_value() -> None:
+    views: np.ndarray = stack(vector(1, 0.0), vector(1, 0.05), vector(1, 0.1))
+    no_floor = dataclasses.replace(CONFIG, tau_min=0.0)
+    assert calibrate(views, [1, 2, 3], stack(), CONFIG).tau == pytest.approx(
+        calibrate(views, [1, 2, 3], stack(), no_floor).tau
+    )
+
+
+def test_photos_that_look_very_different_give_a_note() -> None:
+    views: np.ndarray = stack(vector(1, 0), vector(0.3, 1), vector(-0.4, 1))
+    result = calibrate(views, [1, 2, 3], stack(), CONFIG)
+    assert result.note == NOTE_PHOTOS_DIFFER and result.own_mean < CONFIG.tau_min
+
+
+def test_the_floor_alone_does_not_give_the_look_alike_note() -> None:
+    # The old rule gave that note whenever tau was above the mean of the photos. The floor can do that too.
+    views: np.ndarray = stack(vector(1, 0), vector(0.3, 1), vector(-0.4, 1))
+    far: np.ndarray = stack(vector(0, 0, 1))
+    result = calibrate(views, [1, 2, 3], far, CONFIG)
+    assert result.tau > result.own_mean and result.note != NOTE_LOOK_ALIKE
+
+
+def test_a_floor_of_zero_gives_the_old_result() -> None:
+    views: np.ndarray = stack(vector(1, 0.1), vector(1, 0.0), vector(1, 0.2))
+    plain = calibrate(
+        views, [1, 2, 3], stack(), dataclasses.replace(CONFIG, tau_min=0.0)
+    )
+    pairs: np.ndarray = expected_pairs(views, [1, 2, 3])
+    assert plain.tau == pytest.approx(
+        pairs.mean() - CONFIG.tau_std_factor * pairs.std()
+    )

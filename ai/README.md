@@ -20,6 +20,7 @@ The source of the design is `docs/ai/DINO-Based Object Recall Pipeline.md`.
 | `postprocess.py` | Turns detector output into candidates. No model |
 | `detector.py` | `CandidateDetector`: Grounding DINO with three kinds of pass |
 | `embedder.py` | `RegionEmbedder`: DINOv2 small, one vector for each box |
+| `scene.py` | `SceneClassifier`: SigLIP. It chooses the best room and the best surface from fixed lists of words (stage Q2) |
 | `verifier.py` | `KeypointVerifier`: LightGlue with SuperPoint. It counts the keypoints that match between two pictures (stage I5) |
 | `query.py` | `QueryEncoder`: a small sentence encoder. It turns the words of a user into vectors, to find the object that the user means |
 | `matching.py` | Match region vectors with the enrolled objects (stage I4). No model |
@@ -81,6 +82,7 @@ Edit `config.toml`. The file explains each key.
 | Embed regions | `facebook/dinov2-small` | About 90 MB |
 | Understand the words of a user | `sentence-transformers/all-MiniLM-L6-v2` (Apache-2.0) | About 91 MB |
 | Check a borderline sighting (I5) | `ETH-CVG/lightglue_superpoint` (**non-commercial research use only**) | About 55 MB |
+| Describe the place (Q2) | `google/siglip-base-patch16-224` (Apache-2.0) | About 813 MB |
 
 - The weights of the verifier are for academic or non-profit non-commercial research use only.
   The owner confirmed that this project is for academic research. Change the verifier if the use changes.

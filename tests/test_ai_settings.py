@@ -54,6 +54,11 @@ def test_default_config_loads_and_is_consistent() -> None:
         ("box_scale = 0.10", "box_scale = 0.9"),
         ("brightness = 0.15", "brightness = 0"),
         ("tau_std_factor = 0.5", "tau_std_factor = -1"),
+        ("tau_min = 0.45", "tau_min = 1.5"),
+        ("surface_context = 1.0", "surface_context = -1.0"),
+        ('prompt = "a photo of {label}"', 'prompt = "a photo of a room"'),
+        ('  "a bedroom",\n  "a living room",', '  "a bedroom",\n  "a bedroom",'),
+        ("tau_min = 0.45", 'tau_min = "high"'),
         ("margin_strong = 0.08", "margin_strong = 0.01"),
         ("min_photos = 3", "min_photos = 1"),
         ("chunk_size = 30", "chunk_size = true"),
@@ -83,6 +88,7 @@ def test_bad_values_are_refused(tmp_path: Path, old: str, new: str) -> None:
         "embedding",
         "enrollment",
         "verification",
+        "scene",
     ],
 )
 def test_missing_table_is_refused(tmp_path: Path, table: str) -> None:
@@ -115,3 +121,11 @@ def test_the_verifier_is_pinned_to_a_revision() -> None:
     assert re.fullmatch(r"[0-9a-f]{40}", config.models.verifier_revision)
     assert config.models.verifier_id and config.verification.enabled
     assert config.verification.min_matches > 0
+
+
+def test_the_scene_model_is_pinned_and_the_lists_are_not_empty() -> None:
+    config = load_config()
+    assert re.fullmatch(r"[0-9a-f]{40}", config.models.scene_revision)
+    assert config.models.scene_id and config.scene.enabled
+    assert config.scene.rooms and config.scene.surfaces
+    assert "{label}" in config.scene.prompt

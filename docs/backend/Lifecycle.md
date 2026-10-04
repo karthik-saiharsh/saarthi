@@ -34,7 +34,7 @@ The server never starts.
 | 2. Database | `db.init_db()`: open SQLite, create the tables, open the vector index | Everything else reads the database |
 | 3. Instance lock | Take an exclusive lock on `db/data/saarthi.lock` | Only one copy may use the data. A second copy stops here (see below) |
 | 4. Recovery | `db.startup_recovery()`: repair what a stop or a crash left behind | It changes data, so the lock comes first |
-| 5. Ai models | `AiEngine()`: load the detector, the embedder, the query encoder and the verifier | The first start downloads about 925 MB (the detector 690 MB, the embedder 90 MB, the query encoder 91 MB, the verifier 55 MB). Later starts take about 7 seconds |
+| 5. Ai models | `AiEngine()`: load the detector, the embedder, the query encoder, the verifier and the scene model | The first start downloads about 1.7 GB (the detector 690 MB, the embedder 90 MB, the query encoder 91 MB, the verifier 55 MB, the scene model 813 MB). Later starts take about 7 seconds |
 | 6. Backend | `Backend(engine)`: the upload step, the worker and the maintenance jobs | It checks that the size of the model vectors equals `vectors.dimension` |
 | 7. Web server | The upload page and the upload route start | The worker and the maintenance thread start with the server |
 

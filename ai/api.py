@@ -28,6 +28,7 @@ from ai.postprocess import apply_crop_quality, select_candidates
 from ai.quality import blur_score, hamming_distance, perceptual_hash
 from ai.query import QueryEncoder
 from ai.runtime import configure_threads
+from ai.scene import SceneClassifier, context_box
 from ai.settings import AiConfig, load_config
 from ai.types import (
     Box,
@@ -95,27 +96,33 @@ class AiEngine:
         embedder: RegionEmbedder | None = None,
         query_encoder: QueryEncoder | None = None,
         verifier: KeypointVerifier | None = None,
+        scene_classifier: SceneClassifier | None = None,
     ) -> None:
-        """Load the models. Pass `detector`, `embedder`, `query_encoder` or `verifier` only in tests.
+        """Load the models. Pass `detector`, `embedder`, `query_encoder`, `verifier` or `scene_classifier` only in tests.
 
         The verifier loads only if `verification.enabled` is true.
+        The scene classifier loads only if `scene.enabled` is true.
         """
         self._config: AiConfig = config if config is not None else load_config()
         configure_threads(self._config.models.cpu_threads)
         self._detector: CandidateDetector = detector or CandidateDetector(self._config)
         self._embedder: RegionEmbedder = embedder or RegionEmbedder(self._config)
         self._query_encoder: QueryEncoder = query_encoder or QueryEncoder(self._config)
+        self._scene: SceneClassifier | None = scene_classifier or (
+            SceneClassifier(self._config) if self._config.scene.enabled else None
+        )
         self._verifier: KeypointVerifier | None = verifier or (
             KeypointVerifier(self._config)
             if self._config.verification.enabled
             else None
         )
         logger.info(
-            "AI engine ready: detector %s, embedder %s, query encoder %s, verifier %s",
+            "AI engine ready: detector %s, embedder %s, query encoder %s, verifier %s, scene %s",
             self._detector.name,
             self._embedder.name,
             self._query_encoder.name,
             self._verifier.name if self._verifier is not None else "off",
+            self._scene.name if self._scene is not None else "off",
         )
 
     @property
@@ -357,3 +364,37 @@ class AiEngine:
             compared,
         )
         return result
+
+    # ---- The place of an object (stage Q2) ----
+
+    @property
+    def scene_enabled(self) -> bool:
+        """True if the scene classifier is loaded. If False, the two methods below must not be called."""
+        return self._scene is not None
+
+    @property
+    def scene_model(self) -> str:
+        """Name of the scene model, for the cache of the scores. It changes with the model."""
+        assert self._scene is not None, "the scene classifier is switched off"
+        return self._scene.name
+
+    def score_rooms(self, image: Image.Image) -> dict[str, float]:
+        """Return the probability of each room of `scene.rooms` for a whole picture. The values add up to 1."""
+        assert self._scene is not None, "the scene classifier is switched off"
+        assert isinstance(image, Image.Image), "image must be a PIL image"
+        return self._scene.room_scores(image)
+
+    def score_surfaces(self, image: Image.Image, box: Box) -> list[tuple[str, float]]:
+        """Return the surfaces of `scene.surfaces` that fit the place of the object, the best first.
+
+        The model looks at the box with space around it (`scene.surface_context`).
+        """
+        assert self._scene is not None, "the scene classifier is switched off"
+        assert isinstance(image, Image.Image), "image must be a PIL image"
+        assert isinstance(box, Box), "box must be a Box"
+        around: Box = context_box(
+            box, image.width, image.height, self._config.scene.surface_context
+        )
+        return self._scene.surface_scores(
+            image.crop((around.x0, around.y0, around.x1, around.y1))
+        )
