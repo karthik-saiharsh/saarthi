@@ -66,8 +66,34 @@ def test_the_surfaces_come_best_first_from_the_box_with_space_around_it() -> Non
     assert scene.surface_calls == [(around.width, around.height)]
 
 
-def test_the_name_of_the_model_is_for_the_cache() -> None:
-    assert make_engine().scene_model == "fake-scene@00000000"
+def test_the_name_for_the_cache_has_the_model_and_a_fingerprint_of_the_words() -> None:
+    name: str = make_engine().scene_model
+    assert name.startswith("fake-scene@00000000/") and len(name.split("/")[1]) == 8
+
+
+def test_the_name_for_the_cache_changes_when_a_word_list_or_the_prompt_changes() -> (
+    None
+):
+    base = load_config()
+
+    def engine_with(**changes: object) -> AiEngine:
+        config = dataclasses.replace(
+            base, scene=dataclasses.replace(base.scene, **changes)
+        )
+        return AiEngine(
+            config,
+            detector=FakeDetector(),  # type: ignore[arg-type]
+            embedder=FakeEmbedder(),  # type: ignore[arg-type]
+            query_encoder=FakeQueryEncoder(),  # type: ignore[arg-type]
+            verifier=FakeVerifier(),  # type: ignore[arg-type]
+            scene_classifier=FakeSceneClassifier(),  # type: ignore[arg-type]
+        )
+
+    same = engine_with().scene_model
+    assert same == make_engine().scene_model
+    assert engine_with(rooms=(*base.scene.rooms, "a garage")).scene_model != same
+    assert engine_with(surfaces=base.scene.surfaces[:-1]).scene_model != same
+    assert engine_with(prompt="a picture of {label}").scene_model != same
 
 
 def test_an_error_of_the_model_reaches_the_caller() -> None:

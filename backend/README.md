@@ -33,6 +33,7 @@ For the full design, see `docs/backend/Upload Endpoint.md`, `docs/backend/Enroll
 | `verification.py` | `ReferenceVerifier`: the check of a sighting against the reference photos of an object (stage I5). The memory and the search use it |
 | `search.py` | `SearchService`: answers "where is my object?" from the last-seen record, then from the archive of frames |
 | `query.py` | `QueryResolver`: turns the words of a user into an enrolled object, or a short list to choose from |
+| `describe.py` | `DescribeService`: makes the sentence for the voice (stage Q2). It chooses the room from neighbouring frames, the surface from the box, and builds the text |
 | `worker.py` | `Worker`: runs the ai stages on `pending` photos and images, in a background thread |
 | `maintenance.py` | `Maintenance`: retention, orphan and missing files, the vector checkpoint |
 | `instance_lock.py` | `InstanceLock`: only one copy of the application may use the data |
@@ -157,6 +158,12 @@ A variable that is set but empty stops the start, so the route cannot open by mi
 | `query.suggest_min_score` | Below `matched_min_score`, the user chooses between the objects with at least this score. Below it, no object fits |
 | `query.max_candidates` | The most objects that the user chooses from |
 | `query.max_chars` | A question with more characters is refused |
+| `describe.neighbour_window_seconds` | Frames this close in time to the answer help to choose the room |
+| `describe.neighbour_max_frames` | The most neighbouring frames that are used |
+| `describe.room_min_frames` | The room is named only if at least this many frames have scores |
+| `describe.room_agree_fraction` | ...and at least this part of them have the room as the best room |
+| `describe.room_min_score` | ...and the average score of the room is at least this value |
+| `describe.surface_min_score` | The surface is named only if its score is at least this value |
 
 The largest upload is `limits.max_bytes` in `storage/config.toml`.
 

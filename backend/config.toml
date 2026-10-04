@@ -97,3 +97,20 @@ suggest_min_score = 0.20
 max_candidates = 3
 # A question with more characters than this is refused.
 max_chars = 300
+
+[describe]
+# The description of the place of an object (see docs/backend/Voice.md). All values are start values.
+# The room is taken from the frame of the answer and the frames near it in time, because a single
+# frame can mislead (a close-up of a floor does not show the room).
+# A frame is near if it was captured at most this many seconds before or after the frame of the answer.
+neighbour_window_seconds = 120
+# The most neighbouring frames that are used.
+neighbour_max_frames = 4
+# The room is named only if at least this many frames (the frame of the answer counts) have scores.
+room_min_frames = 3
+# ...and if the best room (the room with the best average score) is the best room of at least this part of the frames.
+room_agree_fraction = 0.6
+# ...and if the average score of this room is at least this value. If one of the three rules fails, the voice says nothing about the room.
+room_min_score = 0.4
+# The surface under the object is named only if its score is at least this value.
+surface_min_score = 0.4

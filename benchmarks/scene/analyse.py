@@ -80,5 +80,52 @@ def main() -> None:
             )
 
 
+def rule_grid(out: Path) -> None:
+    """Try the room rule of the backend with several settings (`room_min_frames`, agree fraction, `room_min_score`).
+
+    The rule: the frames are the photo and its neighbours. The scores of the rooms are averaged. The best room is named
+    only if enough frames have it as the best room, and its average score is high enough. Else the answer says nothing.
+    """
+    accepted = json.loads((Path(__file__).parent / "labels.json").read_text())["rooms"]
+    lists = json.loads((out / "scene_lists.json").read_text())
+    names = sorted(lists, key=int)
+    rooms = list(lists[names[0]]["room_all"])
+    print("\nThe room rule: right claims / WRONG claims / no claim, for 14 photos")
+    for side in (1, 2):
+        print(
+            f"  neighbours: {side} photo(s) on each side (a photo near the end has fewer)"
+        )
+        print("  min_frames  agree  min_score   right  WRONG  none")
+        for min_frames in (2, 3):
+            for agree in (0.5, 0.6, 0.67, 0.75, 1.0):
+                for min_score in (0.3, 0.4, 0.5, 0.6):
+                    right = wrong = none = 0
+                    for i, name in enumerate(names):
+                        low, high = max(0, i - side), min(len(names) - 1, i + side)
+                        frames = [
+                            lists[names[j]]["room_all"] for j in range(low, high + 1)
+                        ]
+                        average = {
+                            r: sum(f[r] for f in frames) / len(frames) for r in rooms
+                        }
+                        best = max(average, key=average.get)
+                        agreeing = sum(max(f, key=f.get) == best for f in frames)
+                        claims = (
+                            len(frames) >= min_frames
+                            and agreeing / len(frames) >= agree
+                            and average[best] >= min_score
+                        )
+                        if not claims:
+                            none += 1
+                        elif best in accepted[name]:
+                            right += 1
+                        else:
+                            wrong += 1
+                    print(
+                        f"  {min_frames:>10}  {agree:>5.2f}  {min_score:>8.1f}   {right:>5}  {wrong:>5}  {none:>4}"
+                    )
+
+
 if __name__ == "__main__":
     main()
+    rule_grid(Path(sys.argv[1]))

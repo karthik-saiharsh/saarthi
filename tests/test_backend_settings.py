@@ -64,6 +64,12 @@ def test_default_config_loads() -> None:
         ("worker_stop_seconds = 120", "worker_stop_seconds = 0"),
         ('host = "0.0.0.0"', 'host = ""'),
         ('host = "0.0.0.0"', "host = 5"),
+        ("neighbour_window_seconds = 120", "neighbour_window_seconds = 0"),
+        ("neighbour_max_frames = 4", "neighbour_max_frames = 0"),
+        ("room_min_frames = 3", "room_min_frames = 0"),
+        ("room_agree_fraction = 0.6", "room_agree_fraction = 1.5"),
+        ("room_min_score = 0.4", "room_min_score = -0.1"),
+        ("surface_min_score = 0.4", 'surface_min_score = "high"'),
         ("max_pending = 500", "max_pending = 0"),
         ("max_pending = 500", "max_pending = true"),
         ("max_pending = 500", 'max_pending = "many"'),
@@ -89,6 +95,7 @@ def test_bad_values_are_refused(tmp_path: Path, old: str, new: str) -> None:
         "enrollment",
         "memory",
         "search",
+        "describe",
     ],
 )
 def test_missing_table_is_refused(tmp_path: Path, table: str) -> None:

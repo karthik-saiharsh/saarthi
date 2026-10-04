@@ -306,7 +306,7 @@ class FrameScene(BaseModel):
     image: ForeignKeyField = ForeignKeyField(
         Image, backref="scene", on_delete="CASCADE", primary_key=True
     )
-    # The model that made the scores. A row of another model is not used.
+    # The model that made the scores, with a fingerprint of its word lists. A row of another name is not used.
     model: CharField = CharField()
     # The probability of each room, for example {"a bedroom": 0.7, "a corridor": 0.1}.
     rooms: JSONField = JSONField()

@@ -2,9 +2,10 @@
 
 ## Status
 
-This feature is **planned**. Only a part of the stage Q2 is built: the scene classifier in the `ai` component (`ai/scene.py`, phase 1a),
-and the cache of the room scores with the lookup of neighbouring frames in the `db` component (`db/scenes.py`, phase 1b).
-The rule for the room, the sentence, the voice and the listening are not built.
+This feature is **partly built**. Built: the scene classifier in the `ai` component (`ai/scene.py`, phase 1a),
+the cache of the room scores and the lookup of neighbouring frames in the `db` component (`db/scenes.py`, phase 1b),
+and the room rule, the sentence and the service in `backend/describe.py` (phase 1c).
+Not built: the sentence on the page (phase 1d), the voice and the listening.
 This document records the flow that the owner described and the stages that it adds to the pipeline.
 It also lists the decisions that are still open.
 
@@ -70,6 +71,32 @@ The application builds the sentence from a template with slots. The slots are th
 For older sightings, it also uses a part of the day ("this morning", "yesterday evening").
 The part of the day needs the local time zone. The server stores UTC. A new setting for the time zone is needed.
 The time is the time at which the server received the frame (see `docs/backend/Memory.md`). A frame that arrives late has a wrong time.
+
+## The room rule (built, `backend/describe.py`)
+
+The room comes from the answer frame and its neighbouring frames in time (settings: `[describe]` in `backend/config.toml`).
+The service names the room only if all these are true:
+
+- At least `room_min_frames` frames have room scores (3 by default).
+- At least `room_agree_fraction` of them have the room as best room (0.6).
+- The average score of the room is at least `room_min_score` (0.4).
+
+If one is false, the sentence says nothing about the room. The surface comes from the box with its surroundings.
+It needs a score of at least `surface_min_score` (0.4). There is no surface when the object is in a hand.
+On the 14 photos these settings gave 6 right rooms, 0 wrong rooms and 8 silent answers.
+The values are start values. A test on real frame sequences must confirm them.
+
+The sentences that the code builds:
+
+| Case | Sentence |
+|------|----------|
+| Sure | "Your bottle was last seen about 20 minutes ago. It was on a table. The room looks like a bedroom." |
+| In hand | "You were holding your bottle about 20 minutes ago." |
+| Weak | "I am not sure, but I may have seen your bottle about 20 minutes ago. It may have been on a table. Please look at the picture." |
+| Old | "The last time that I saw your bottle was 2 days ago. That was a long time ago." |
+| Not seen | "I have not seen your bottle lately." |
+
+An error of the scene model, of a file or of the database gives a sentence with the time only.
 
 ## The planned parts
 

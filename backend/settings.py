@@ -69,6 +69,16 @@ class QueryConfig:
 
 
 @dataclass(frozen=True)
+class DescribeConfig:
+    neighbour_window_seconds: int
+    neighbour_max_frames: int
+    room_min_frames: int
+    room_agree_fraction: float
+    room_min_score: float
+    surface_min_score: float
+
+
+@dataclass(frozen=True)
 class EnrollmentConfig:
     max_photos_per_object: int
     max_objects: int
@@ -85,6 +95,7 @@ class BackendConfig:
     memory: MemoryConfig
     search: SearchConfig
     query: QueryConfig
+    describe: DescribeConfig
 
 
 def _table(raw: dict, name: str) -> dict:
@@ -238,6 +249,19 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> BackendConfig:
         raise BackendConfigError(
             "query.suggest_min_score must not be above query.matched_min_score"
         )
+    describe: dict = _table(raw, "describe")
+    describe_config: DescribeConfig = DescribeConfig(
+        neighbour_window_seconds=_integer(
+            describe, "describe", "neighbour_window_seconds", 1
+        ),
+        neighbour_max_frames=_integer(describe, "describe", "neighbour_max_frames", 1),
+        room_min_frames=_integer(describe, "describe", "room_min_frames", 1),
+        room_agree_fraction=_number(
+            describe, "describe", "room_agree_fraction", 0.0, 1.0
+        ),
+        room_min_score=_number(describe, "describe", "room_min_score", 0.0, 1.0),
+        surface_min_score=_number(describe, "describe", "surface_min_score", 0.0, 1.0),
+    )
     logger.info("Loaded backend config from %s", config_path)
     return BackendConfig(
         max_pending,
@@ -249,4 +273,5 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> BackendConfig:
         memory_config,
         search_config,
         query_config,
+        describe_config,
     )

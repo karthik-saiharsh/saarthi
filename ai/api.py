@@ -4,6 +4,7 @@
 the order that it chooses. The engine never reads the database or the disk.
 """
 
+import hashlib
 import logging
 from io import BytesIO
 
@@ -374,9 +375,14 @@ class AiEngine:
 
     @property
     def scene_model(self) -> str:
-        """Name of the scene model, for the cache of the scores. It changes with the model."""
+        """Name for the cache of the room scores: the model, and a fingerprint of the prompt and the word lists.
+
+        It changes when the model, the prompt or a list changes, so old scores are not used with new words.
+        """
         assert self._scene is not None, "the scene classifier is switched off"
-        return self._scene.name
+        scene = self._config.scene
+        text: str = "\n".join([scene.prompt, *scene.rooms, "--", *scene.surfaces])
+        return f"{self._scene.name}/{hashlib.sha1(text.encode()).hexdigest()[:8]}"
 
     def score_rooms(self, image: Image.Image) -> dict[str, float]:
         """Return the probability of each room of `scene.rooms` for a whole picture. The values add up to 1."""

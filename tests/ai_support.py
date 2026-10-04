@@ -136,6 +136,8 @@ class FakeSceneClassifier:
             chosen, key=lambda item: -item[1]
         )
         self.error: Exception | None = None
+        # Rooms that the next calls give, one entry for each call. When it is empty, the call gives `rooms`.
+        self.room_queue: list[dict[str, float]] = []
         self.room_calls: list[tuple[int, int]] = []
         self.surface_calls: list[tuple[int, int]] = []
 
@@ -143,6 +145,8 @@ class FakeSceneClassifier:
         if self.error is not None:
             raise self.error
         self.room_calls.append(image.size)
+        if self.room_queue:
+            return dict(self.room_queue.pop(0))
         return dict(self.rooms)
 
     def surface_scores(self, image):
