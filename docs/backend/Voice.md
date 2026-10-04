@@ -2,8 +2,9 @@
 
 ## Status
 
-This feature is **planned**. Only a part of the stage Q2 is built: the scene classifier in the `ai` component (`ai/scene.py`, phase 1a).
-The sentence, the neighbouring frames, the cache, the voice and the listening are not built.
+This feature is **planned**. Only a part of the stage Q2 is built: the scene classifier in the `ai` component (`ai/scene.py`, phase 1a),
+and the cache of the room scores with the lookup of neighbouring frames in the `db` component (`db/scenes.py`, phase 1b).
+The rule for the room, the sentence, the voice and the listening are not built.
 This document records the flow that the owner described and the stages that it adds to the pipeline.
 It also lists the decisions that are still open.
 

@@ -17,6 +17,7 @@ For the full design, see `docs/db/Ingestion Database Schema.md`.
 |------|---------|
 | `schema.py` | The tables: `Image`, `Region`, `EnrolledObject`, `ReferencePhoto`, `ObjectView` |
 | `gallery.py` | The helpers of the gallery. `api.py` gives them as `db.gallery` |
+| `scenes.py` | The helpers of the description of a place: the room scores of a frame (a cache), and the frames near a frame in time. `api.py` gives them as `db.scenes` |
 | `sightings.py` | The helpers of the memory: the sighting log and the last-seen record. `api.py` gives them as `db.sightings` |
 | `support.py` | The error translation that `api.py` and `gallery.py` share |
 | `api.py` | The public interface: config loader, `init_db`, the query helpers, the vector helpers and the start-up recovery |
@@ -40,6 +41,7 @@ For the full design, see `docs/db/Ingestion Database Schema.md`.
 - `reference_photo`: one row for each photo that a carer gave for an object.
 - `object_view`: one vector for each view of a reference photo. These vectors are in SQLite, not in FAISS, because the gallery is small.
 - `sighting`: one row for each accepted match of an object in a frame.
+- `frame_scene`: one row for each frame that the scene model scored: the probability of each room. It is a cache. The row goes with its frame.
 - `last_seen`: one row for each object, with the frame, the box and the time of the last accepted sighting. The frame cannot be deleted while the row exists.
 
 ## Configuration

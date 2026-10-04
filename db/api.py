@@ -14,6 +14,7 @@ from peewee import PeeweeException, SqliteDatabase
 
 from db import (
     gallery,
+    scenes,
     sightings,
 )
 from db.errors import (
@@ -27,6 +28,7 @@ from db.errors import (
 )
 from db.schema import (
     EnrolledObject,
+    FrameScene,
     Image,
     ImageStatus,
     LastSeen,
@@ -53,6 +55,7 @@ __all__ = [
     "InvalidStateError",
     "VectorIndexError",
     "gallery",
+    "scenes",
     "sightings",
 ]
 DB_DIR: Path = Path(__file__).resolve().parent
@@ -264,6 +267,7 @@ def init_db(config_path: Path = DEFAULT_CONFIG_PATH) -> tuple[SqliteDatabase, Db
                 ObjectView,
                 Sighting,
                 LastSeen,
+                FrameScene,
             ],
             safe=True,
         )
@@ -277,7 +281,7 @@ def init_db(config_path: Path = DEFAULT_CONFIG_PATH) -> tuple[SqliteDatabase, Db
         raise
     logger.info(
         "Tables ready: image, region, enrolled_object, reference_photo, object_view, "
-        "sighting, last_seen"
+        "sighting, last_seen, frame_scene"
     )
     _replace_vector_index(config)
     gallery.configure(config.vector_dimension)

@@ -18,6 +18,10 @@ Memory (what the system saw of the objects of the owner):
 - `LastSeen`: one row for each object. The newest sighting that the rules accept.
   It keeps its frame: retention never deletes an image that a `LastSeen` row uses.
 
+Description (the place of an object, for the voice):
+- `FrameScene`: the room scores of a frame. One row for each frame. It is a cache:
+  the scene model makes the scores when a description needs them (see `db/scenes.py`).
+
 All timestamps are naive UTC values.
 """
 
@@ -293,3 +297,20 @@ class LastSeen(BaseModel):
 
     class Meta:
         table_name = "last_seen"
+
+
+class FrameScene(BaseModel):
+    """The scores of the rooms of one frame. They come from the scene model. One row for each frame."""
+
+    # The row goes with the frame (retention).
+    image: ForeignKeyField = ForeignKeyField(
+        Image, backref="scene", on_delete="CASCADE", primary_key=True
+    )
+    # The model that made the scores. A row of another model is not used.
+    model: CharField = CharField()
+    # The probability of each room, for example {"a bedroom": 0.7, "a corridor": 0.1}.
+    rooms: JSONField = JSONField()
+    computed_at: DateTimeField = DateTimeField(default=utc_now)
+
+    class Meta:
+        table_name = "frame_scene"

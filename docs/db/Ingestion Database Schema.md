@@ -118,6 +118,25 @@ One row for each vector of a photo.
 
 The gallery vectors are in SQLite, not in FAISS. The gallery is small (tens of objects, tens of views each).
 
+## Scene table
+
+The table `frame_scene` is a cache for the description of a place (see `docs/backend/Voice.md`).
+The scene model makes the room scores of a frame when a description needs them. The helpers keep the scores, so a frame is scored one time.
+The helpers are in `db/scenes.py`. `db/api.py` gives them as `db.scenes`.
+
+| Column | Meaning |
+|--------|---------|
+| `image` | The frame. It is the key. The row goes with the frame (cascade), so retention removes it |
+| `model` | The model that made the scores. A row of another model is not used |
+| `rooms` | JSON: the probability of each room, for example `{"a bedroom": 0.7, "a corridor": 0.2}` |
+| `computed_at` | Naive UTC time |
+
+| Helper | Task |
+|--------|------|
+| `get_room_scores(image_ids, model)` | The saved scores of these frames. A frame without scores, or with scores of another model, is not in the result |
+| `set_room_scores(image_id, model, rooms)` | Save the scores of a frame. Scores that exist are replaced. The values must be finite, not negative, and add up to 1 (a difference of 0.01 is allowed). `InvalidRecordError` for a wrong value or an unknown frame |
+| `list_neighbour_images(image_id, window_seconds, limit)` | The `done` frames that were captured at most `window_seconds` before or after the frame, the nearest first. The frame itself is not in the list. An unknown frame gives an empty list |
+
 ## Memory tables
 
 The tables `sighting` and `last_seen` hold what the system saw of the enrolled objects.
