@@ -31,16 +31,19 @@ from backend.enrollment import (
 )
 from backend.errors import (
     BackendError,
+    InvalidAudioError,
     InvalidInputError,
     InvalidQueryError,
     LimitReachedError,
     NotFoundError,
     ObjectNotReadyError,
     QueueFullError,
+    VoiceUnavailableError,
 )
 from backend.ingest import IngestResult, IngestService, IngestStatus
 from backend.query import QueryCandidate, QueryResolver, QueryResult, QueryStatus
 from backend.search import Answer, SearchService
+from backend.voice import VoiceService
 from db.schema import ObjectStatus
 from ui.ports import (
     EnrollmentError,
@@ -55,6 +58,7 @@ from ui.ports import (
     PhotoState,
     Sighting,
     UploadOutcome,
+    VoiceError,
 )
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -241,6 +245,7 @@ class UiEnrollmentService:
         return await self._call(self._service.get_crop, object_id, photo_id, max_side)
 
 
+MESSAGE_VOICE_FAILED: str = "The computer could not listen. Please try again."
 MESSAGE_FIND_FAILED: str = "The search did not work. Please try again."
 MESSAGE_FIND_NOT_READY: str = "This object cannot be searched yet."
 MESSAGE_FIND_NOT_FOUND: str = "This object does not exist any more."
@@ -355,3 +360,27 @@ class UiFindService:
             complete=answer.complete,
             description=description,
         )
+
+
+class UiVoiceService:
+    """Implements `ui.ports.VoiceService` with the real speech recognizer.
+
+    The work blocks, so the call runs in a thread. Each error becomes a `VoiceError` with a fixed text.
+    The audio and the words are never logged.
+    """
+
+    def __init__(self, voice: VoiceService) -> None:
+        assert isinstance(voice, VoiceService), "voice must be a VoiceService"
+        self._voice: VoiceService = voice
+        self.max_bytes: int = voice.max_bytes
+        self.max_seconds: int = voice.max_seconds
+
+    async def transcribe(self, wav: bytes) -> str:
+        assert isinstance(wav, bytes), "wav must be bytes"
+        try:
+            return await asyncio.to_thread(self._voice.transcribe, wav)
+        except (InvalidAudioError, VoiceUnavailableError) as error:
+            raise VoiceError(str(error)) from error  # A fixed text
+        except Exception as error:  # The boundary to the UI: map every error.
+            logger.error("Listening failed: %s", type(error).__name__, exc_info=error)
+            raise VoiceError(MESSAGE_VOICE_FAILED) from error

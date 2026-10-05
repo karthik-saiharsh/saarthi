@@ -29,6 +29,8 @@ class ModelsConfig:
     verifier_revision: str
     scene_id: str
     scene_revision: str
+    speech_id: str
+    speech_revision: str
     device: str
     cpu_threads: int
     local_files_only: bool
@@ -118,6 +120,13 @@ class SceneConfig:
 
 
 @dataclass(frozen=True)
+class SpeechConfig:
+    enabled: bool
+    max_seconds: int
+    max_new_tokens: int
+
+
+@dataclass(frozen=True)
 class AiConfig:
     models: ModelsConfig
     image: ImageConfig
@@ -128,6 +137,7 @@ class AiConfig:
     query: QueryConfig
     verification: VerificationConfig
     scene: SceneConfig
+    speech: SpeechConfig
 
 
 class _Table:
@@ -166,10 +176,12 @@ class _Table:
             raise self._fail(key, "true or false")
         return value
 
-    def integer(self, key: str, minimum: int = 1) -> int:
+    def integer(self, key: str, minimum: int = 1, maximum: int | None = None) -> int:
         value: object = self._value(key)
         if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
             raise self._fail(key, f"an integer of {minimum} or more")
+        if maximum is not None and value > maximum:
+            raise self._fail(key, f"an integer of {maximum} or less")
         return value
 
     def number(self, key: str, low: float, high: float) -> float:
@@ -218,6 +230,7 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> AiConfig:
     query: _Table = _Table(raw, "query")
     verification: _Table = _Table(raw, "verification")
     scene: _Table = _Table(raw, "scene")
+    speech: _Table = _Table(raw, "speech")
 
     default_phrases: tuple[str, ...] = detection.texts("default_phrases")
     small_phrases: tuple[str, ...] = detection.texts("small_phrases", allow_empty=True)
@@ -276,6 +289,8 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> AiConfig:
             verifier_revision=models.text("verifier_revision"),
             scene_id=models.text("scene_id"),
             scene_revision=models.text("scene_revision"),
+            speech_id=models.text("speech_id"),
+            speech_revision=models.text("speech_revision"),
             device=models.choice("device", DEVICES),
             cpu_threads=models.integer("cpu_threads", minimum=0),
             local_files_only=models.boolean("local_files_only"),
@@ -333,6 +348,11 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> AiConfig:
             crop_padding=verification.number("crop_padding", 0.0, 1.0),
         ),
         scene=scene_config,
+        speech=SpeechConfig(
+            enabled=speech.boolean("enabled"),
+            max_seconds=speech.integer("max_seconds", minimum=1, maximum=30),
+            max_new_tokens=speech.integer("max_new_tokens", minimum=1, maximum=440),
+        ),
     )
     logger.info("Loaded ai config from %s", config_path)
     return config

@@ -8,6 +8,7 @@ import pytest
 from ui.find_session import (
     MESSAGE_FAILED,
     MESSAGE_LIST_FAILED,
+    MESSAGE_NOT_HEARD,
     MESSAGE_QUERY_REQUIRED,
     MESSAGE_QUERY_TOO_LONG,
     FindSession,
@@ -240,3 +241,27 @@ def test_a_view_error_does_not_stop_the_session() -> None:
         assert session.result == FOUND and not session.busy
 
     run(scenario)
+
+
+def test_heard_words_start_a_search_and_show() -> None:
+    service = FakeFind()
+    session = FindSession(service)  # type: ignore[arg-type]
+    asyncio.run(session.hear("  where is   my bottle "))
+    assert session.heard == "where is my bottle"
+    assert service.calls == ["ask where is my bottle"]
+
+
+def test_empty_heard_words_give_a_notice_and_no_search() -> None:
+    service = FakeFind()
+    notices: list[tuple[str, bool]] = []
+    session = FindSession(service, on_notice=lambda t, e: notices.append((t, e)))  # type: ignore[arg-type]
+    asyncio.run(session.hear("   "))
+    assert notices == [(MESSAGE_NOT_HEARD, True)]
+    assert session.heard is None and service.calls == []
+
+
+def test_a_voice_problem_is_shown_as_a_notice() -> None:
+    notices: list[tuple[str, bool]] = []
+    session = FindSession(FakeFind(), on_notice=lambda t, e: notices.append((t, e)))  # type: ignore[arg-type]
+    session.voice_failed("The microphone is not allowed.")
+    assert notices == [("The microphone is not allowed.", True)]

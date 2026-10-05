@@ -5,7 +5,8 @@
 This feature is **partly built**. Built: the scene classifier in the `ai` component (`ai/scene.py`, phase 1a),
 the cache of the room scores and the lookup of neighbouring frames in the `db` component (`db/scenes.py`, phase 1b),
 and the room rule, the sentence and the service in `backend/describe.py` (phase 1c).
-The sentence is on the `/find` page (phase 1d), and the browser says it with a local voice (phase 2). Not built: the listening.
+The sentence is on the `/find` page (phase 1d), the browser says it with a local voice (phase 2), the server can serve HTTPS (phase 3), and the Talk button listens (phase 4).
+Not built: the dialogue by voice (phase 5).
 This document records the flow that the owner described and the stages that it adds to the pipeline.
 It also lists the decisions that are still open.
 
@@ -26,7 +27,7 @@ The flow:
 
 | Stage | Name | Task | Status |
 |-------|------|------|--------|
-| Q0 | Listen | Turn the speech of the patient into text | Planned |
+| Q0 | Listen | Turn the speech of the patient into text | Built (phase 4) |
 | Q1 | Answer | Find the object, and where and when it was seen | Built (`docs/backend/Search.md`) |
 | Q2 | Describe | Describe the place in the frame of the answer: the surface, its colour and the kind of room | Planned |
 | Q3 | Speak | Say the answer with a voice. The page also shows the picture | Built (phase 2) |
@@ -98,11 +99,23 @@ The sentences that the code builds:
 
 An error of the scene model, of a file or of the database gives a sentence with the time only.
 
+## The listening (built, phase 4)
+
+- **Recognizer.** Whisper base (`openai/whisper-base`, Apache-2.0, 74 million parameters, 290 MB), English only. `ai/speech.py`, `AiEngine.transcribe`.
+  The owner chose it on 2026-11-09. It ran in about 1 second for 2 seconds of audio on the development machine. The Raspberry Pi is not measured.
+- **Recording.** The browser records and makes a WAV file (16 kHz, 16-bit, mono). The server needs no audio tool. `ui/static/js/talk.js`.
+- **Route.** `POST /ui/voice` (`ui/voice_route.py`) reads the body with a size limit and calls `ui.ports.VoiceService`. The route has no token, as the pages have none.
+- **Service.** `backend/voice.py`, `VoiceService`, checks the WAV header (mono, 16-bit, 16 kHz), the length (`speech.max_seconds`, `voice.min_seconds`) and the sound level.
+  A silent recording (`voice.silence_rms`) gets no text and no model call, because a speech model writes words for silence.
+- **Privacy.** The audio stays in memory. The log shows the length of the text only. The browser speech services are not used.
+- **Limit.** A noisy recording still passes the silence check, and the model can write words for it. Then the resolver finds no object, and the page says so.
+  A test with real speech of an older person is still to do.
+
 ## The planned parts
 
 | Part | Task |
 |------|------|
-| `ai/speech.py` (new) | The speech recognizer (Q0): audio in, text out |
+| `ai/speech.py` (built) | The speech recognizer (Q0): audio in, text out |
 | `ai/scene.py` (new) | The scene describer (Q2): a frame and a box in, the slots out (surface, colour, room) |
 | A speech synthesizer (Q3) | Text in, audio out. The place is open: in the `ai` component, or in the browser |
 | `backend/voice.py` (new) | `VoiceService`: audio in, the words and the result of the search out |
@@ -207,7 +220,7 @@ Each phase is one commit.
 1. **Describe (Q2).** The scene describer, the sentence, the cache, and the sentence as text on the page.
 2. **Speak (Q3).** The voice and a "Say it again" button.
 3. **HTTPS (built).** The certificate settings, and the guide to make and to install a certificate. The test on a real phone is still to do.
-4. **Listen (Q0).** The audio route, the recognizer, and the "Talk" button.
+4. **Listen (Q0, built).** The audio route, the recognizer, and the "Talk" button. The test with real speech on a real phone is still to do.
 5. **The dialogue.** The spoken answers for the cases without an object, and for the choice between objects.
 6. **The docs.**
 

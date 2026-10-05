@@ -17,6 +17,7 @@ MESSAGE_QUERY_REQUIRED: str = "Write what you are looking for, or choose an obje
 MESSAGE_QUERY_TOO_LONG: str = "Please use fewer words."
 MESSAGE_LIST_FAILED: str = "The list of objects could not be loaded."
 MESSAGE_FAILED: str = "The search did not work. Please try again."
+MESSAGE_NOT_HEARD: str = "The computer did not hear you. Please try again."
 
 
 class FindSession:
@@ -40,6 +41,7 @@ class FindSession:
         self._choices: list[FindChoice] = []
         self._result: FindResult | None = None
         self._busy: bool = False
+        self._heard: str | None = None
 
     @property
     def choices(self) -> list[FindChoice]:
@@ -55,6 +57,28 @@ class FindSession:
     def busy(self) -> bool:
         """True while a search runs."""
         return self._busy
+
+    @property
+    def heard(self) -> str | None:
+        """The words that the computer heard from the last recording, or None."""
+        return self._heard
+
+    async def hear(self, text: str) -> None:
+        """Search with the words of a recording. Empty words give a notice."""
+        assert isinstance(text, str), "text must be a string"
+        words: str = " ".join(text.split())
+        if not words:
+            self._heard = None
+            self._notice(MESSAGE_NOT_HEARD, True)
+            self._notify_changed()
+            return
+        self._heard = words
+        await self.ask(words)
+
+    def voice_failed(self, message: str) -> None:
+        """Show a short text about a problem of the recording."""
+        assert isinstance(message, str) and message, "message is required"
+        self._notice(message, True)
 
     async def load(self) -> None:
         """Load the list of objects."""

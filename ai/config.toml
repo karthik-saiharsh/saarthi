@@ -19,6 +19,9 @@ verifier_revision = "5f5f626efee99f37dbc9eafea879d24d297aeab8"
 # Describes the place of an object: it chooses the best room and the best surface from fixed lists of words (Apache-2.0).
 scene_id = "google/siglip-base-patch16-224"
 scene_revision = "7fd15f0689c79d79e38b1c2e2e2370a7bf2761ed"
+# Turns the speech of the user into text (stage Q0), on the device. English only (Apache-2.0).
+speech_id = "openai/whisper-base"
+speech_revision = "e37978b90ca9030d5170a5c07aadb050351a65bb"
 # "auto" uses a GPU if one exists, and the CPU if not. Other values: "cpu", "cuda".
 device = "auto"
 # Number of CPU threads for the models. 0 keeps the torch default.
@@ -168,3 +171,11 @@ surfaces = [
 # To find the surface, the model looks at the box of the object with space around it. The space is this part of
 # the size of the box: on each side of the box, and below it. Above the box, the space is half of this.
 surface_context = 1.0
+
+[speech]
+# false: the model is not loaded, and the application does not listen.
+enabled = true
+# The longest recording that the application accepts, in seconds. Whisper reads 30 seconds at most.
+max_seconds = 15
+# The most new tokens (about words) that the model writes for one recording.
+max_new_tokens = 64

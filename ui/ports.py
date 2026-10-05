@@ -122,6 +122,27 @@ class EnrollmentService(Protocol):
         ...
 
 
+class VoiceError(Exception):
+    """An expected problem of the voice input. `str(error)` is a short text that the UI shows.
+
+    The text must not contain personal data or internal error text.
+    """
+
+
+class VoiceService(Protocol):
+    """The voice input: a recording becomes the words of the user."""
+
+    max_bytes: int  # The largest recording that the service accepts
+    max_seconds: int  # The longest recording, in seconds
+
+    async def transcribe(self, wav: bytes) -> str:
+        """Return the words in a WAV recording (16-bit, mono, 16 kHz). Raise `VoiceError` on a problem.
+
+        The text is empty if the service hears no speech.
+        """
+        ...
+
+
 class FindStatus(StrEnum):
     """What the page shows after a search."""
 

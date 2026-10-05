@@ -123,6 +123,7 @@ def create_pages(components: Components) -> None:
         components.backend.upload_service,
         components.backend.enrollment_service,
         components.backend.find_service,
+        components.backend.voice_service,
     )
 
     @ui.page("/")

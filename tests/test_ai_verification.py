@@ -14,6 +14,7 @@ from tests.ai_support import (
     FakeEmbedder,
     FakeQueryEncoder,
     FakeSceneClassifier,
+    FakeSpeechRecognizer,
     FakeVerifier,
     make_engine,
 )
@@ -115,6 +116,7 @@ def test_a_switched_off_verification_loads_no_model_and_refuses_calls() -> None:
         embedder=FakeEmbedder(),  # type: ignore[arg-type]
         query_encoder=FakeQueryEncoder(),  # type: ignore[arg-type]
         scene_classifier=FakeSceneClassifier(),  # type: ignore[arg-type]
+        speech_recognizer=FakeSpeechRecognizer(),  # type: ignore[arg-type]
     )  # The real verifier would be loaded here if the switch did not work
     assert not engine.verification_enabled
     with pytest.raises(AssertionError):

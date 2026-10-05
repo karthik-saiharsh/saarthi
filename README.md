@@ -20,7 +20,7 @@ Edge Efficient Episodic Memory Aid
 1. The wearable (or a script) sends one picture at a time: `curl -X POST --data-binary @photo.jpg http://<address>:8080/api/images`
 
 - For a guided test of all components, see `docs/Manual Test Guide.md`.
-- The first start downloads the AI models (about 1.7 GB). It needs internet one time.
+- The first start downloads the AI models (about 2 GB). It needs internet one time.
 - To require an access token for the upload route, set the environment variable `SAARTHI_API_TOKEN`
   before the start. Every request then needs the header `Authorization: Bearer <token>`.
 - Only one copy of the application may run on the same data.

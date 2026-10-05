@@ -15,6 +15,7 @@ from tests.ai_support import (
     FakeEmbedder,
     FakeQueryEncoder,
     FakeSceneClassifier,
+    FakeSpeechRecognizer,
     FakeVerifier,
     make_engine,
 )
@@ -87,6 +88,7 @@ def test_the_name_for_the_cache_changes_when_a_word_list_or_the_prompt_changes()
             query_encoder=FakeQueryEncoder(),  # type: ignore[arg-type]
             verifier=FakeVerifier(),  # type: ignore[arg-type]
             scene_classifier=FakeSceneClassifier(),  # type: ignore[arg-type]
+            speech_recognizer=FakeSpeechRecognizer(),  # type: ignore[arg-type]
         )
 
     same = engine_with().scene_model

@@ -129,6 +129,7 @@ The CSS file is `components/find.css`. It uses the tokens of `tokens.css` only. 
 | `tests/test_ui_stub_find.py` | The stub: the four results, the fixed objects, an unknown object |
 | `tests/test_ui_components.py` | `age_text`, the lines of a result, the data URI, the navigation, short texts |
 | `tests/test_backend_ui_find.py` | The real adapter: the results, fixed error texts, no logging of the words |
+| `tests/test_ui_voice_route.py` | The route of the Talk button: the text, the size limit, an empty body, a fixed error text, no caching |
 | `tests/test_ui_speech.py` | The script uses local English voices only, empty text, quoting and cutting |
 | `tests/test_ui_theme.py` | All CSS files exist and are listed. Colours only in `tokens.css` |
 
@@ -148,11 +149,18 @@ A device without a local English voice stays silent, and the text and the pictur
 A "Say it again" button repeats the sentence. The tap that starts a search lets the browser play sound.
 The sound depends on the device. A test on the real phone and tablet is still to do.
 
-## Planned: voice input
+## The Talk button (voice input, stage Q0)
 
-The page will get a voice input. It is planned and not built. The design is in `docs/backend/Voice.md`. The design is in `docs/backend/Voice.md`.
+The page has a large **Talk** button, above the object buttons. It shows only if listening is switched on (`speech.enabled`).
 
-- A large "Talk" button. The patient speaks, and the page shows the words that the system heard.
-- The result card keeps the picture. The page also says the answer with a voice, and describes the place. A "Say it again" button repeats it.
-- The microphone works only on `localhost` or on a page with HTTPS. This decides where the UI must run.
-- The first version keeps the buttons and the text box. They are the way for a carer to use the page.
+1. The user taps **Talk**. The button says **Stop**. The browser asks for the microphone one time.
+2. The user says what they look for, and taps **Stop**. A recording stops by itself after `speech.max_seconds` (15).
+3. The browser makes a WAV file (16 kHz, 16-bit, one channel) in its memory. It sends the file to the same server (`POST /ui/voice`).
+4. The server turns the sound into text (`docs/backend/Voice.md`). The page shows "I heard: ..." and starts the search with these words.
+   The answer comes with the picture, the sentence and the voice, as for a typed question.
+
+If the server hears no speech, the page says so and starts no search. The audio is never stored, never logged and never sent to another service.
+The microphone works only on a page with HTTPS (see `docs/backend/HTTPS.md`) or on `localhost`. Without it, the page shows a short notice.
+The script is `ui/static/js/talk.js`. It uses a script processor node, which is old but works in all browsers.
+The buttons and the text box stay. They are the way for a carer to use the page.
+A test on the real phone and tablet is still to do.

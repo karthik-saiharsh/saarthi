@@ -29,7 +29,13 @@ from backend.settings import (
     ServerConfig,
     load_config,
 )
-from backend.ui_adapter import UiEnrollmentService, UiFindService, UiUploadService
+from backend.ui_adapter import (
+    UiEnrollmentService,
+    UiFindService,
+    UiUploadService,
+    UiVoiceService,
+)
+from backend.voice import VoiceService
 from backend.worker import Worker
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -65,6 +71,7 @@ class Backend:
         )
         self._search: SearchService = SearchService(self._config, engine)
         self._query: QueryResolver = QueryResolver(self._config, engine)
+        self._voice: VoiceService = VoiceService(self._config, engine)
         self._describe: DescribeService = DescribeService(self._config, engine)
         self._maintenance: Maintenance = Maintenance(self._config)
         self._token: str | None = read_token(self._config)
@@ -152,3 +159,8 @@ class Backend:
         return UiFindService(
             self._query, self._search, self._enrollment, self._describe
         )
+
+    @property
+    def voice_service(self) -> UiVoiceService | None:
+        """The voice input that the UI calls (`ui.ports.VoiceService`). None if listening is switched off."""
+        return UiVoiceService(self._voice) if self._voice.enabled else None

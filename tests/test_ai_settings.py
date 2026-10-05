@@ -89,6 +89,7 @@ def test_bad_values_are_refused(tmp_path: Path, old: str, new: str) -> None:
         "enrollment",
         "verification",
         "scene",
+        "speech",
     ],
 )
 def test_missing_table_is_refused(tmp_path: Path, table: str) -> None:
@@ -129,3 +130,18 @@ def test_the_scene_model_is_pinned_and_the_lists_are_not_empty() -> None:
     assert config.models.scene_id and config.scene.enabled
     assert config.scene.rooms and config.scene.surfaces
     assert "{label}" in config.scene.prompt
+
+
+def test_the_speech_model_is_pinned_and_the_limits_are_checked(tmp_path: Path) -> None:
+    config = load_config()
+    assert re.fullmatch(r"[0-9a-f]{40}", config.models.speech_revision)
+    assert config.models.speech_id and config.speech.enabled
+    for old, new in (
+        ("max_seconds = 15", "max_seconds = 0"),
+        ("max_seconds = 15", "max_seconds = 31"),
+        ("max_new_tokens = 64", "max_new_tokens = 0"),
+        ("enabled = true\n# The longest", "enabled = 1\n# The longest"),
+    ):
+        assert old in DEFAULT_TEXT
+        with pytest.raises(AiConfigError):
+            load_config(write(tmp_path, DEFAULT_TEXT.replace(old, new, 1)))

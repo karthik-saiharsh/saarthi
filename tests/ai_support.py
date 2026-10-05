@@ -156,6 +156,23 @@ class FakeSceneClassifier:
         return list(self.surfaces)
 
 
+class FakeSpeechRecognizer:
+    """Gives the text that the test sets. It records the length of each recording."""
+
+    name = "fake-speech@00000000"
+
+    def __init__(self, text: str = "where is my bottle") -> None:
+        self.text: str = text
+        self.error: Exception | None = None
+        self.calls: list[int] = []
+
+    def transcribe(self, samples):
+        if self.error is not None:
+            raise self.error
+        self.calls.append(int(samples.size))
+        return self.text
+
+
 def make_engine(
     detector: FakeDetector | None = None,
     embedder: FakeEmbedder | None = None,
@@ -163,6 +180,7 @@ def make_engine(
     query_encoder: FakeQueryEncoder | None = None,
     verifier: FakeVerifier | None = None,
     scene_classifier: FakeSceneClassifier | None = None,
+    speech_recognizer: FakeSpeechRecognizer | None = None,
 ) -> AiEngine:
     """An `AiEngine` with fake models. The quality gate and post-processing are real.
 
@@ -180,4 +198,5 @@ def make_engine(
         query_encoder=query_encoder or FakeQueryEncoder(),  # type: ignore[arg-type]
         verifier=verifier or FakeVerifier(),  # type: ignore[arg-type]
         scene_classifier=scene_classifier or FakeSceneClassifier(),  # type: ignore[arg-type]
+        speech_recognizer=speech_recognizer or FakeSpeechRecognizer(),  # type: ignore[arg-type]
     )

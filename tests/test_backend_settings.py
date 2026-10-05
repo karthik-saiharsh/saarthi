@@ -65,6 +65,8 @@ def test_default_config_loads() -> None:
         ('host = "0.0.0.0"', 'host = ""'),
         ('host = "0.0.0.0"', "host = 5"),
         ("neighbour_window_seconds = 120", "neighbour_window_seconds = 0"),
+        ("min_seconds = 0.5", "min_seconds = 0.0"),
+        ("silence_rms = 0.005", "silence_rms = 2.0"),
         ("neighbour_max_frames = 4", "neighbour_max_frames = 0"),
         ("room_min_frames = 3", "room_min_frames = 0"),
         ("room_agree_fraction = 0.6", "room_agree_fraction = 1.5"),
@@ -96,6 +98,7 @@ def test_bad_values_are_refused(tmp_path: Path, old: str, new: str) -> None:
         "memory",
         "search",
         "describe",
+        "voice",
     ],
 )
 def test_missing_table_is_refused(tmp_path: Path, table: str) -> None:

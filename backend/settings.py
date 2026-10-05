@@ -104,6 +104,12 @@ class DescribeConfig:
 
 
 @dataclass(frozen=True)
+class VoiceConfig:
+    min_seconds: float
+    silence_rms: float
+
+
+@dataclass(frozen=True)
 class EnrollmentConfig:
     max_photos_per_object: int
     max_objects: int
@@ -121,6 +127,7 @@ class BackendConfig:
     search: SearchConfig
     query: QueryConfig
     describe: DescribeConfig
+    voice: VoiceConfig
 
 
 def _table(raw: dict, name: str) -> dict:
@@ -299,6 +306,11 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> BackendConfig:
         room_min_score=_number(describe, "describe", "room_min_score", 0.0, 1.0),
         surface_min_score=_number(describe, "describe", "surface_min_score", 0.0, 1.0),
     )
+    voice: dict = _table(raw, "voice")
+    voice_config: VoiceConfig = VoiceConfig(
+        min_seconds=_number(voice, "voice", "min_seconds", 0.1, 10.0),
+        silence_rms=_number(voice, "voice", "silence_rms", 0.0, 1.0),
+    )
     logger.info("Loaded backend config from %s", config_path)
     return BackendConfig(
         max_pending,
@@ -311,4 +323,5 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> BackendConfig:
         search_config,
         query_config,
         describe_config,
+        voice_config,
     )

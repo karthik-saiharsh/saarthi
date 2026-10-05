@@ -1,0 +1,31 @@
+/* The Talk button: very large, one clear action. */
+
+.up-talk {
+  width: 100%;
+  min-height: 6rem;
+  border: 0;
+  border-radius: var(--radius-l);
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+}
+
+.up-talk:hover {
+  background: var(--color-accent-hover);
+}
+
+.up-talk[data-mode="listening"] {
+  background: var(--color-danger);
+}
+
+.up-talk[data-mode="busy"] {
+  opacity: 0.7;
+  cursor: progress;
+}
+
+.up-talk:focus-visible {
+  outline: 4px solid var(--color-text);
+  outline-offset: 3px;
+}

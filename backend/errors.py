@@ -29,5 +29,13 @@ class ObjectNotReadyError(BackendError):
     """Raised when a search asks for an object that is a draft, or a look-alike that is never reported."""
 
 
+class InvalidAudioError(BackendError):
+    """Raised when a recording is not a usable WAV file (format, size or length)."""
+
+
+class VoiceUnavailableError(BackendError):
+    """Raised when the speech recognizer is switched off."""
+
+
 class InvalidQueryError(BackendError):
     """Raised when the words of a user are empty, too long or not printable."""

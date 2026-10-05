@@ -8,7 +8,7 @@ The expected results come from a real run with the real models. The run used the
 
 ## What you need
 
-- The models in the Hugging Face cache. They are on this machine. A new machine downloads about 925 MB at the first start.
+- The models in the Hugging Face cache. They are on this machine. A new machine downloads about 2 GB at the first start.
   If the download does not start, set `HF_HUB_DISABLE_XET=1`.
 - The test photos: `/home/ks/Desktop/Project Saarthi/Dataset/` (`1.jpeg` to `14.jpeg`).
 - A browser. Two terminals help: one for the application, one for the commands.
@@ -30,7 +30,7 @@ The log shows the start-up order. Each line starts with the name of a component:
 |----------------------|-----------|--------------------------|
 | `storage.` | Storage | Prepared the folder `storage/uploads` for the pictures |
 | `db.` | Database and vector index | Opened `db/data/saarthi.db` and the index. The recovery repaired nothing |
-| `ai.detector`, `ai.embedder`, `ai.query`, `ai.verifier` | The four models | Detector, region embedder, query encoder, verifier |
+| `ai.detector`, `ai.embedder`, `ai.query`, `ai.verifier`, `ai.scene`, `ai.speech` | The models | Detector, region embedder, query encoder, verifier, scene classifier, speech recognizer |
 | `backend.` | Control flow | Started the upload step, the worker and the maintenance thread |
 | `main` | Entry point | Held the order, and printed the address |
 
@@ -131,6 +131,14 @@ curl -o answer.jpg "http://localhost:8080/api/objects/1/last-seen/picture?view=f
 
 What happened inside: `backend.query` turned your words into a vector (`ai.query`) and compared it with the description of each ready object.
 `backend.search` read the last-seen record. If the record is older than 24 hours, it looks through the stored frames, newest first.
+
+### The Talk button
+
+Open `http://localhost:8080/find` on this computer (`localhost` allows the microphone without HTTPS).
+Tap **Talk**, allow the microphone, say "where is my speckled bottle", and tap **Stop**.
+The page shows "I heard: ..." and then the answer, with the sentence and the voice.
+On a phone, you need HTTPS first (`docs/backend/HTTPS.md`).
+Try also a silent recording: the page says that the computer did not hear you.
 
 ## 6. More things to try
 

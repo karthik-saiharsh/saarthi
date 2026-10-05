@@ -118,3 +118,10 @@ room_agree_fraction = 0.6
 room_min_score = 0.4
 # The surface under the object is named only if its score is at least this value.
 surface_min_score = 0.4
+
+[voice]
+# A recording shorter than this (in seconds) is refused.
+min_seconds = 0.5
+# A recording whose sound level (RMS, 0 to 1) is below this value is silent. It gets no text, because a
+# speech model can write words for silence.
+silence_rms = 0.005

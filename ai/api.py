@@ -31,6 +31,7 @@ from ai.query import QueryEncoder
 from ai.runtime import configure_threads
 from ai.scene import SceneClassifier, context_box
 from ai.settings import AiConfig, load_config
+from ai.speech import SAMPLE_RATE, SpeechRecognizer
 from ai.types import (
     Box,
     Calibration,
@@ -98,11 +99,13 @@ class AiEngine:
         query_encoder: QueryEncoder | None = None,
         verifier: KeypointVerifier | None = None,
         scene_classifier: SceneClassifier | None = None,
+        speech_recognizer: SpeechRecognizer | None = None,
     ) -> None:
         """Load the models. Pass `detector`, `embedder`, `query_encoder`, `verifier` or `scene_classifier` only in tests.
 
         The verifier loads only if `verification.enabled` is true.
         The scene classifier loads only if `scene.enabled` is true.
+        The speech recognizer loads only if `speech.enabled` is true.
         """
         self._config: AiConfig = config if config is not None else load_config()
         configure_threads(self._config.models.cpu_threads)
@@ -112,18 +115,22 @@ class AiEngine:
         self._scene: SceneClassifier | None = scene_classifier or (
             SceneClassifier(self._config) if self._config.scene.enabled else None
         )
+        self._speech: SpeechRecognizer | None = speech_recognizer or (
+            SpeechRecognizer(self._config) if self._config.speech.enabled else None
+        )
         self._verifier: KeypointVerifier | None = verifier or (
             KeypointVerifier(self._config)
             if self._config.verification.enabled
             else None
         )
         logger.info(
-            "AI engine ready: detector %s, embedder %s, query encoder %s, verifier %s, scene %s",
+            "AI engine ready: detector %s, embedder %s, query encoder %s, verifier %s, scene %s, speech %s",
             self._detector.name,
             self._embedder.name,
             self._query_encoder.name,
             self._verifier.name if self._verifier is not None else "off",
             self._scene.name if self._scene is not None else "off",
+            self._speech.name if self._speech is not None else "off",
         )
 
     @property
@@ -367,6 +374,29 @@ class AiEngine:
         return result
 
     # ---- The place of an object (stage Q2) ----
+
+    @property
+    def speech_enabled(self) -> bool:
+        """True if the speech recognizer is loaded. If False, `transcribe` must not be called."""
+        return self._speech is not None
+
+    @property
+    def speech_max_seconds(self) -> int:
+        """The longest recording that `transcribe` accepts."""
+        return self._config.speech.max_seconds
+
+    @property
+    def speech_sample_rate(self) -> int:
+        """The sample rate of the audio that `transcribe` accepts."""
+        return SAMPLE_RATE
+
+    def transcribe(self, samples: np.ndarray) -> str:
+        """Turn speech into English text. `samples` are float32, mono, 16 kHz, and not longer than `speech_max_seconds`.
+
+        The audio stays in memory. The result can be empty if the model hears no speech.
+        """
+        assert self._speech is not None, "the speech recognizer is switched off"
+        return self._speech.transcribe(samples)
 
     @property
     def scene_enabled(self) -> bool:
