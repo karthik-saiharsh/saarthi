@@ -70,7 +70,7 @@ The picture is shown whole, and is never cut.
 | Line | When |
 |------|------|
 | "Seen 12 minutes ago." | Always (large text). The time is an age: just now, minutes, hours or days |
-| The sentence of the description | When the system saw the object. It says the time, the surface and the room, for example "It was on a table." The voice will say the same text |
+| The sentence of the description | When the system saw the object. It says the time, the surface and the room, for example "It was on a table." The voice says the same text (see "The voice") |
 | "You were holding it." | `in_hand` is true |
 | "Maybe. The computer is not sure. Look at the picture." | `strong` is false |
 | "This was a long time ago. The computer found nothing newer." | `stale` is true |
@@ -129,6 +129,7 @@ The CSS file is `components/find.css`. It uses the tokens of `tokens.css` only. 
 | `tests/test_ui_stub_find.py` | The stub: the four results, the fixed objects, an unknown object |
 | `tests/test_ui_components.py` | `age_text`, the lines of a result, the data URI, the navigation, short texts |
 | `tests/test_backend_ui_find.py` | The real adapter: the results, fixed error texts, no logging of the words |
+| `tests/test_ui_speech.py` | The script uses local English voices only, empty text, quoting and cutting |
 | `tests/test_ui_theme.py` | All CSS files exist and are listed. Colours only in `tokens.css` |
 
 The page also ran in a headless Chromium browser with the stub service. The test used light and dark mode, at 390 pixels width.
@@ -139,9 +140,17 @@ the result was below the buttons, and the page did not scroll to it.
 A later run with the real application and real photos found a third fault: the picture of a bottle pushed the time off the screen.
 The lines now come first.
 
-## Planned: voice
+## The voice
 
-The page will get a voice input and a voice output. They are planned and not built. The design is in `docs/backend/Voice.md`.
+The page says each new answer with a voice (stage Q3, `ui/speech.py`). The browser speaks the sentence of the description.
+It uses a voice of the device, and only a **local** English voice. A voice that may use a cloud service is never used.
+A device without a local English voice stays silent, and the text and the picture stay on the page.
+A "Say it again" button repeats the sentence. The tap that starts a search lets the browser play sound.
+The sound depends on the device. A test on the real phone and tablet is still to do.
+
+## Planned: voice input
+
+The page will get a voice input. It is planned and not built. The design is in `docs/backend/Voice.md`. The design is in `docs/backend/Voice.md`.
 
 - A large "Talk" button. The patient speaks, and the page shows the words that the system heard.
 - The result card keeps the picture. The page also says the answer with a voice, and describes the place. A "Say it again" button repeats it.

@@ -6,6 +6,7 @@ from collections.abc import Awaitable, Callable
 from nicegui import ui
 
 from ui.ports import FindResult, FindStatus, Sighting
+from ui.speech import SAY_AGAIN_TEXT
 
 BUSY_TEXT: str = "Looking..."
 CHOOSE_TEXT: str = "Which one do you mean?"
@@ -61,6 +62,7 @@ def find_result(
     result: FindResult | None,
     busy: bool,
     on_pick: Callable[[int], Awaitable[None]],
+    on_speak: Callable[[str], None] | None = None,
 ) -> None:
     """Build the result. A screen reader reads a new result (the area is live)."""
     assert callable(on_pick), "on_pick must be callable"
@@ -77,7 +79,7 @@ def find_result(
         if result is None:
             return
         if result.status == FindStatus.FOUND and result.sighting is not None:
-            _found(result, result.sighting)
+            _found(result, result.sighting, on_speak)
         elif result.status == FindStatus.NOT_SEEN:
             _not_seen(result)
         elif result.status == FindStatus.CHOOSE:
@@ -86,7 +88,11 @@ def find_result(
             ui.label(NO_MATCH_TEXT).classes("up-find-text")
 
 
-def _found(result: FindResult, sighting: Sighting) -> None:
+def _found(
+    result: FindResult,
+    sighting: Sighting,
+    on_speak: Callable[[str], None] | None,
+) -> None:
     ui.label(result.object_name or "").classes("up-find-name")
     # The words come before the picture. A tall picture (a bottle) can fill a whole phone screen.
     lines = sighting_lines(sighting)
@@ -96,6 +102,11 @@ def _found(result: FindResult, sighting: Sighting) -> None:
     if result.description:
         # The sentence is the text that the voice will say. It names the place.
         ui.label(result.description).classes("up-find-text up-find-description")
+        if on_speak is not None:
+            text: str = result.description
+            ui.button(
+                SAY_AGAIN_TEXT, color=None, on_click=lambda: on_speak(text)
+            ).props("unelevated no-caps").classes("up-btn up-btn--primary")
     if sighting.picture is not None:
         ui.image(picture_source(sighting.picture)).props(
             f'fit=contain alt="{PICTURE_ALT}"'

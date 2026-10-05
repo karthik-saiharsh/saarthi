@@ -5,7 +5,7 @@
 This feature is **partly built**. Built: the scene classifier in the `ai` component (`ai/scene.py`, phase 1a),
 the cache of the room scores and the lookup of neighbouring frames in the `db` component (`db/scenes.py`, phase 1b),
 and the room rule, the sentence and the service in `backend/describe.py` (phase 1c).
-The sentence is on the `/find` page (phase 1d). Not built: the voice and the listening.
+The sentence is on the `/find` page (phase 1d), and the browser says it with a local voice (phase 2). Not built: the listening.
 This document records the flow that the owner described and the stages that it adds to the pipeline.
 It also lists the decisions that are still open.
 
@@ -29,7 +29,7 @@ The flow:
 | Q0 | Listen | Turn the speech of the patient into text | Planned |
 | Q1 | Answer | Find the object, and where and when it was seen | Built (`docs/backend/Search.md`) |
 | Q2 | Describe | Describe the place in the frame of the answer: the surface, its colour and the kind of room | Planned |
-| Q3 | Speak | Say the answer with a voice. The page also shows the picture | Planned |
+| Q3 | Speak | Say the answer with a voice. The page also shows the picture | Built (phase 2) |
 
 ```
 patient speaks ─▶ Q0 Listen ─▶ words ─▶ resolver (built) ─▶ object ─▶ Q1 Answer: frame, box, time (built)
@@ -178,12 +178,12 @@ The owner decided these on 2026-11-09:
 | 2 | How does listening start? | The patient or carer **taps a large button**. There is no wake word and no always-on microphone |
 | 3 | Which languages? | **English only** to start. The object names, the recognizer and the voice are English |
 | 4 | How is the place described? | **Fixed lists, with the room taken from neighbouring frames in time.** No colour. The test is in "The test of the description" |
+| 5 | Where does the voice come from? | **The local voices of the device**, through the browser. No model on the server. A device without a local English voice stays silent |
 
 These decisions are still open:
 
 | # | Question | Why it matters |
 |---|----------|----------------|
-| 5 | Where does the voice come from: a model on the server, or the voices of the device? | Quality, size, and the same sound on every device |
 | 6 | Which time zone? | The part of the day in the sentence |
 | 7 | How much memory and which CPU does the target device have? | Every new model adds memory and time. The application already loads four models |
 | 8 | How does a patient who cannot tap answer "Which one do you mean?" | A yes or no by voice needs a dialogue of more than one turn |

@@ -10,8 +10,9 @@ from ui.components.find_ask import find_ask
 from ui.components.find_choices import find_choices
 from ui.components.find_result import find_result
 from ui.find_session import FindSession
-from ui.ports import FindService
+from ui.ports import FindResult, FindService
 from ui.routes import FIND_ROUTE
+from ui.speech import add_speech_script, speak
 from ui.theme import apply_theme
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -29,13 +30,14 @@ def build_find_page(service: FindService) -> None:
     """Build the page for one browser tab. Each tab has its own session."""
     assert service is not None, "service is required"
     apply_theme()
+    add_speech_script()
     ui.page_title(f"{PAGE_TITLE} - {PRODUCT_NAME}")
 
     # The functions below use `session`, which is created after them.
     # Python looks it up when they run, not when they are defined.
     @ui.refreshable
     def result_view() -> None:
-        find_result(session.result, session.busy, session.pick)
+        find_result(session.result, session.busy, session.pick, speak)
 
     @ui.refreshable
     def choices_view() -> None:
@@ -45,7 +47,19 @@ def build_find_page(service: FindService) -> None:
     def ask_view() -> None:
         find_ask(session.ask, session.busy)
 
+    spoken: list[FindResult | None] = [None]
+
     def on_changed() -> None:
+        result: FindResult | None = session.result
+        # Say each new answer one time. The tap that started the search lets the browser play sound.
+        if (
+            not session.busy
+            and result is not None
+            and result is not spoken[0]
+            and result.description
+        ):
+            spoken[0] = result
+            speak(result.description)
         result_view.refresh()
         choices_view.refresh()
         ask_view.refresh()
