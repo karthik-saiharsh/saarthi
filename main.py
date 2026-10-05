@@ -140,14 +140,28 @@ def main() -> int:
     attach(components, nicegui_app)
     create_pages(components)
     server = components.backend.server
+    ssl_options: dict[str, str] = {}
+    if server.tls_enabled:
+        try:
+            certfile, keyfile = server.tls_paths()
+        except BackendError as error:
+            logger.error("Cannot start: %s", error)
+            return 1
+        ssl_options = {"ssl_certfile": str(certfile), "ssl_keyfile": str(keyfile)}
     logger.info(
-        "Serving on http://%s:%d (upload page: %s)",
+        "Serving on %s://%s:%d (upload page: %s)",
+        "https" if server.tls_enabled else "http",
         server.host,
         server.port,
         UPLOAD_PAGE,
     )
     ui.run(
-        host=server.host, port=server.port, title=APP_TITLE, reload=False, show=False
+        host=server.host,
+        port=server.port,
+        title=APP_TITLE,
+        reload=False,
+        show=False,
+        **ssl_options,
     )
     return 0
 

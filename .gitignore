@@ -26,4 +26,7 @@ CLAUDE.md
 docs/ai/
 
 db/data/
+certs/
+*.pem
+*.key
 docs/guide

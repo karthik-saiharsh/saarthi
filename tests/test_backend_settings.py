@@ -143,3 +143,41 @@ def test_the_verify_keys_of_the_search_are_checked(
     text: str = before + "[search]" + after.replace(old, new, 1)
     with pytest.raises(BackendConfigError, match="search.verify"):
         load_config(write(tmp_path, text))
+
+
+def test_tls_is_off_by_default() -> None:
+    server = load_config().server
+    assert not server.tls_enabled
+
+
+def test_one_tls_key_alone_is_refused(tmp_path: Path) -> None:
+    old: str = 'tls_certfile = ""'
+    assert old in DEFAULT_TEXT
+    with pytest.raises(BackendConfigError, match="both"):
+        load_config(
+            write(tmp_path, DEFAULT_TEXT.replace(old, 'tls_certfile = "a.pem"', 1))
+        )
+
+
+def test_tls_paths_must_be_files(tmp_path: Path) -> None:
+    cert: Path = tmp_path / "c.pem"
+    key: Path = tmp_path / "k.pem"
+    text: str = DEFAULT_TEXT.replace(
+        'tls_certfile = ""', f'tls_certfile = "{cert}"', 1
+    ).replace('tls_keyfile = ""', f'tls_keyfile = "{key}"', 1)
+    server = load_config(write(tmp_path, text)).server
+    assert server.tls_enabled
+    with pytest.raises(BackendConfigError, match="tls_certfile"):
+        server.tls_paths()
+    cert.write_text("x")
+    with pytest.raises(BackendConfigError, match="tls_keyfile"):
+        server.tls_paths()
+    key.write_text("x")
+    assert server.tls_paths() == (cert, key)
+
+
+def test_the_tls_keys_must_be_strings(tmp_path: Path) -> None:
+    with pytest.raises(BackendConfigError, match="tls_keyfile"):
+        load_config(
+            write(tmp_path, DEFAULT_TEXT.replace('tls_keyfile = ""', "tls_keyfile = 5"))
+        )

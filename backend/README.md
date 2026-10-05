@@ -126,6 +126,7 @@ A variable that is set but empty stops the start, so the route cannot open by mi
 | `server.host` | The address of the web server. `0.0.0.0` accepts the local network. `127.0.0.1` accepts only this computer |
 | `server.port` | The port of the web server |
 | `server.worker_stop_seconds` | At shutdown, the time that the server waits for the worker to finish its image |
+| `server.tls_certfile`, `server.tls_keyfile` | Paths of the certificate and the key. Both set: HTTPS. Both empty (default): HTTP. See `docs/backend/HTTPS.md` |
 
 | Key (table `[maintenance]`) | Meaning |
 |-----------------------------|---------|

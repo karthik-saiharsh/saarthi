@@ -11,6 +11,7 @@ from backend.errors import BackendConfigError
 logger: logging.Logger = logging.getLogger(__name__)
 
 BACKEND_DIR: Path = Path(__file__).resolve().parent
+PROJECT_DIR: Path = BACKEND_DIR.parent
 DEFAULT_CONFIG_PATH: Path = BACKEND_DIR / "config.toml"
 
 _ENV_NAME: re.Pattern[str] = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
@@ -30,6 +31,30 @@ class ServerConfig:
     host: str
     port: int
     worker_stop_seconds: int
+    # Paths of the TLS certificate and key. Empty: the server uses HTTP.
+    # A relative path starts at the project folder.
+    tls_certfile: str = ""
+    tls_keyfile: str = ""
+
+    @property
+    def tls_enabled(self) -> bool:
+        return bool(self.tls_certfile)
+
+    def tls_paths(self) -> tuple[Path, Path]:
+        """Return the existing certificate file and key file. Only call it if TLS is on."""
+        assert self.tls_enabled, "TLS is off"
+        paths: list[Path] = []
+        for name, value in (
+            ("tls_certfile", self.tls_certfile),
+            ("tls_keyfile", self.tls_keyfile),
+        ):
+            path: Path = Path(value)
+            if not path.is_absolute():
+                path = PROJECT_DIR / path
+            if not path.is_file():
+                raise BackendConfigError(f"server.{name} is not a file: {path}")
+            paths.append(path)
+        return paths[0], paths[1]
 
 
 @dataclass(frozen=True)
@@ -197,10 +222,22 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> BackendConfig:
     host: object = server.get("host")
     if not isinstance(host, str) or not host.strip():
         raise BackendConfigError("server.host must be a non-empty string")
+    tls: dict[str, str] = {}
+    for key in ("tls_certfile", "tls_keyfile"):
+        value: object = server.get(key)
+        if not isinstance(value, str):
+            raise BackendConfigError(f"server.{key} must be a string")
+        tls[key] = value.strip()
+    if bool(tls["tls_certfile"]) != bool(tls["tls_keyfile"]):
+        raise BackendConfigError(
+            "server.tls_certfile and server.tls_keyfile must both be set, or both be empty"
+        )
     server_config: ServerConfig = ServerConfig(
         host=host,
         port=_integer(server, "server", "port", 1, 65535),
         worker_stop_seconds=_integer(server, "server", "worker_stop_seconds", 1),
+        tls_certfile=tls["tls_certfile"],
+        tls_keyfile=tls["tls_keyfile"],
     )
     maintenance: dict = _table(raw, "maintenance")
     maintenance_config: MaintenanceConfig = MaintenanceConfig(

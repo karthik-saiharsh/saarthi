@@ -32,6 +32,10 @@ host = "0.0.0.0"
 port = 8080
 # At shutdown, the server waits this long (in seconds) for the worker to finish its image.
 worker_stop_seconds = 120
+# HTTPS. A phone allows the microphone only on a page with HTTPS. Set both paths to turn it on.
+# A relative path starts at the project folder. Empty: the server uses HTTP. See docs/backend/HTTPS.md.
+tls_certfile = ""
+tls_keyfile = ""
 
 [maintenance]
 # The maintenance job runs when the application starts, and then every N minutes.

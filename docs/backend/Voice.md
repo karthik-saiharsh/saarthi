@@ -192,13 +192,12 @@ These decisions are still open:
 
 A phone that opens `http://<address>:8080` cannot use the microphone. So the application must serve HTTPS. The plan:
 
-- New settings in `backend/config.toml`: the paths of a certificate file and of a key file. Without them, the server stays on HTTP, as now.
+- Built (phase 3): the settings `server.tls_certfile` and `server.tls_keyfile` in `backend/config.toml`. Without them, the server stays on HTTP, as now. The guide to make and install a certificate is `docs/backend/HTTPS.md`.
 - The certificate must name the address that the phone uses (an IP address, or a name such as `saarthi.local`).
   An address that changes needs a new certificate. A fixed address or name helps.
 - The phone must trust the certificate. A small local authority, installed once on each phone, is the clean way.
   A certificate with a warning that the user accepts may or may not give a microphone. This must be tested on the real phone and browser.
 - The optional token and all routes stay as they are. HTTPS also protects the audio on the local network.
-- The guide for the carer must say how to make the certificate and how to install it.
 
 ## The planned phases
 
@@ -207,7 +206,7 @@ Each phase is one commit.
 0. **The test of the description.** Fixed lists against free text, on the 14 photos. The owner chooses. (No application code.)
 1. **Describe (Q2).** The scene describer, the sentence, the cache, and the sentence as text on the page.
 2. **Speak (Q3).** The voice and a "Say it again" button.
-3. **HTTPS.** The certificate settings, and the guide to make and to install a certificate.
+3. **HTTPS (built).** The certificate settings, and the guide to make and to install a certificate. The test on a real phone is still to do.
 4. **Listen (Q0).** The audio route, the recognizer, and the "Talk" button.
 5. **The dialogue.** The spoken answers for the cases without an object, and for the choice between objects.
 6. **The docs.**
