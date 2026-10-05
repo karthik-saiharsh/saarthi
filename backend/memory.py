@@ -13,7 +13,9 @@ The rule (hysteresis) stops a single false match from replacing a correct answer
 
 - A **strong** sighting changes the record at once. A weak sighting that passes the check (stage I5) also counts as strong.
 - A **weak** sighting changes the record only if the object has `hysteresis_hits`
-  sightings in different frames within `hysteresis_window_seconds`. The new sighting counts.
+  weak sightings in different frames within `hysteresis_window_seconds`. The new sighting counts.
+  A strong sighting does not count as a hit for a later weak one. So a weak false match that follows a true strong
+  sighting cannot replace the record alone.
 
 The check can only promote a weak sighting. A sighting that fails stays weak, and an error of the check changes nothing.
 The count reads the sighting log. A restart loses nothing.
@@ -222,7 +224,11 @@ class MemoryService:
         if sighting.strong:
             return True
         window = timedelta(seconds=self._config.hysteresis_window_seconds)
+        # Only weak sightings count. A strong sighting that came just before must not help a weak false match.
         hits: int = db.sightings.count_recent(
-            sighting.object_id, image.captured_at - window, image.captured_at
+            sighting.object_id,
+            image.captured_at - window,
+            image.captured_at,
+            strong=False,
         )
         return hits >= self._config.hysteresis_hits

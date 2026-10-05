@@ -124,6 +124,29 @@ def test_two_weak_sightings_in_the_window_change_the_record(
     assert record is not None and record.image_id == second[0].id
 
 
+def test_a_weak_false_match_after_a_strong_sighting_does_not_replace_the_record(
+    service: MemoryService,
+) -> None:
+    obj = make_object()
+    strong = make_frame(NOW)
+    observe(service, strong, sighting_of(obj, True))
+    observe(service, make_frame(NOW + timedelta(seconds=20)), sighting_of(obj, False))
+    record = sightings.get_last_seen(obj.id)
+    assert record is not None and record.image_id == strong[0].id
+
+
+def test_a_strong_sighting_does_not_count_as_a_hit_for_two_weak_ones(
+    service: MemoryService,
+) -> None:
+    obj = make_object()
+    observe(service, make_frame(NOW), sighting_of(obj, True))
+    observe(service, make_frame(NOW + timedelta(seconds=10)), sighting_of(obj, False))
+    third = make_frame(NOW + timedelta(seconds=20))
+    observe(service, third, sighting_of(obj, False))  # The second weak hit
+    record = sightings.get_last_seen(obj.id)
+    assert record is not None and record.image_id == third[0].id
+
+
 def test_two_weak_sightings_too_far_apart_do_not(service: MemoryService) -> None:
     obj = make_object()
     observe(service, make_frame(NOW), sighting_of(obj, False))

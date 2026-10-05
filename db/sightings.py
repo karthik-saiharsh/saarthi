@@ -55,8 +55,12 @@ def add_sighting(
         )
 
 
-def count_recent(object_id: int, since: datetime, until: datetime) -> int:
+def count_recent(
+    object_id: int, since: datetime, until: datetime, strong: bool | None = None
+) -> int:
     """Count the frames with a sighting of the object from `since` to `until` (both included).
+
+    `strong` True or False counts only the strong or only the weak sightings. None counts all.
 
     A frame counts one time, also if it has more than one row.
     """
@@ -65,17 +69,16 @@ def count_recent(object_id: int, since: datetime, until: datetime) -> int:
         until, datetime
     ), "datetimes needed"
     assert since <= until, "since must not be after until"
+    assert strong is None or isinstance(strong, bool), "strong must be bool or None"
     with translate_errors("count_recent"):
-        return int(
-            Sighting.select(fn.COUNT(fn.DISTINCT(Sighting.image)))
-            .where(
-                Sighting.enrolled_object == object_id,
-                Sighting.seen_at >= since,
-                Sighting.seen_at <= until,
-            )
-            .scalar()
-            or 0
+        query = Sighting.select(fn.COUNT(fn.DISTINCT(Sighting.image))).where(
+            Sighting.enrolled_object == object_id,
+            Sighting.seen_at >= since,
+            Sighting.seen_at <= until,
         )
+        if strong is not None:
+            query = query.where(Sighting.strong == strong)
+        return int(query.scalar() or 0)
 
 
 def get_last_seen(object_id: int) -> LastSeen | None:

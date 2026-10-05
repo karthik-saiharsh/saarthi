@@ -179,10 +179,6 @@ EOF
 
 ## What you will notice that is not right yet
 
-- **A weak false positive can still replace the last-seen record.**
-  The rule of the hysteresis counts a strong sighting as the first hit.
-  In an earlier test with the old thresholds, photo 11 did this. With the calibrated thresholds, photo 11 gives no sighting,
-  so this test no longer shows it. The rule is not changed.
 - **The blur check hides a true sighting.** In photo 8, the bottle is blurred by motion. Its similarity is above the threshold, but the crop fails the blur check, so the region is not used.
 - **`/` opens the upload page**, not the find page.
 - **The pages show all links to all users.** There is no separation between the carer and the patient.

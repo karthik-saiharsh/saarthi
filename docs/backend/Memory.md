@@ -32,14 +32,14 @@ Worker: frame ──▶ regions and vectors stored ──▶ MemoryService.remem
 | Sighting | What happens |
 |----------|--------------|
 | Strong (`similarity >= tau_strong` and `margin >= margin_strong`), or weak and verified | The record changes at once |
-| Weak (accepted, not strong, and not verified) | The record changes only if the object has enough sightings in different frames inside the time window. The new sighting counts |
+| Weak (accepted, not strong, and not verified) | The record changes only if the object has enough **weak** sightings in different frames inside the time window. The new sighting counts. A strong sighting does not count, so a weak false match after a true strong sighting cannot replace the record alone |
 
 The settings are in `[memory]` of `backend/config.toml`:
 
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `hysteresis_window_seconds` | 60 | The window ends at the time of the new sighting |
-| `hysteresis_hits` | 2 | The number of frames with a sighting that a weak sighting needs. 1 means that every accepted sighting changes the record |
+| `hysteresis_hits` | 2 | The number of frames with a weak sighting that a weak sighting needs. 1 means that every accepted sighting changes the record |
 | `verify_weak` | true | Check a weak sighting against the reference photos (stage I5) |
 | `verify_max_references` | 3 | The check compares with at most this number of reference photos |
 

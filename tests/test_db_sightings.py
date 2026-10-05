@@ -75,6 +75,17 @@ def test_count_recent_counts_frames_inside_the_window_only() -> None:
     assert sightings.count_recent(obj.id, NOW - window, NOW + window) == 4
 
 
+def test_count_recent_can_count_only_strong_or_only_weak() -> None:
+    obj = make_object()
+    add(obj.id, NOW, strong=True)
+    add(obj.id, NOW + timedelta(seconds=1), strong=False)
+    add(obj.id, NOW + timedelta(seconds=2), strong=False)
+    end = NOW + timedelta(seconds=5)
+    assert sightings.count_recent(obj.id, NOW, end) == 3
+    assert sightings.count_recent(obj.id, NOW, end, strong=True) == 1
+    assert sightings.count_recent(obj.id, NOW, end, strong=False) == 2
+
+
 def test_count_recent_counts_one_frame_one_time() -> None:
     obj = make_object()
     image, region_id = make_frame()
