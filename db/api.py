@@ -14,6 +14,7 @@ from peewee import PeeweeException, SqliteDatabase
 
 from db import (
     gallery,
+    open_regions,
     scenes,
     sightings,
 )
@@ -33,6 +34,7 @@ from db.schema import (
     ImageStatus,
     LastSeen,
     ObjectView,
+    OpenRegion,
     ReferencePhoto,
     Region,
     RegionSource,
@@ -55,6 +57,7 @@ __all__ = [
     "InvalidStateError",
     "VectorIndexError",
     "gallery",
+    "open_regions",
     "scenes",
     "sightings",
 ]
@@ -64,8 +67,8 @@ DEFAULT_CONFIG_PATH: Path = DB_DIR / "config.toml"
 # Longest `status_detail` text that the database stores.
 MAX_STATUS_DETAIL_LENGTH: int = 500
 
-_PATH_KEYS: tuple[str, ...] = ("sqlite", "faiss_index")
-_VECTOR_KEYS: tuple[str, ...] = ("dimension", "checkpoint_every")
+_PATH_KEYS: tuple[str, ...] = ("sqlite", "faiss_index", "open_faiss_index")
+_VECTOR_KEYS: tuple[str, ...] = ("dimension", "checkpoint_every", "open_dimension")
 _SQLITE_PRAGMAS: dict[str, object] = {
     "foreign_keys": 1,
     "journal_mode": "wal",
@@ -136,6 +139,8 @@ class DbConfig:
     faiss_path: Path
     vector_dimension: int
     checkpoint_every: int
+    open_faiss_path: Path
+    open_vector_dimension: int
 
 
 def _resolve_inside_db_dir(key: str, value: object) -> Path:
@@ -188,6 +193,12 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> DbConfig:
         vector_dimension=_positive_int("vectors", "dimension", vectors["dimension"]),
         checkpoint_every=_positive_int(
             "vectors", "checkpoint_every", vectors["checkpoint_every"]
+        ),
+        open_faiss_path=_resolve_inside_db_dir(
+            "open_faiss_index", paths["open_faiss_index"]
+        ),
+        open_vector_dimension=_positive_int(
+            "vectors", "open_dimension", vectors["open_dimension"]
         ),
     )
     logger.info("Loaded config from %s", config_path)
@@ -268,6 +279,7 @@ def init_db(config_path: Path = DEFAULT_CONFIG_PATH) -> tuple[SqliteDatabase, Db
                 Sighting,
                 LastSeen,
                 FrameScene,
+                OpenRegion,
             ],
             safe=True,
         )
@@ -281,9 +293,12 @@ def init_db(config_path: Path = DEFAULT_CONFIG_PATH) -> tuple[SqliteDatabase, Db
         raise
     logger.info(
         "Tables ready: image, region, enrolled_object, reference_photo, object_view, "
-        "sighting, last_seen, frame_scene"
+        "sighting, last_seen, frame_scene, open_region"
     )
     _replace_vector_index(config)
+    open_regions.configure(
+        config.open_faiss_path, config.open_vector_dimension, config.checkpoint_every
+    )
     gallery.configure(config.vector_dimension)
     global _config
     _config = config
@@ -690,6 +705,7 @@ def checkpoint_vectors() -> None:
     write fails.
     """
     _require_index().save()
+    open_regions.checkpoint()
 
 
 def vector_count() -> int:
@@ -786,11 +802,13 @@ def delete_images(image_ids: list[int]) -> list[str]:
                 Region.image.in_(found_ids), Region.embedding_model.is_null(False)
             )
         ]
+        open_ids: list[int] = open_regions.ids_for_images(found_ids)
         paths: list[str] = [i.file_path for i in images]
         Image.delete().where(Image.id.in_(found_ids)).execute()  # Regions go by cascade
 
     index.remove(vector_ids)
     index.checkpoint_if_due()
+    open_regions.remove_vectors(open_ids)
     logger.info("Deleted %d image(s) and %d vector(s)", len(paths), len(vector_ids))
     return paths
 
@@ -892,6 +910,10 @@ def startup_recovery() -> StartupReport:
     requeued_image_ids, gap_vector_ids = _requeue_images_with_gaps()
     index.remove(gap_vector_ids)
     index.checkpoint_if_due()
+
+    # The boxes of the open search: a frame that is processed again starts with none.
+    open_regions.drop_for_images(interrupted.reset_image_ids + requeued_image_ids)
+    open_regions.recover()
 
     report: StartupReport = StartupReport(
         interrupted_image_ids=interrupted.reset_image_ids,

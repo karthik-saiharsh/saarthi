@@ -17,6 +17,7 @@ For the full design, see `docs/db/Ingestion Database Schema.md`.
 |------|---------|
 | `schema.py` | The tables: `Image`, `Region`, `EnrolledObject`, `ReferencePhoto`, `ObjectView` |
 | `gallery.py` | The helpers of the gallery. `api.py` gives them as `db.gallery` |
+| `open_regions.py` | The helpers of the open search: the boxes of the broad detector (table `open_region`) and their vectors in a second FAISS index. `api.py` gives them as `db.open_regions` |
 | `scenes.py` | The helpers of the description of a place: the room scores of a frame (a cache), and the frames near a frame in time. `api.py` gives them as `db.scenes` |
 | `sightings.py` | The helpers of the memory: the sighting log and the last-seen record. `api.py` gives them as `db.sightings` |
 | `support.py` | The error translation that `api.py` and `gallery.py` share |
@@ -42,6 +43,7 @@ For the full design, see `docs/db/Ingestion Database Schema.md`.
 - `object_view`: one vector for each view of a reference photo. These vectors are in SQLite, not in FAISS, because the gallery is small.
 - `sighting`: one row for each accepted match of an object in a frame.
 - `frame_scene`: one row for each frame that the scene model scored: the probability of each room. It is a cache. The row goes with its frame.
+- `open_region`: one row for each box that the broad detector found, with its name, its confidence and the model of its vector. The SigLIP vector is in a second FAISS index (`data/open_regions.faiss`). The row goes with its frame.
 - `last_seen`: one row for each object, with the frame, the box and the time of the last accepted sighting. The frame cannot be deleted while the row exists.
 
 ## Configuration
@@ -54,16 +56,20 @@ Absolute paths and paths that leave the `db/` folder are not allowed.
 [paths]
 sqlite = "data/saarthi.db"
 faiss_index = "data/regions.faiss"
+open_faiss_index = "data/open_regions.faiss"
 
 [vectors]
 dimension = 384
 checkpoint_every = 200
+open_dimension = 768
 ```
 
 | Key | Meaning |
 |-----|---------|
 | `vectors.dimension` | Length of one vector. It must match the embedding model |
 | `vectors.checkpoint_every` | The index is saved after this number of added or removed vectors |
+| `paths.open_faiss_index` | The file of the second index (the open search) |
+| `vectors.open_dimension` | Length of one vector of the open search. It must match the scene model (SigLIP base: 768) |
 
 The index is also saved when the application stops (`checkpoint_vectors()`).
 A crash can lose at most `checkpoint_every` vectors. The start-up recovery repairs the loss.

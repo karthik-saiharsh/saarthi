@@ -4,6 +4,8 @@
 [paths]
 sqlite = "data/saarthi.db"
 faiss_index = "data/regions.faiss"
+# The vectors of the open search (boxes of the broad detector) are in a second index.
+open_faiss_index = "data/open_regions.faiss"
 
 [vectors]
 # Length of one embedding vector. It must match the embedding model.
@@ -12,3 +14,5 @@ dimension = 384
 # and when the application stops. A crash can lose at most this many
 # vectors. The start-up recovery repairs the loss.
 checkpoint_every = 200
+# Length of one vector of the open search. It must match the scene model (SigLIP base: 768).
+open_dimension = 768

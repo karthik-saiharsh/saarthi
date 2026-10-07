@@ -118,6 +118,28 @@ One row for each vector of a photo.
 
 The gallery vectors are in SQLite, not in FAISS. The gallery is small (tens of objects, tens of views each).
 
+## Open region table
+
+The table `open_region` holds the boxes of the broad detector (see `docs/backend/Open Search.md`).
+The helpers are in `db/open_regions.py`. `db/api.py` gives them as `db.open_regions`.
+The SigLIP vector of a box is in a second FAISS index, `data/open_regions.faiss`. The id of the row is the id of the vector.
+
+| Column | Meaning |
+|--------|---------|
+| `image` | The frame. The row goes with the frame (cascade) |
+| `x0`, `y0`, `x1`, `y1` | The box in pixels, in the frame |
+| `label` | The name that the detector gave the box. It is a hint and can be wrong |
+| `confidence` | 0 to 1 |
+| `region` | The candidate box of a registered object that this box overlaps, or null. The row stays if the region goes away |
+| `vector_model` | The model that made the vector. A search compares vectors of one model only |
+
+Rules:
+- `add_open_regions` inserts the rows and adds the vectors in one call. If the vectors are refused, the rows are rolled back.
+- A frame that is processed again starts with no box: the start-up recovery deletes the boxes of an interrupted frame (`drop_for_images`).
+- `recover` removes a vector that has no row, and deletes a box that has no vector. The frame does not go back to `pending`, because the open search is an extra.
+- `delete_images` removes the boxes and the vectors of the frames that it deletes. `checkpoint_vectors` saves both indexes.
+- `list_open_regions` gives the boxes of `done` frames in a time window, newest frame first, for one `vector_model`. The search reads their vectors with `get_vectors`.
+
 ## Scene table
 
 The table `frame_scene` is a cache for the description of a place (see `docs/backend/Voice.md`).
@@ -342,8 +364,10 @@ The loader refuses absolute paths and paths that leave the `db/` folder.
 | `paths.faiss_index` | `data/regions.faiss` | FAISS index file |
 | `vectors.dimension` | `384` | Length of one vector. It must match the embedding model |
 | `vectors.checkpoint_every` | `200` | Save the index after this number of added or removed vectors |
+| `paths.open_faiss_index` | `data/open_regions.faiss` | FAISS index file of the open search |
+| `vectors.open_dimension` | `768` | Length of one vector of the open search. It must match the scene model |
 
-Both `vectors` keys must be positive integers.
+The `vectors` keys must be positive integers.
 If the index file has a different dimension than `vectors.dimension`, `init_db()` raises `VectorIndexError`.
 
 `init_db()` reads the file, opens the database, sets these SQLite options, creates the missing tables, and opens the vector index:

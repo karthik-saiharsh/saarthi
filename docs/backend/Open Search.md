@@ -3,7 +3,7 @@
 ## Status
 
 This feature is **partly built**. Built (phase 1): the broad detector in the `ai` component (`ai/open_detector.py`, `AiEngine.detect_open`).
-Not built: the storage of the boxes, the SigLIP vectors, the worker step, the search and the sentence.
+Built (phases 2 and 3): the SigLIP vectors, and the table and the vector index for the boxes (`db/open_regions.py`). Not built: the worker step, the search and the sentence.
 The owner decided this on 2026-11-10: the main pipeline stays on the registered objects. The broad detection is for objects that nobody registered.
 
 ## Purpose
@@ -25,7 +25,7 @@ The result is always weak: the sentence says "I am not sure". The picture stays 
 |-------|---------|--------|
 | 1 | The detector in `ai/`, the weights check, the settings, the tests | Built |
 | 2 | SigLIP vectors for the crops, and a text vector for a phrase (`ai/`) | Built |
-| 3 | The tables for the boxes and a second vector index (`db/`) | Planned |
+| 3 | The tables for the boxes and a second vector index (`db/`) | Built |
 | 4 | The worker step: detect, link to registered boxes, embed, store | Planned |
 | 5 | The search: the phrase of the user, the match with the stored names, then the SigLIP retrieval | Planned |
 | 6 | The sentence and the page | Planned |

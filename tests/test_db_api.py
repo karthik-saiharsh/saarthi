@@ -5,7 +5,7 @@ import pytest
 from db.api import ConfigError, init_db, load_config
 from db.schema import Image, Region
 
-PATHS: str = "[paths]\nsqlite = 'a.db'\nfaiss_index = 'f'\n"
+PATHS: str = "[paths]\nsqlite = 'a.db'\nfaiss_index = 'f'\nopen_faiss_index = 'o'\n"
 
 
 def write_config(tmp_path: Path, body: str) -> Path:
@@ -19,6 +19,8 @@ def test_default_config_loads() -> None:
     assert config.sqlite_path.name == "saarthi.db"
     assert config.faiss_path.name == "regions.faiss"
     assert config.vector_dimension > 0 and config.checkpoint_every > 0
+    assert config.open_faiss_path.name == "open_regions.faiss"
+    assert config.open_vector_dimension > 0
 
 
 @pytest.mark.parametrize(
@@ -27,6 +29,8 @@ def test_default_config_loads() -> None:
         "",
         "[paths]\nsqlite = 'a.db'\n",
         f"{PATHS}[vectors]\ndimension = 8\n",
+        f"{PATHS}[vectors]\ndimension = 8\ncheckpoint_every = 5\n",  # No open_dimension
+        f"{PATHS}[vectors]\ndimension = 8\ncheckpoint_every = 5\nopen_dimension = 0\n",
         f"{PATHS}[vectors]\ndimension = 0\ncheckpoint_every = 5\n",
         f"{PATHS}[vectors]\ndimension = 8\ncheckpoint_every = true\n",
         f"{PATHS}[vectors]\ndimension = '8'\ncheckpoint_every = 5\n",
@@ -49,7 +53,8 @@ def test_missing_config_raises(tmp_path: Path) -> None:
 def test_init_db_creates_file_and_tables_and_is_repeatable(tmp_path: Path) -> None:
     body: str = (
         "[paths]\nsqlite = 'data/test_init.db'\nfaiss_index = 'data/t.faiss'\n"
-        "[vectors]\ndimension = 8\ncheckpoint_every = 5\n"
+        "open_faiss_index = 'data/t_open.faiss'\n"
+        "[vectors]\ndimension = 8\ncheckpoint_every = 5\nopen_dimension = 16\n"
     )
     path: Path = write_config(tmp_path, body)
     config = load_config(path)

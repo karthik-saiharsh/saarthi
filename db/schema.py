@@ -22,6 +22,10 @@ Description (the place of an object, for the voice):
 - `FrameScene`: the room scores of a frame. One row for each frame. It is a cache:
   the scene model makes the scores when a description needs them (see `db/scenes.py`).
 
+Open search (objects that nobody registered, see `docs/backend/Open Search.md`):
+- `OpenRegion`: a box that the broad detector found, with its name and its confidence. The SigLIP
+  vector of the box is in a second FAISS index (see `db/open_regions.py`).
+
 All timestamps are naive UTC values.
 """
 
@@ -314,3 +318,31 @@ class FrameScene(BaseModel):
 
     class Meta:
         table_name = "frame_scene"
+
+
+class OpenRegion(BaseModel):
+    """A box from the broad detector. The name is a hint from the detector. It can be wrong."""
+
+    # The row goes with the frame (retention) and with the recovery of an interrupted frame.
+    image: ForeignKeyField = ForeignKeyField(
+        Image, backref="open_regions", on_delete="CASCADE", index=True
+    )
+    x0: IntegerField = IntegerField(constraints=[Check("x0 >= 0")])
+    y0: IntegerField = IntegerField(constraints=[Check("y0 >= 0")])
+    x1: IntegerField = IntegerField(constraints=[Check("x1 > x0")])
+    y1: IntegerField = IntegerField(constraints=[Check("y1 > y0")])
+    # The name that the detector gave the box, for example "laptop".
+    label: CharField = CharField(index=True)
+    confidence: FloatField = FloatField(
+        constraints=[Check("confidence >= 0 AND confidence <= 1")]
+    )
+    # The candidate box of a registered object that this box overlaps. Null if there is none.
+    # The row stays if that region goes away.
+    region: ForeignKeyField = ForeignKeyField(
+        Region, backref="open_regions", null=True, on_delete="SET NULL", index=True
+    )
+    # The model that made the vector of this box. Vectors of another model cannot be compared.
+    vector_model: CharField = CharField()
+
+    class Meta:
+        table_name = "open_region"
