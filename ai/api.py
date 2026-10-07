@@ -399,6 +399,56 @@ class AiEngine:
         return self._open_detector.detect(image)
 
     @property
+    def open_vector_dimension(self) -> int:
+        """The size of the vectors of `embed_open_crops` and `embed_open_phrases`. They need the scene model."""
+        assert self._scene is not None, "the scene classifier is switched off"
+        return self._scene.dimension
+
+    @property
+    def open_vector_model(self) -> str:
+        """Name of the model that makes the open vectors. Store it with the vectors, as with the region vectors."""
+        assert self._scene is not None, "the scene classifier is switched off"
+        return self._scene.name
+
+    def embed_open_crops(self, image: Image.Image, boxes: list[Box]) -> np.ndarray:
+        """Return a unit-length SigLIP vector for each box, from the box with `open_detection.crop_padding` around it.
+
+        The vectors live in the same space as the phrase vectors, so a phrase can find a crop.
+        """
+        assert self._scene is not None, "the scene classifier is switched off"
+        assert isinstance(image, Image.Image), "image must be a PIL image"
+        assert isinstance(boxes, list), "boxes must be a list"
+        pad: float = self._config.open_detection.crop_padding
+        crops: list[Image.Image] = []
+        for box in boxes:
+            pad_x: int = round(box.width * pad)
+            pad_y: int = round(box.height * pad)
+            crops.append(
+                image.crop(
+                    (
+                        max(0, box.x0 - pad_x),
+                        max(0, box.y0 - pad_y),
+                        min(image.width, box.x1 + pad_x),
+                        min(image.height, box.y1 + pad_y),
+                    )
+                )
+            )
+        return self._scene.embed_crops(crops)
+
+    def embed_open_phrases(self, phrases: list[str]) -> np.ndarray:
+        """Return a unit-length SigLIP vector for each phrase, for example `laptop`. An article is added if it is missing."""
+        assert self._scene is not None, "the scene classifier is switched off"
+        return self._scene.embed_phrases(phrases)
+
+    def open_pair_scores(self, crops: np.ndarray, phrases: np.ndarray) -> np.ndarray:
+        """Return the probability that each crop vector shows each phrase vector, shape (crops, phrases).
+
+        The values are the SigLIP scores. About 0.5 or more is a good fit. They are not a share of 1.
+        """
+        assert self._scene is not None, "the scene classifier is switched off"
+        return self._scene.pair_probabilities(crops, phrases)
+
+    @property
     def speech_enabled(self) -> bool:
         """True if the speech recognizer is loaded. If False, `transcribe` must not be called."""
         return self._speech is not None

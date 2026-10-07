@@ -24,7 +24,7 @@ The result is always weak: the sentence says "I am not sure". The picture stays 
 | Phase | Content | Status |
 |-------|---------|--------|
 | 1 | The detector in `ai/`, the weights check, the settings, the tests | Built |
-| 2 | SigLIP vectors for the crops, and a text vector for a phrase (`ai/`) | Planned |
+| 2 | SigLIP vectors for the crops, and a text vector for a phrase (`ai/`) | Built |
 | 3 | The tables for the boxes and a second vector index (`db/`) | Planned |
 | 4 | The worker step: detect, link to registered boxes, embed, store | Planned |
 | 5 | The search: the phrase of the user, the match with the stored names, then the SigLIP retrieval | Planned |
@@ -36,6 +36,17 @@ The search of phase 5, in this order:
 2. Compare the phrase with the stored names with the sentence encoder (MiniLM). A score above a cutoff gives a hit.
 3. If there is no hit, compare the SigLIP text vector of the phrase with the stored crop vectors.
 4. Show the best hit as a weak result.
+
+## The vectors (phase 2)
+
+- `AiEngine.embed_open_crops(image, boxes)` makes a unit-length SigLIP vector for each box (the box with `open_detection.crop_padding` around it).
+- `AiEngine.embed_open_phrases(phrases)` makes a vector for each phrase. A phrase without an article gets one ("laptop" gives "a laptop").
+- `AiEngine.open_pair_scores(crops, phrases)` gives the SigLIP probability of each pair, shape (crops, phrases). The pairs are judged alone, so a row does not add up to 1.
+- `open_vector_dimension` is the size of the vectors (768 for the model that is in use). `open_vector_model` is the name to store with the vectors.
+- The vectors come from the scene model (SigLIP base), so the scene model must be on.
+- **Finding:** the size of the score changes a lot from crop to crop. A real laptop got 0.89 and 0.66 in two frames of the owner, and 0.08 in
+  one dataset photo, while the other phrases got 0.00. The order is right, but a fixed cutoff of 0.5 would miss the 0.08 case.
+  So phase 5 ranks the crops and compares the best score with the other phrases. Phase 7 sets the cutoffs on real frames.
 
 ## The detector (phase 1)
 

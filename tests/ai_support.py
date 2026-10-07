@@ -140,6 +140,10 @@ class FakeSceneClassifier:
         self.room_queue: list[dict[str, float]] = []
         self.room_calls: list[tuple[int, int]] = []
         self.surface_calls: list[tuple[int, int]] = []
+        self.crop_calls: list[list[tuple[int, int]]] = []
+        self.phrase_calls: list[list[str]] = []
+        # The colour of the top-left pixel of a fake crop gives its phrase.
+        self.crop_labels: dict[tuple[int, int, int], str] = {}
 
     def room_scores(self, image):
         if self.error is not None:
@@ -154,6 +158,40 @@ class FakeSceneClassifier:
             raise self.error
         self.surface_calls.append(image.size)
         return list(self.surfaces)
+
+    # ---- Vectors for the open search ----
+
+    dimension = 8
+
+    def _vector(self, text: str) -> np.ndarray:
+        rng = np.random.default_rng(zlib.crc32(text.encode()))
+        vector = rng.normal(size=self.dimension).astype(np.float32)
+        return vector / np.linalg.norm(vector)
+
+    def embed_crops(self, crops):
+        if self.error is not None:
+            raise self.error
+        self.crop_calls.append([c.size for c in crops])
+        # A crop that is a flat colour gets a vector from that colour, so a test can set which phrase fits it.
+        return (
+            np.stack([self._vector(self.crop_label(c)) for c in crops])
+            if crops
+            else np.empty((0, self.dimension), dtype=np.float32)
+        )
+
+    def crop_label(self, crop) -> str:
+        """The phrase that a fake crop shows. A test paints the crop with a colour and maps the colour here."""
+        return self.crop_labels.get(crop.convert("RGB").getpixel((0, 0)), "unknown")
+
+    def embed_phrases(self, phrases):
+        if self.error is not None:
+            raise self.error
+        self.phrase_calls.append(list(phrases))
+        return np.stack([self._vector(p) for p in phrases])
+
+    def pair_probabilities(self, crops, phrases):
+        cosine = crops @ phrases.T
+        return (1.0 / (1.0 + np.exp(-(cosine * 20.0 - 10.0)))).astype(np.float32)
 
 
 class FakeSpeechRecognizer:

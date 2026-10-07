@@ -137,6 +137,7 @@ class OpenDetectionConfig:
     max_boxes: int
     input_size: int
     min_box_side: int
+    crop_padding: float
 
 
 @dataclass(frozen=True)
@@ -406,6 +407,7 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> AiConfig:
                 open_detection.integer("input_size"), 32, "open_detection.input_size"
             ),
             min_box_side=open_detection.integer("min_box_side"),
+            crop_padding=open_detection.number("crop_padding", 0.0, 1.0),
         ),
     )
     logger.info("Loaded ai config from %s", config_path)

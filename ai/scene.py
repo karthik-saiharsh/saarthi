@@ -10,9 +10,11 @@ time, when the model loads. Then each picture costs one run of the image side of
 """
 
 import logging
+import re
 import threading
 import time
 
+import numpy as np
 import torch
 from PIL import Image
 from transformers import AutoImageProcessor, AutoModel, PreTrainedTokenizerFast
@@ -23,6 +25,24 @@ from ai.settings import AiConfig
 from ai.types import Box
 
 logger: logging.Logger = logging.getLogger(__name__)
+
+# The most crops that go through the image side of the model together.
+CROP_BATCH_SIZE: int = 8
+_ARTICLE = re.compile(r"(a|an|the|some|my|your)\s", re.IGNORECASE)
+
+
+def phrase_with_article(label: str) -> str:
+    """Return the label with an article, for example `laptop` gives `a laptop`.
+
+    The scene prompt reads like a photo caption. A label without an article reads worse for the model.
+    A label that has an article already stays as it is.
+    """
+    assert isinstance(label, str) and label.strip(), "label must not be empty"
+    words: str = " ".join(label.split())
+    if _ARTICLE.match(words):
+        return words
+    return f"{'an' if words[0].lower() in 'aeiou' else 'a'} {words}"
+
 
 # The text side of the model takes this number of tokens. This is the length that it learned with.
 TEXT_TOKENS: int = 64
@@ -135,6 +155,66 @@ class SceneClassifier:
         except (RuntimeError, ValueError) as error:
             logger.error("Scene scoring failed: %s: %s", type(error).__name__, error)
             raise InferenceError("Scene scoring failed") from error
+
+    # ---- Vectors for the open search ----
+
+    @property
+    def dimension(self) -> int:
+        """The size of the crop vectors and of the phrase vectors."""
+        return int(self._room_texts.shape[1])
+
+    def embed_crops(self, crops: list[Image.Image]) -> np.ndarray:
+        """Return one unit-length float32 vector for each crop, in the same order."""
+        assert isinstance(crops, list), "crops must be a list"
+        assert all(
+            isinstance(c, Image.Image) for c in crops
+        ), "crops must be PIL images"
+        if not crops:
+            return np.empty((0, self.dimension), dtype=np.float32)
+        try:
+            vectors: list[torch.Tensor] = []
+            for start in range(0, len(crops), CROP_BATCH_SIZE):
+                batch: list[Image.Image] = [
+                    c.convert("RGB") for c in crops[start : start + CROP_BATCH_SIZE]
+                ]
+                pixels = self._processor(images=batch, return_tensors="pt").to(
+                    self._device
+                )
+                with self._lock, torch.inference_mode():
+                    features: torch.Tensor = self._model.get_image_features(
+                        pixel_values=pixels["pixel_values"]
+                    ).pooler_output
+                vectors.append(torch.nn.functional.normalize(features, dim=-1).cpu())
+            return torch.cat(vectors).numpy().astype(np.float32)
+        except (RuntimeError, ValueError) as error:
+            logger.error("Crop embedding failed: %s: %s", type(error).__name__, error)
+            raise InferenceError("Crop embedding failed") from error
+
+    def embed_phrases(self, phrases: list[str]) -> np.ndarray:
+        """Return one unit-length float32 vector for each phrase. A phrase gets an article if it has none."""
+        assert isinstance(phrases, list) and phrases, "phrases must not be empty"
+        try:
+            with self._lock:
+                vectors: torch.Tensor = self._encode_texts(
+                    tuple(phrase_with_article(p) for p in phrases)
+                )
+            return vectors.cpu().numpy().astype(np.float32)
+        except (RuntimeError, ValueError) as error:
+            logger.error("Phrase embedding failed: %s: %s", type(error).__name__, error)
+            raise InferenceError("Phrase embedding failed") from error
+
+    def pair_probabilities(self, crops: np.ndarray, phrases: np.ndarray) -> np.ndarray:
+        """Return the probability that each crop shows each phrase, shape (crops, phrases).
+
+        This is the score of the model: a scaled cosine and a bias, through a sigmoid. Each pair
+        is judged alone, so the values of one row do not add up to 1.
+        """
+        assert crops.ndim == 2 and phrases.ndim == 2, "need 2-D arrays"
+        assert crops.shape[1] == phrases.shape[1] == self.dimension, "wrong vector size"
+        scale: float = float(self._model.logit_scale.exp().item())
+        bias: float = float(self._model.logit_bias.item())
+        logits: np.ndarray = (crops @ phrases.T) * scale + bias
+        return (1.0 / (1.0 + np.exp(-logits))).astype(np.float32)
 
     def room_scores(self, image: Image.Image) -> dict[str, float]:
         """Return the probability of each room of the list. The values add up to 1."""

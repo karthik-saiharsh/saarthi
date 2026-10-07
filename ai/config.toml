@@ -197,3 +197,5 @@ max_boxes = 20
 input_size = 640
 # A box whose short side is below this value (in frame pixels) is dropped.
 min_box_side = 24
+# The SigLIP vector of a crop is made from the box with this much space around it (a part of the box, on each side).
+crop_padding = 0.05
