@@ -20,6 +20,8 @@ from backend.describe import (
     RoomChoice,
     build_sentence,
     choose_room,
+    day_phrase,
+    part_of_day,
     time_phrase,
 )
 from backend.search import Answer, AnswerSource
@@ -32,10 +34,7 @@ from tests.search_support import BOX, store_frame
 
 ANCHOR: datetime = datetime(2000, 1, 1, 12, 0, 0)
 ROOMS: tuple[str, ...] = load_config().scene.rooms
-CONFIG: DescribeConfig = (
-    load_config  # replaced below, after the import of the backend config
-)
-CONFIG = __import__("backend.settings", fromlist=["load_config"]).load_config().describe
+CONFIG: DescribeConfig = backend_config().describe
 
 
 def rooms(top: str, score: float = 0.7) -> dict[str, float]:
@@ -339,7 +338,9 @@ def test_a_switched_off_scene_gives_a_sentence_with_the_time_only() -> None:
     from tests.ai_support import (
         FakeDetector,
         FakeEmbedder,
+        FakeOpenDetector,
         FakeQueryEncoder,
+        FakeSpeechRecognizer,
         FakeVerifier,
     )
 
@@ -353,6 +354,8 @@ def test_a_switched_off_scene_gives_a_sentence_with_the_time_only() -> None:
         embedder=FakeEmbedder(),  # type: ignore[arg-type]
         query_encoder=FakeQueryEncoder(),  # type: ignore[arg-type]
         verifier=FakeVerifier(),  # type: ignore[arg-type]
+        speech_recognizer=FakeSpeechRecognizer(),  # type: ignore[arg-type]
+        open_detector=FakeOpenDetector(),  # type: ignore[arg-type]
     )
     service = DescribeService(backend_config(), engine)
     result = service.describe("bottle", answer_for(frame_at(0)))
@@ -413,3 +416,79 @@ def test_the_log_shows_no_name_and_no_word_of_the_lists(
         if r.name.startswith(("backend", "ai", "db", "storage"))
     )
     assert "secret-name" not in own and "bedroom" not in own and "table" not in own
+
+
+# ---- The part of the day ----
+
+KOLKATA = dataclasses.replace(CONFIG, time_zone="Asia/Kolkata")
+
+
+@pytest.mark.parametrize(
+    ("hour", "part"),
+    [
+        (0, "night"),
+        (4, "night"),
+        (5, "morning"),
+        (11, "morning"),
+        (12, "afternoon"),
+        (16, "afternoon"),
+        (17, "evening"),
+        (21, "evening"),
+        (22, "night"),
+        (23, "night"),
+    ],
+)
+def test_part_of_day(hour: int, part: str) -> None:
+    assert part_of_day(hour) == part
+
+
+def utc(day: int, hour: int, minute: int = 0) -> datetime:
+    return datetime(2026, 11, day, hour, minute)
+
+
+def test_the_day_is_the_day_in_the_time_zone() -> None:
+    # 20:00 UTC is 01:30 the next day in Kolkata. The search runs at 05:00 UTC (10:30 Kolkata) on the 10th.
+    seen = utc(9, 20)
+    age = int((utc(10, 5) - seen).total_seconds())
+    assert day_phrase(seen, age, "Asia/Kolkata") == "during the night"
+    assert day_phrase(seen, age, "UTC") == "yesterday evening"
+
+
+def test_older_than_yesterday_has_no_part_of_the_day() -> None:
+    seen = utc(5, 10)
+    assert day_phrase(seen, int((utc(9, 10) - seen).total_seconds()), "UTC") is None
+
+
+def test_a_young_sighting_keeps_the_relative_time() -> None:
+    seen = utc(9, 20)
+    assert time_phrase(3 * 3600, seen, KOLKATA) == "3 hours ago"
+
+
+def test_an_old_sighting_of_today_or_yesterday_gets_the_part_of_the_day() -> None:
+    seen = utc(9, 3, 30)  # 09:00 in Kolkata
+    assert time_phrase(7 * 3600, seen, KOLKATA) == "this morning"
+    assert time_phrase(30 * 3600, seen, KOLKATA) == "yesterday morning"
+    assert time_phrase(5 * 86400, seen, KOLKATA) == "5 days ago"
+
+
+def test_the_sentence_uses_the_part_of_the_day() -> None:
+    answer = dataclasses.replace(sure(), age_seconds=8 * 3600, seen_at=utc(9, 3, 30))
+    assert "was last seen this morning." in build_sentence(
+        "bottle", answer, None, None, KOLKATA
+    )
+    stale = dataclasses.replace(answer, stale=True)
+    assert "was this morning. That was a long time ago." in build_sentence(
+        "bottle", stale, None, None, KOLKATA
+    )
+
+
+def test_without_a_config_the_sentence_keeps_the_relative_time() -> None:
+    answer = dataclasses.replace(sure(), age_seconds=8 * 3600, seen_at=utc(9, 3, 30))
+    assert "8 hours ago" in build_sentence("bottle", answer, None, None)
+
+
+def test_the_server_time_zone_is_used_when_the_name_is_empty() -> None:
+    phrase = day_phrase(utc(9, 12), 8 * 3600, "")
+    assert phrase is not None and (
+        "this" in phrase or "night" in phrase or "yesterday" in phrase
+    )

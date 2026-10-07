@@ -118,6 +118,11 @@ room_agree_fraction = 0.6
 room_min_score = 0.4
 # The surface under the object is named only if its score is at least this value.
 surface_min_score = 0.4
+# The time zone for the part of the day in the sentence ("yesterday evening"). An IANA name, for example "Asia/Kolkata".
+# Empty: the time zone of the computer that runs the application. The server stores UTC.
+time_zone = ""
+# A sighting at least this many hours old gets a part of the day. A younger one gets "12 minutes ago" or "3 hours ago".
+day_part_min_hours = 6
 
 [voice]
 # A recording shorter than this (in seconds) is refused.

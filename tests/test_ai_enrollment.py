@@ -13,6 +13,7 @@ from ai.types import Box, RawDetection
 from tests.ai_support import (
     FakeDetector,
     FakeEmbedder,
+    FakeOpenDetector,
     FakeQueryEncoder,
     FakeSceneClassifier,
     FakeSpeechRecognizer,
@@ -35,7 +36,7 @@ def engine_with(
                 CONFIG.enrollment, augmentations=augmentations
             ),
         )
-    return AiEngine(config, detector=detector or FakeDetector(), embedder=embedder or FakeEmbedder(), query_encoder=FakeQueryEncoder(), verifier=FakeVerifier(), scene_classifier=FakeSceneClassifier(), speech_recognizer=FakeSpeechRecognizer())  # type: ignore[arg-type]
+    return AiEngine(config, detector=detector or FakeDetector(), embedder=embedder or FakeEmbedder(), query_encoder=FakeQueryEncoder(), verifier=FakeVerifier(), scene_classifier=FakeSceneClassifier(), speech_recognizer=FakeSpeechRecognizer(), open_detector=FakeOpenDetector())  # type: ignore[arg-type]
 
 
 def photo(width: int = 200, height: int = 150, grey: int = 100) -> Image.Image:

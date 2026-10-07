@@ -2,8 +2,9 @@
 
 ## Purpose
 
-This guide shows you how to run the application with `main.py` and follow one picture through all components.
-You play three roles: the carer (adds an object), the wearable (sends pictures) and the patient (asks where the object is).
+This guide shows you how to run the whole pipeline with `main.py`, from the first object to the spoken answer.
+You play three roles: the carer (adds an object), the wearable (sends pictures) and the patient (asks where the object is, by voice or by text).
+The pipeline: enrollment (E1 to E4), ingestion and memory (I1 to I6), the search (Q1), the description (Q2), the voice (Q3) and the listening (Q0).
 The expected results come from a real run with the real models. The run used the 14 photos in the folder `Dataset`.
 
 ## What you need
@@ -30,7 +31,7 @@ The log shows the start-up order. Each line starts with the name of a component:
 |----------------------|-----------|--------------------------|
 | `storage.` | Storage | Prepared the folder `storage/uploads` for the pictures |
 | `db.` | Database and vector index | Opened `db/data/saarthi.db` and the index. The recovery repaired nothing |
-| `ai.detector`, `ai.embedder`, `ai.query`, `ai.verifier`, `ai.scene`, `ai.speech` | The models | Detector, region embedder, query encoder, verifier, scene classifier, speech recognizer |
+| `ai.detector`, `ai.embedder`, `ai.query`, `ai.verifier`, `ai.scene`, `ai.speech`, `ai.open_detector` | The models | Detector, region embedder, query encoder, verifier, scene classifier, speech recognizer, broad detector |
 | `backend.` | Control flow | Started the upload step, the worker and the maintenance thread |
 | `main` | Entry point | Held the order, and printed the address |
 
@@ -41,6 +42,28 @@ The pages:
 | `http://localhost:8080/enroll` | The carer: add objects and photos |
 | `http://localhost:8080/upload` | The wearable (or you): send pictures |
 | `http://localhost:8080/find` | The patient: ask where an object is |
+
+### Quick path: the whole run from the command line
+
+You can run steps 2, 3 and 5 without a browser. Start the application (step 1), then use a second terminal.
+`D` is the folder of the photos. The commands do not wait for the worker, so keep the `sleep` lines.
+
+```
+D="/home/ks/Desktop/Project Saarthi/Dataset"
+# Step 2: the carer adds the object and three reference photos, and waits for the worker (about 40 s)
+curl -s -X POST -d '{"name":"Speckled bottle","category":"a bottle","synonyms":["a water bottle"]}' localhost:8080/api/objects
+for n in 2 3 9; do curl -s -X POST --data-binary @$D/$n.jpeg localhost:8080/api/objects/1/photos; echo; done
+sleep 40
+for p in 1 2 3; do curl -s -X POST localhost:8080/api/objects/1/photos/$p/confirm -o /dev/null -w "%{http_code} "; done; echo
+curl -s localhost:8080/api/objects/1          # "status":"ready", "tau":0.45, "tau_strong":0.55
+# Step 3: the wearable sends the pictures. Wait until the log stops (about 90 s)
+for n in 1 4 5 6 7 8 10 11 12 13 14; do curl -s -X POST --data-binary @$D/$n.jpeg localhost:8080/api/images -o /dev/null -w "$n:%{http_code} "; done; echo
+# Step 5: the patient asks
+curl -s -X POST -d '{"query": "where is my speckled bottle"}' localhost:8080/api/search
+```
+
+The numbers 1, 2 and 3 are the ids of the first object and its photos on an empty database.
+The route `/api/search` gives the answer data. The sentence and the voice are made by the page `/find` (step 5).
 
 ## 2. Add an object (the carer)
 
@@ -106,20 +129,60 @@ print("sightings (image, similarity, strong):")
 for row in c.execute("select image_id, round(similarity, 3), strong from sighting order by id"): print("  ", row)
 print("last seen (image, similarity, strong, in hand):")
 for row in c.execute("select image_id, round(similarity, 3), strong, in_hand from last_seen"): print("  ", row)
+print("room scores that the description cached (image, model):")
+for row in c.execute("select image_id, model from frame_scene order by image_id"): print("  ", row)
 EOF
 ```
 
+The table `frame_scene` is empty until the first answer. The description fills it for the answer frame and its neighbours.
 The image numbers here are the numbers in the table, not the file names. The first picture that you sent is image 1.
 The vector index is a file (`db/data/regions.faiss`). The application saves it at shutdown, every hour, and after 200 changes.
 
 ## 5. Ask where the object is (the patient)
 
-Open `/find`.
+Open `/find`. The page has four parts, from top to bottom: the result, the **Talk** button, the object buttons and the box for your own words.
 
 1. Tap **Speckled bottle**. The card at the top shows the name and "Seen N minutes ago". It also shows a picture of the bottle with its surroundings.
    The answer comes from the last-seen record. The record is the sighting of photo 14.
 2. Write `where did I leave my water flask` in the box and tap **Find it**. The result is the same object.
 3. Write `where are my keys`. The page says that it does not know the object.
+
+### What the page says and shows
+
+The answer has the time, the picture and a sentence. The browser also says the sentence with a voice of the device.
+In the run with the real models (all 14 photos sent within about 2 minutes), the sentence was:
+
+> Your Speckled bottle was last seen 2 minutes ago. It was on a desk.
+
+The surface "a desk" comes from the scene model (`ai.scene`) that looks at the box of the bottle with space around it (photo 14).
+The room is **not** named in this run: the log says `Room rule: 5 frame(s), 2 agree, no room named`.
+The rule names a room only if at least 3 frames have scores, 60 % of them agree, and the average score is at least 0.4.
+A frame that was sent more than 2 minutes before or after the answer frame does not count. This silence is correct behaviour, not an error.
+
+| Test | Expected result |
+|------|-----------------|
+| Tap **Say it again** | The browser repeats the sentence. If the device has no local English voice, it stays silent. The text stays on the page |
+| Ask for an object that was never seen | "The computer has not seen it lately." |
+| Wait more than 6 hours, then ask | The sentence says a part of the day ("this morning", "yesterday evening") instead of "N hours ago". See `describe.time_zone` in `backend/config.toml` |
+
+The time zone: the setting `describe.time_zone` is empty, so the application uses the time zone of the computer. Set an IANA name (for example `Asia/Kolkata`) if the computer runs on UTC.
+
+### The Talk button (listening)
+
+1. Open `http://localhost:8080/find` **on this computer**. `localhost` lets the browser use the microphone without HTTPS.
+2. Tap **Talk** and allow the microphone. The button says **Stop**.
+3. Say: "where is my water flask". Tap **Stop** (or wait 15 seconds).
+4. The page shows **I heard: ...** and then the answer, with the picture, the sentence and the voice. The recognition takes about 1 second.
+
+Also try: a silent recording (the page says that the computer did not hear you), and "where are my keys" (the page says that it does not know the object).
+The audio is never stored and never logged. The log line for a recording says only `Speech recognized: N characters`.
+You can test the route without a microphone: `curl -s -X POST --data-binary @recording.wav -H 'Content-Type: audio/wav' localhost:8080/ui/voice`
+(a WAV file with 16 kHz, 16 bits and one channel). A file of another kind gives `The recording is not a usable WAV file.`
+
+### From a phone or tablet (HTTPS)
+
+The microphone on a phone needs HTTPS. Follow `docs/backend/HTTPS.md` (make a local certificate, install it on the phone, set `server.tls_certfile` and `server.tls_keyfile`),
+then open `https://<address>:8080/find` on the phone. This path is **not tested on a real phone yet**. Tell the developer what you see.
 
 The same through the command line. The number 1 is the id of the first object. A new object has the next number:
 
@@ -149,6 +212,10 @@ Try also a silent recording: the page says that the computer did not hear you.
 | Start again after that | `Start-up recovery` finds nothing to repair. The vectors load again |
 | Stop with `kill -9` (use the process id), then start | The recovery repairs the data. The log says what it repaired |
 | Set `verification.enabled = false` in `ai/config.toml` | The verifier is not loaded. The log says `verifier off` |
+| Set only `server.tls_certfile` in `backend/config.toml` | The start stops: both keys must be set, or both empty |
+| Set `server.tls_certfile` and `server.tls_keyfile` to missing files | The start stops with `server.tls_certfile is not a file` |
+| Set `speech.enabled = false` in `ai/config.toml` | The speech model is not loaded. The page has no **Talk** button |
+| Set `scene.enabled = false` in `ai/config.toml` | The sentence has the time only. It names no surface and no room |
 | Set the variable `SAARTHI_API_TOKEN=secret` before the start | The API routes need `Authorization: Bearer secret`. The pages stay open |
 
 Restore every change of a config file afterwards.
@@ -179,6 +246,9 @@ EOF
 
 ## What you will notice that is not right yet
 
+- **The voice and the Talk button are not tested on a phone.** The sound depends on the voices that the device has.
+- **Noise can give wrong words.** The speech model can write words for a noisy recording. The silence check only catches near-silence.
+- **The room is often not named.** The rule prefers silence to a wrong room (see step 5).
 - **The blur check hides a true sighting.** In photo 8, the bottle is blurred by motion. Its similarity is above the threshold, but the crop fails the blur check, so the region is not used.
 - **`/` opens the upload page**, not the find page.
 - **The pages show all links to all users.** There is no separation between the carer and the patient.

@@ -69,8 +69,11 @@ The application builds the sentence from a template with slots. The slots are th
 | Unknown object | "I do not know that object." |
 
 **The time.** The sentence uses a relative time ("20 minutes ago").
-For older sightings, it also uses a part of the day ("this morning", "yesterday evening").
-The part of the day needs the local time zone. The server stores UTC. A new setting for the time zone is needed.
+For a sighting that is at least `describe.day_part_min_hours` old (6), it uses a part of the day instead: "this morning", "this afternoon", "this evening",
+"during the night" for today, and "yesterday morning" and so on for yesterday. A sighting that is older than yesterday keeps "N days ago".
+The parts: night 22:00 to 04:59, morning 05:00 to 11:59, afternoon 12:00 to 16:59, evening 17:00 to 21:59.
+The day and the part come from the time zone. The server stores UTC. The setting `describe.time_zone` is an IANA name (for example `Asia/Kolkata`).
+If it is empty (the default), the application uses the time zone of the computer that runs it. A wrong time zone gives a wrong part of the day, so set it on a device that has no zone.
 The time is the time at which the server received the frame (see `docs/backend/Memory.md`). A frame that arrives late has a wrong time.
 
 ## The room rule (built, `backend/describe.py`)
@@ -192,12 +195,12 @@ The owner decided these on 2026-11-09:
 | 3 | Which languages? | **English only** to start. The object names, the recognizer and the voice are English |
 | 4 | How is the place described? | **Fixed lists, with the room taken from neighbouring frames in time.** No colour. The test is in "The test of the description" |
 | 5 | Where does the voice come from? | **The local voices of the device**, through the browser. No model on the server. A device without a local English voice stays silent |
+| 6 | Which time zone? | **A setting**, `describe.time_zone`. Empty (default) uses the time zone of the computer that runs the application |
 
 These decisions are still open:
 
 | # | Question | Why it matters |
 |---|----------|----------------|
-| 6 | Which time zone? | The part of the day in the sentence |
 | 7 | How much memory and which CPU does the target device have? | Every new model adds memory and time. The application already loads four models |
 | 8 | How does a patient who cannot tap answer "Which one do you mean?" | A yes or no by voice needs a dialogue of more than one turn |
 

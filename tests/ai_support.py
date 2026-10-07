@@ -173,6 +173,23 @@ class FakeSpeechRecognizer:
         return self.text
 
 
+class FakeOpenDetector:
+    """Gives the named boxes that the test sets. It records the size of each frame."""
+
+    name = "fake-open@00000000"
+
+    def __init__(self, detections: list | None = None) -> None:
+        self.detections: list = detections or []
+        self.error: Exception | None = None
+        self.calls: list[tuple[int, int]] = []
+
+    def detect(self, image):
+        if self.error is not None:
+            raise self.error
+        self.calls.append(image.size)
+        return list(self.detections)
+
+
 def make_engine(
     detector: FakeDetector | None = None,
     embedder: FakeEmbedder | None = None,
@@ -181,6 +198,7 @@ def make_engine(
     verifier: FakeVerifier | None = None,
     scene_classifier: FakeSceneClassifier | None = None,
     speech_recognizer: FakeSpeechRecognizer | None = None,
+    open_detector: FakeOpenDetector | None = None,
 ) -> AiEngine:
     """An `AiEngine` with fake models. The quality gate and post-processing are real.
 
@@ -199,4 +217,5 @@ def make_engine(
         verifier=verifier or FakeVerifier(),  # type: ignore[arg-type]
         scene_classifier=scene_classifier or FakeSceneClassifier(),  # type: ignore[arg-type]
         speech_recognizer=speech_recognizer or FakeSpeechRecognizer(),  # type: ignore[arg-type]
+        open_detector=open_detector or FakeOpenDetector(),  # type: ignore[arg-type]
     )

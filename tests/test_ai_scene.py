@@ -13,6 +13,7 @@ from ai.types import Box
 from tests.ai_support import (
     FakeDetector,
     FakeEmbedder,
+    FakeOpenDetector,
     FakeQueryEncoder,
     FakeSceneClassifier,
     FakeSpeechRecognizer,
@@ -89,6 +90,7 @@ def test_the_name_for_the_cache_changes_when_a_word_list_or_the_prompt_changes()
             verifier=FakeVerifier(),  # type: ignore[arg-type]
             scene_classifier=FakeSceneClassifier(),  # type: ignore[arg-type]
             speech_recognizer=FakeSpeechRecognizer(),  # type: ignore[arg-type]
+            open_detector=FakeOpenDetector(),  # type: ignore[arg-type]
         )
 
     same = engine_with().scene_model
@@ -119,6 +121,8 @@ def test_a_switched_off_scene_loads_no_model_and_refuses_calls() -> None:
         embedder=FakeEmbedder(),  # type: ignore[arg-type]
         query_encoder=FakeQueryEncoder(),  # type: ignore[arg-type]
         verifier=FakeVerifier(),  # type: ignore[arg-type]
+        speech_recognizer=FakeSpeechRecognizer(),  # type: ignore[arg-type]
+        open_detector=FakeOpenDetector(),  # type: ignore[arg-type]
     )  # The real model would be loaded here if the switch did not work
     assert not engine.scene_enabled
     with pytest.raises(AssertionError):

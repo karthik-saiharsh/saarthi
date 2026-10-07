@@ -25,6 +25,7 @@ from ai.errors import (
     ModelLoadError,
 )
 from ai.matching import match_regions
+from ai.open_detector import OpenDetector
 from ai.postprocess import apply_crop_quality, select_candidates
 from ai.quality import blur_score, hamming_distance, perceptual_hash
 from ai.query import QueryEncoder
@@ -39,6 +40,7 @@ from ai.types import (
     LocatedObject,
     MatchObject,
     MatchRegion,
+    OpenDetection,
     QualityReport,
     Sighting,
     VerifyResult,
@@ -100,12 +102,14 @@ class AiEngine:
         verifier: KeypointVerifier | None = None,
         scene_classifier: SceneClassifier | None = None,
         speech_recognizer: SpeechRecognizer | None = None,
+        open_detector: OpenDetector | None = None,
     ) -> None:
         """Load the models. Pass `detector`, `embedder`, `query_encoder`, `verifier` or `scene_classifier` only in tests.
 
         The verifier loads only if `verification.enabled` is true.
         The scene classifier loads only if `scene.enabled` is true.
         The speech recognizer loads only if `speech.enabled` is true.
+        The broad detector loads only if `open_detection.enabled` is true.
         """
         self._config: AiConfig = config if config is not None else load_config()
         configure_threads(self._config.models.cpu_threads)
@@ -118,19 +122,23 @@ class AiEngine:
         self._speech: SpeechRecognizer | None = speech_recognizer or (
             SpeechRecognizer(self._config) if self._config.speech.enabled else None
         )
+        self._open_detector: OpenDetector | None = open_detector or (
+            OpenDetector(self._config) if self._config.open_detection.enabled else None
+        )
         self._verifier: KeypointVerifier | None = verifier or (
             KeypointVerifier(self._config)
             if self._config.verification.enabled
             else None
         )
         logger.info(
-            "AI engine ready: detector %s, embedder %s, query encoder %s, verifier %s, scene %s, speech %s",
+            "AI engine ready: detector %s, embedder %s, query encoder %s, verifier %s, scene %s, speech %s, broad detector %s",
             self._detector.name,
             self._embedder.name,
             self._query_encoder.name,
             self._verifier.name if self._verifier is not None else "off",
             self._scene.name if self._scene is not None else "off",
             self._speech.name if self._speech is not None else "off",
+            self._open_detector.name if self._open_detector is not None else "off",
         )
 
     @property
@@ -374,6 +382,21 @@ class AiEngine:
         return result
 
     # ---- The place of an object (stage Q2) ----
+
+    @property
+    def open_detection_enabled(self) -> bool:
+        """True if the broad detector is loaded. If False, `detect_open` must not be called."""
+        return self._open_detector is not None
+
+    def detect_open(self, image: Image.Image) -> list[OpenDetection]:
+        """Name the objects of a frame without a list of classes (broad detection).
+
+        Use it for objects that nobody registered. The names can be wrong, so treat them as hints.
+        The most confident box comes first. The list can be empty.
+        """
+        assert isinstance(image, Image.Image), "image must be a PIL image"
+        assert self._open_detector is not None, "the broad detector is switched off"
+        return self._open_detector.detect(image)
 
     @property
     def speech_enabled(self) -> bool:

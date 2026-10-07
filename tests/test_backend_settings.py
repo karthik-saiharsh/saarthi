@@ -72,6 +72,10 @@ def test_default_config_loads() -> None:
         ("room_agree_fraction = 0.6", "room_agree_fraction = 1.5"),
         ("room_min_score = 0.4", "room_min_score = -0.1"),
         ("surface_min_score = 0.4", 'surface_min_score = "high"'),
+        ('time_zone = ""', 'time_zone = "Mars/Olympus"'),
+        ('time_zone = ""', "time_zone = 5"),
+        ("day_part_min_hours = 6", "day_part_min_hours = 0"),
+        ("day_part_min_hours = 6", "day_part_min_hours = 25"),
         ("max_pending = 500", "max_pending = 0"),
         ("max_pending = 500", "max_pending = true"),
         ("max_pending = 500", 'max_pending = "many"'),
@@ -184,3 +188,8 @@ def test_the_tls_keys_must_be_strings(tmp_path: Path) -> None:
         load_config(
             write(tmp_path, DEFAULT_TEXT.replace('tls_keyfile = ""', "tls_keyfile = 5"))
         )
+
+
+def test_a_known_time_zone_is_accepted(tmp_path: Path) -> None:
+    text = DEFAULT_TEXT.replace('time_zone = ""', 'time_zone = "Asia/Kolkata"', 1)
+    assert load_config(write(tmp_path, text)).describe.time_zone == "Asia/Kolkata"

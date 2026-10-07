@@ -1,6 +1,7 @@
 """Settings of the ai component. They come from `config.toml`."""
 
 import logging
+import re
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -31,6 +32,9 @@ class ModelsConfig:
     scene_revision: str
     speech_id: str
     speech_revision: str
+    open_detector_file: str
+    open_detector_url: str
+    open_detector_sha256: str
     device: str
     cpu_threads: int
     local_files_only: bool
@@ -127,6 +131,15 @@ class SpeechConfig:
 
 
 @dataclass(frozen=True)
+class OpenDetectionConfig:
+    enabled: bool
+    confidence: float
+    max_boxes: int
+    input_size: int
+    min_box_side: int
+
+
+@dataclass(frozen=True)
 class AiConfig:
     models: ModelsConfig
     image: ImageConfig
@@ -138,6 +151,7 @@ class AiConfig:
     verification: VerificationConfig
     scene: SceneConfig
     speech: SpeechConfig
+    open_detection: OpenDetectionConfig
 
 
 class _Table:
@@ -210,6 +224,33 @@ def _multiple_of_patch(table: _Table, key: str) -> int:
     return value
 
 
+def _multiple_of(value: int, base: int, name: str) -> int:
+    if value % base:
+        raise AiConfigError(f"{name} must be a multiple of {base}")
+    return value
+
+
+def _weights_file(value: str) -> str:
+    """A plain file name. A path or a name with `..` could write outside `ai/models`."""
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*\.pt", value) or ".." in value:
+        raise AiConfigError(
+            "models.open_detector_file must be a plain file name that ends with .pt"
+        )
+    return value
+
+
+def _https_url(value: str) -> str:
+    if not value.startswith("https://"):
+        raise AiConfigError("models.open_detector_url must start with https://")
+    return value
+
+
+def _sha256(value: str) -> str:
+    if not re.fullmatch(r"[0-9a-f]{64}", value):
+        raise AiConfigError("models.open_detector_sha256 must be 64 hex characters")
+    return value
+
+
 def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> AiConfig:
     """Read and check the config file. Raise `AiConfigError` if it is not correct."""
     assert isinstance(config_path, Path), "config_path must be a Path"
@@ -231,6 +272,7 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> AiConfig:
     verification: _Table = _Table(raw, "verification")
     scene: _Table = _Table(raw, "scene")
     speech: _Table = _Table(raw, "speech")
+    open_detection: _Table = _Table(raw, "open_detection")
 
     default_phrases: tuple[str, ...] = detection.texts("default_phrases")
     small_phrases: tuple[str, ...] = detection.texts("small_phrases", allow_empty=True)
@@ -291,6 +333,9 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> AiConfig:
             scene_revision=models.text("scene_revision"),
             speech_id=models.text("speech_id"),
             speech_revision=models.text("speech_revision"),
+            open_detector_file=_weights_file(models.text("open_detector_file")),
+            open_detector_url=_https_url(models.text("open_detector_url")),
+            open_detector_sha256=_sha256(models.text("open_detector_sha256")),
             device=models.choice("device", DEVICES),
             cpu_threads=models.integer("cpu_threads", minimum=0),
             local_files_only=models.boolean("local_files_only"),
@@ -352,6 +397,15 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> AiConfig:
             enabled=speech.boolean("enabled"),
             max_seconds=speech.integer("max_seconds", minimum=1, maximum=30),
             max_new_tokens=speech.integer("max_new_tokens", minimum=1, maximum=440),
+        ),
+        open_detection=OpenDetectionConfig(
+            enabled=open_detection.boolean("enabled"),
+            confidence=open_detection.number("confidence", 0.01, 1.0),
+            max_boxes=open_detection.integer("max_boxes", minimum=1, maximum=200),
+            input_size=_multiple_of(
+                open_detection.integer("input_size"), 32, "open_detection.input_size"
+            ),
+            min_box_side=open_detection.integer("min_box_side"),
         ),
     )
     logger.info("Loaded ai config from %s", config_path)

@@ -90,6 +90,7 @@ def test_bad_values_are_refused(tmp_path: Path, old: str, new: str) -> None:
         "verification",
         "scene",
         "speech",
+        "open_detection",
     ],
 )
 def test_missing_table_is_refused(tmp_path: Path, table: str) -> None:
@@ -143,5 +144,36 @@ def test_the_speech_model_is_pinned_and_the_limits_are_checked(tmp_path: Path) -
         ("enabled = true\n# The longest", "enabled = 1\n# The longest"),
     ):
         assert old in DEFAULT_TEXT
+        with pytest.raises(AiConfigError):
+            load_config(write(tmp_path, DEFAULT_TEXT.replace(old, new, 1)))
+
+
+def test_the_broad_detector_settings_are_checked(tmp_path: Path) -> None:
+    config = load_config()
+    assert config.open_detection.enabled and config.open_detection.input_size % 32 == 0
+    assert re.fullmatch(r"[0-9a-f]{64}", config.models.open_detector_sha256)
+    assert config.models.open_detector_url.startswith("https://")
+    for old, new in (
+        ("confidence = 0.25", "confidence = 0.0"),
+        ("confidence = 0.25", "confidence = 1.5"),
+        ("max_boxes = 20", "max_boxes = 0"),
+        ("input_size = 640", "input_size = 650"),
+        ("min_box_side = 24", "min_box_side = 0"),
+        (
+            'open_detector_file = "yoloe-11s-seg-pf.pt"',
+            'open_detector_file = "../evil.pt"',
+        ),
+        (
+            'open_detector_file = "yoloe-11s-seg-pf.pt"',
+            'open_detector_file = "/tmp/x.pt"',
+        ),
+        (
+            'open_detector_file = "yoloe-11s-seg-pf.pt"',
+            'open_detector_file = "model.bin"',
+        ),
+        ('open_detector_url = "https://', 'open_detector_url = "http://'),
+        ('open_detector_sha256 = "292bdf', 'open_detector_sha256 = "ZZZZZZ'),
+    ):
+        assert old in DEFAULT_TEXT, old
         with pytest.raises(AiConfigError):
             load_config(write(tmp_path, DEFAULT_TEXT.replace(old, new, 1)))

@@ -22,6 +22,12 @@ scene_revision = "7fd15f0689c79d79e38b1c2e2e2370a7bf2761ed"
 # Turns the speech of the user into text (stage Q0), on the device. English only (Apache-2.0).
 speech_id = "openai/whisper-base"
 speech_revision = "e37978b90ca9030d5170a5c07aadb050351a65bb"
+# Finds objects that nobody registered (broad detection). YOLOE, prompt-free: no class list is given. It labels each box
+# from its own list of 4585 names. LICENCE: AGPL-3.0 (Ultralytics). The owner accepted it for this academic project.
+# The weights come from the Ultralytics release below. The file is downloaded one time into ai/models and its SHA-256 is checked.
+open_detector_file = "yoloe-11s-seg-pf.pt"
+open_detector_url = "https://github.com/ultralytics/assets/releases/download/v8.4.0/yoloe-11s-seg-pf.pt"
+open_detector_sha256 = "292bdf157a9ec7315f34b567cb93467c5043cd1889a1cc18abbfdeb88d7a948d"
 # "auto" uses a GPU if one exists, and the CPU if not. Other values: "cpu", "cuda".
 device = "auto"
 # Number of CPU threads for the models. 0 keeps the torch default.
@@ -179,3 +185,15 @@ enabled = true
 max_seconds = 15
 # The most new tokens (about words) that the model writes for one recording.
 max_new_tokens = 64
+
+[open_detection]
+# false: the model is not loaded, and no broad detection runs.
+enabled = true
+# A box needs at least this confidence. Start value. The test on 8 frames used 0.10 and found the laptop at 0.96 and above.
+confidence = 0.25
+# The most boxes that one frame keeps, the most confident first.
+max_boxes = 20
+# The model resizes the frame to this side (a multiple of 32). A small object is lost at 640 in a large frame.
+input_size = 640
+# A box whose short side is below this value (in frame pixels) is dropped.
+min_box_side = 24

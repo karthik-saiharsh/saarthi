@@ -14,6 +14,8 @@ then has the time only. The log shows counts and ids. It never shows a name or a
 
 import logging
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from PIL import Image as PilImage
 
@@ -54,9 +56,24 @@ class Description:
     room: str | None  # For example "a bedroom". None if the sentence does not name it
 
 
-def time_phrase(age_seconds: int) -> str:
-    """Return a plain time such as `12 minutes ago`."""
+def time_phrase(
+    age_seconds: int,
+    seen_at: datetime | None = None,
+    config: DescribeConfig | None = None,
+) -> str:
+    """Return a plain time such as `12 minutes ago`.
+
+    An old sighting of today or yesterday gets a part of the day ("yesterday evening") if `seen_at` and `config` are given.
+    """
     assert isinstance(age_seconds, int) and age_seconds >= 0, "age must be 0 or more"
+    if (
+        seen_at is not None
+        and config is not None
+        and age_seconds >= config.day_part_min_hours * _HOUR
+    ):
+        phrase: str | None = day_phrase(seen_at, age_seconds, config.time_zone)
+        if phrase is not None:
+            return phrase
     if age_seconds < _MINUTE:
         return "just now"
     for unit, name in ((_DAY, "day"), (_HOUR, "hour"), (_MINUTE, "minute")):
@@ -64,6 +81,41 @@ def time_phrase(age_seconds: int) -> str:
             count: int = age_seconds // unit
             return f"{count} {name}{'' if count == 1 else 's'} ago"
     raise AssertionError("unreachable")  # pragma: no cover
+
+
+def _local(moment: datetime, time_zone: str) -> datetime:
+    """Return a naive UTC time as a time with the zone. An empty name means the zone of the server."""
+    aware: datetime = moment.replace(tzinfo=UTC)
+    return aware.astimezone(ZoneInfo(time_zone) if time_zone else None)
+
+
+def part_of_day(hour: int) -> str:
+    """Return `morning`, `afternoon`, `evening` or `night` for an hour from 0 to 23."""
+    assert 0 <= hour <= 23, "hour must be from 0 to 23"
+    if 5 <= hour < 12:
+        return "morning"
+    if 12 <= hour < 17:
+        return "afternoon"
+    if 17 <= hour < 22:
+        return "evening"
+    return "night"
+
+
+def day_phrase(seen_at: datetime, age_seconds: int, time_zone: str) -> str | None:
+    """Return "this morning" or "yesterday evening" for a sighting of today or yesterday. Otherwise None.
+
+    `seen_at` is naive UTC. The day is the day in the time zone, so a sighting at 23:00 is of yesterday at 01:00.
+    """
+    assert isinstance(seen_at, datetime) and age_seconds >= 0, "bad arguments"
+    seen: datetime = _local(seen_at, time_zone)
+    now: datetime = _local(seen_at + timedelta(seconds=age_seconds), time_zone)
+    days: int = (now.date() - seen.date()).days
+    part: str = part_of_day(seen.hour)
+    if days == 0:
+        return "during the night" if part == "night" else f"this {part}"
+    if days == 1:
+        return f"yesterday {part}"
+    return None
 
 
 def choose_room(frames: list[dict[str, float]], config: DescribeConfig) -> RoomChoice:
@@ -90,7 +142,11 @@ def choose_room(frames: list[dict[str, float]], config: DescribeConfig) -> RoomC
 
 
 def build_sentence(
-    name: str, answer: Answer, surface: str | None, room: str | None
+    name: str,
+    answer: Answer,
+    surface: str | None,
+    room: str | None,
+    config: DescribeConfig | None = None,
 ) -> str:
     """Make the sentence for the voice. A weak answer says that the system is not sure.
 
@@ -104,7 +160,7 @@ def build_sentence(
             "" if answer.complete else " I could not look at all the pictures."
         )
 
-    when: str = time_phrase(answer.age_seconds)
+    when: str = time_phrase(answer.age_seconds, answer.seen_at, config)
     sure: bool = bool(answer.strong)
     parts: list[str] = []
     if answer.in_hand:  # The place is the person, so the surface is not named
@@ -160,7 +216,9 @@ class DescribeService:
                     "The place of image %d could not be described", answer.image_id
                 )
         return Description(
-            build_sentence(object_name, answer, surface, room), surface, room
+            build_sentence(object_name, answer, surface, room, self._config),
+            surface,
+            room,
         )
 
     # ---- The place ----

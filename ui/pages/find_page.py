@@ -36,12 +36,17 @@ def build_find_page(service: FindService, voice: VoiceService | None = None) -> 
     apply_theme()
     add_speech_script()
     ui.page_title(f"{PAGE_TITLE} - {PRODUCT_NAME}")
+    # The client outlives the cards that the page replaces. Run scripts through it, not through `ui.run_javascript`.
+    browser = ui.context.client
+
+    def say(text: str) -> None:
+        speak(text, browser)
 
     # The functions below use `session`, which is created after them.
     # Python looks it up when they run, not when they are defined.
     @ui.refreshable
     def result_view() -> None:
-        find_result(session.result, session.busy, session.pick, speak)
+        find_result(session.result, session.busy, session.pick, say)
 
     @ui.refreshable
     def choices_view() -> None:
@@ -67,7 +72,7 @@ def build_find_page(service: FindService, voice: VoiceService | None = None) -> 
             and result.description
         ):
             spoken[0] = result
-            speak(result.description)
+            say(result.description)
         result_view.refresh()
         choices_view.refresh()
         ask_view.refresh()
@@ -77,7 +82,7 @@ def build_find_page(service: FindService, voice: VoiceService | None = None) -> 
         result_card.set_visibility(session.busy or session.result is not None)
         if session.busy:
             # The user tapped a button that can be far down the page. Show the result card.
-            ui.run_javascript("window.scrollTo(0, 0)")
+            browser.run_javascript("window.scrollTo(0, 0)")
 
     session: FindSession = FindSession(service, on_changed, _notify)
 

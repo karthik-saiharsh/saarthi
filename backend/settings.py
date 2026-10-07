@@ -5,6 +5,7 @@ import re
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from backend.errors import BackendConfigError
 
@@ -101,6 +102,10 @@ class DescribeConfig:
     room_agree_fraction: float
     room_min_score: float
     surface_min_score: float
+    # IANA name of the time zone for the part of the day. Empty: the time zone of the server.
+    time_zone: str
+    # A sighting at least this old gets a part of the day ("yesterday evening") in the sentence.
+    day_part_min_hours: int
 
 
 @dataclass(frozen=True)
@@ -178,6 +183,22 @@ def _number(table: dict, name: str, key: str, low: float, high: float) -> float:
     if not low <= value <= high:
         raise BackendConfigError(f"{name}.{key} must be between {low} and {high}")
     return float(value)
+
+
+def _time_zone(table: dict) -> str:
+    """Read `describe.time_zone`. It is an IANA name such as `Asia/Kolkata`, or empty for the zone of the server."""
+    value: object = table.get("time_zone")
+    if not isinstance(value, str):
+        raise BackendConfigError("describe.time_zone must be a string")
+    name: str = value.strip()
+    if name:
+        try:
+            ZoneInfo(name)
+        except (ZoneInfoNotFoundError, ValueError) as error:
+            raise BackendConfigError(
+                f"describe.time_zone is not a known time zone: {name}"
+            ) from error
+    return name
 
 
 def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> BackendConfig:
@@ -305,6 +326,8 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> BackendConfig:
         ),
         room_min_score=_number(describe, "describe", "room_min_score", 0.0, 1.0),
         surface_min_score=_number(describe, "describe", "surface_min_score", 0.0, 1.0),
+        time_zone=_time_zone(describe),
+        day_part_min_hours=_integer(describe, "describe", "day_part_min_hours", 1, 24),
     )
     voice: dict = _table(raw, "voice")
     voice_config: VoiceConfig = VoiceConfig(

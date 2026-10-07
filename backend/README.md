@@ -166,6 +166,8 @@ A variable that is set but empty stops the start, so the route cannot open by mi
 | `describe.room_agree_fraction` | ...and at least this part of them have the room as the best room |
 | `describe.room_min_score` | ...and the average score of the room is at least this value |
 | `describe.surface_min_score` | The surface is named only if its score is at least this value |
+| `describe.time_zone` | The time zone for the part of the day (IANA name). Empty: the time zone of the computer |
+| `describe.day_part_min_hours` | A sighting this old or older gets a part of the day ("yesterday evening") |
 | `voice.min_seconds` | A recording shorter than this is refused |
 | `voice.silence_rms` | A recording with a sound level below this value is silent. It gets no text |
 

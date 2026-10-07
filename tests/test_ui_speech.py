@@ -1,8 +1,14 @@
 """The voice of the page. The browser plays the sound, so these tests check the script and the text."""
 
-from unittest.mock import patch
-
 from ui import speech
+
+
+class FakeBrowser:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def run_javascript(self, code: str) -> None:
+        self.calls.append(code)
 
 
 def test_the_script_uses_local_english_voices_only() -> None:
@@ -13,14 +19,21 @@ def test_the_script_uses_local_english_voices_only() -> None:
 
 
 def test_an_empty_text_is_not_spoken() -> None:
-    with patch.object(speech.ui, "run_javascript") as run:
-        speech.speak("   ")
-    run.assert_not_called()
+    browser = FakeBrowser()
+    speech.speak("   ", browser)
+    assert browser.calls == []
 
 
 def test_the_text_is_quoted_and_cut() -> None:
-    with patch.object(speech.ui, "run_javascript") as run:
-        speech.speak('He said "hi"\n' + "a" * 2000)
-    call: str = run.call_args.args[0]
+    browser = FakeBrowser()
+    speech.speak('He said "hi"\n' + "a" * 2000, browser)
+    call: str = browser.calls[0]
     assert call.startswith("window.saarthiSpeak(") and '\\"hi\\"' in call
     assert len(call) < speech.MAX_SPOKEN_CHARS + 60
+
+
+def test_the_text_goes_to_the_given_client_and_not_to_the_current_element() -> None:
+    # The old code called `ui.run_javascript`. It failed when the element of the click was deleted.
+    browser = FakeBrowser()
+    speech.speak("Your bottle was last seen 2 minutes ago.", browser)
+    assert len(browser.calls) == 1 and "2 minutes ago" in browser.calls[0]

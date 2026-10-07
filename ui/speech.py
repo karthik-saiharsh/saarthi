@@ -7,6 +7,7 @@ local English voice stays silent. The picture and the text stay on the page.
 
 import json
 import logging
+from typing import Protocol
 
 from nicegui import ui
 
@@ -41,10 +42,22 @@ def add_speech_script() -> None:
     ui.add_head_html(f"<script>{SPEECH_SCRIPT}</script>")
 
 
-def speak(text: str) -> None:
-    """Ask the browser to say the text. The text is never logged."""
+class Browser(Protocol):
+    """The part of a NiceGUI client that this module uses."""
+
+    def run_javascript(self, code: str) -> object: ...
+
+
+def speak(text: str, browser: Browser) -> None:
+    """Ask the browser to say the text. The text is never logged.
+
+    Pass the client of the page (`ui.context.client`, taken while the page is built).
+    `ui.run_javascript` uses the element of the current code, and that element can be gone:
+    the page replaces the result card after each search.
+    """
     assert isinstance(text, str), "text must be a string"
+    assert browser is not None, "browser is required"
     words: str = " ".join(text.split())[:MAX_SPOKEN_CHARS]
     if not words:
         return
-    ui.run_javascript(f"window.saarthiSpeak({json.dumps(words)})")
+    browser.run_javascript(f"window.saarthiSpeak({json.dumps(words)})")

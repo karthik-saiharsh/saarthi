@@ -65,6 +65,15 @@ class RawDetection:
 
 
 @dataclass(frozen=True)
+class OpenDetection:
+    """A box from the broad detector, with the name that the detector gave it."""
+
+    box: Box
+    label: str  # A name from the detector list, for example "laptop". It can be wrong
+    confidence: float  # 0 to 1. The detector is less sure for a low value
+
+
+@dataclass(frozen=True)
 class LocatedObject:
     """Where an enrolled object is in a reference photo (stage E2)."""
 
