@@ -43,7 +43,8 @@ The db connection is per thread. The worker closes its connection when the threa
 | 7. Embed | `engine.embed_regions` | One vector for each candidate |
 | 8. Store | `db.add_regions`, `db.store_region_vectors` | The regions and the vectors |
 | 9. Remember | `MemoryService.remember` | The regions are matched with the `ready` objects. A weak sighting is checked against the reference photos (see `docs/backend/Verification.md`). The sightings and the last-seen records are written (see `docs/backend/Memory.md`). The worker gives the decoded frame, so the check can cut the object from it |
-| 10. Finish | `db.mark_image_done` | The image is `done` |
+| 10. Broad detection | `engine.detect_open`, `engine.embed_open_crops`, `db.open_regions.add_open_regions` | The objects that nobody registered: boxes with a name, and a SigLIP vector for each box (see `docs/backend/Open Search.md`). A box that overlaps a candidate of step 6 by `open_link_iou` or more is linked to its region. An error is logged and the image goes on |
+| 11. Finish | `db.mark_image_done` | The image is `done` |
 
 An image with no candidates is also `done`, with no regions.
 
@@ -111,6 +112,7 @@ The `Backend` class does these steps for you (see `docs/backend/Lifecycle.md`).
 | `duplicate_window_minutes` | 60 | Compare with the images that were captured in this time |
 | `duplicate_max_compared` | 200 | Compare with at most this number of images |
 | `error_pause_seconds` | 5 | The pause after an error in the loop |
+| `open_link_iou` | 0.5 | A box of the broad detector is linked to a registered candidate when the overlap (IoU) is at least this value |
 
 The thresholds of the stages are in `ai/config.toml`. A value of `quality.blur_min = 0` turns the blur gate off.
 This is useful until the threshold is set with real frames.

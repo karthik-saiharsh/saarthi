@@ -25,6 +25,7 @@ class WorkerConfig:
     duplicate_window_minutes: int
     duplicate_max_compared: int
     error_pause_seconds: int
+    open_link_iou: float
 
 
 @dataclass(frozen=True)
@@ -109,6 +110,17 @@ class DescribeConfig:
 
 
 @dataclass(frozen=True)
+class OpenSearchConfig:
+    label_min_score: float
+    label_tier: float
+    visual_min_probability: float
+    visual_margin: float
+    neutral_phrases: tuple[str, ...]
+    max_scan_hours: int
+    max_boxes: int
+
+
+@dataclass(frozen=True)
 class VoiceConfig:
     min_seconds: float
     silence_rms: float
@@ -133,6 +145,7 @@ class BackendConfig:
     query: QueryConfig
     describe: DescribeConfig
     voice: VoiceConfig
+    open_search: OpenSearchConfig
 
 
 def _table(raw: dict, name: str) -> dict:
@@ -245,6 +258,7 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> BackendConfig:
         ),
         duplicate_max_compared=_integer(worker, "worker", "duplicate_max_compared", 1),
         error_pause_seconds=_integer(worker, "worker", "error_pause_seconds", 0),
+        open_link_iou=_number(worker, "worker", "open_link_iou", 0.01, 1.0),
     )
     server: dict = _table(raw, "server")
     host: object = server.get("host")
@@ -334,6 +348,29 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> BackendConfig:
         min_seconds=_number(voice, "voice", "min_seconds", 0.1, 10.0),
         silence_rms=_number(voice, "voice", "silence_rms", 0.0, 1.0),
     )
+    open_search: dict = _table(raw, "open_search")
+    neutral: object = open_search.get("neutral_phrases")
+    if (
+        not isinstance(neutral, list)
+        or not neutral
+        or not all(isinstance(p, str) and p.strip() for p in neutral)
+    ):
+        raise BackendConfigError(
+            "open_search.neutral_phrases must be a list of words that is not empty"
+        )
+    open_search_config: OpenSearchConfig = OpenSearchConfig(
+        label_min_score=_number(
+            open_search, "open_search", "label_min_score", 0.0, 1.0
+        ),
+        label_tier=_number(open_search, "open_search", "label_tier", 0.0, 1.0),
+        visual_min_probability=_number(
+            open_search, "open_search", "visual_min_probability", 0.0, 1.0
+        ),
+        visual_margin=_number(open_search, "open_search", "visual_margin", 0.0, 1.0),
+        neutral_phrases=tuple(p.strip() for p in neutral),
+        max_scan_hours=_integer(open_search, "open_search", "max_scan_hours", 1),
+        max_boxes=_integer(open_search, "open_search", "max_boxes", 1, 20000),
+    )
     logger.info("Loaded backend config from %s", config_path)
     return BackendConfig(
         max_pending,
@@ -347,4 +384,5 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> BackendConfig:
         query_config,
         describe_config,
         voice_config,
+        open_search_config,
     )

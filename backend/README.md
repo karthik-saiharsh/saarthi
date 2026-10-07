@@ -33,6 +33,7 @@ For the full design, see `docs/backend/Upload Endpoint.md`, `docs/backend/Enroll
 | `verification.py` | `ReferenceVerifier`: the check of a sighting against the reference photos of an object (stage I5). The memory and the search use it |
 | `search.py` | `SearchService`: answers "where is my object?" from the last-seen record, then from the archive of frames |
 | `query.py` | `QueryResolver`: turns the words of a user into an enrolled object, or a short list to choose from |
+| `open_search.py` | `OpenSearchService`: finds objects that nobody registered. It compares the words with the names and the SigLIP vectors of the stored boxes of the broad detector |
 | `describe.py` | `DescribeService`: makes the sentence for the voice (stage Q2). It chooses the room from neighbouring frames, the surface from the box, and builds the text |
 | `voice.py` | `VoiceService`: checks a WAV recording and turns it into text with the speech recognizer (stage Q0) |
 | `worker.py` | `Worker`: runs the ai stages on `pending` photos and images, in a background thread |
@@ -116,6 +117,7 @@ A variable that is set but empty stops the start, so the route cannot open by mi
 | `worker.duplicate_window_minutes` | Compare the hash of an image with the images from this time |
 | `worker.duplicate_max_compared` | Compare with at most this number of images |
 | `worker.error_pause_seconds` | The pause after an error in the loop of the worker |
+| `worker.open_link_iou` | A box of the broad detector is linked to a registered candidate when the overlap (IoU) is at least this value |
 
 | Key (table `[enrollment]`) | Meaning |
 |----------------------------|---------|
@@ -170,6 +172,12 @@ A variable that is set but empty stops the start, so the route cannot open by mi
 | `describe.day_part_min_hours` | A sighting this old or older gets a part of the day ("yesterday evening") |
 | `voice.min_seconds` | A recording shorter than this is refused |
 | `voice.silence_rms` | A recording with a sound level below this value is silent. It gets no text |
+| `open_search.label_min_score` | A name of a stored box fits the words if its score is at least this value |
+| `open_search.label_tier` | The boxes of the names within this distance of the best score can be the answer. The newest frame wins |
+| `open_search.visual_min_probability` | The SigLIP step answers only if the best box reaches this probability |
+| `open_search.visual_margin` | ...and beats the best neutral phrase by this value |
+| `open_search.neutral_phrases` | Phrases for the comparison of the SigLIP step ("a wall", "an object") |
+| `open_search.max_scan_hours`, `open_search.max_boxes` | How far back the search looks, and how many boxes it reads |
 
 The largest upload is `limits.max_bytes` in `storage/config.toml`.
 

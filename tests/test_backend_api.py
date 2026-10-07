@@ -24,7 +24,7 @@ from backend.ingest import IngestResult, IngestService, IngestStatus
 from backend.settings import load_config
 from backend.ui_adapter import UiUploadService
 from db.schema import Image
-from tests.ai_support import FakeEmbedder, make_engine
+from tests.ai_support import FakeEmbedder, FakeSceneClassifier, make_engine
 from ui.models import ItemStatus
 from ui.ports import OutcomeStatus, UploadOutcome, UploadService
 from ui.upload_session import UploadSession
@@ -188,6 +188,22 @@ def test_the_backend_refuses_a_model_with_the_wrong_vector_size() -> None:
     engine = make_engine(embedder=FakeEmbedder(dimension=128))
     with pytest.raises(BackendConfigError, match="128"):
         Backend(engine)
+
+
+def test_the_backend_refuses_a_scene_model_with_the_wrong_open_vector_size() -> None:
+    scene = FakeSceneClassifier()
+    scene.dimension = 100
+    engine = make_engine(scene_classifier=scene)
+    with pytest.raises(BackendConfigError, match="open_dimension"):
+        Backend(engine)
+
+
+def test_the_open_vector_size_is_not_checked_when_the_broad_detector_is_off() -> None:
+    scene = FakeSceneClassifier()
+    scene.dimension = 100
+    engine = make_engine(scene_classifier=scene)
+    engine._open_detector = None
+    Backend(engine)  # No error: no open vectors are made
 
 
 def test_the_backend_starts_and_stops_the_worker_and_an_upload_wakes_it() -> None:

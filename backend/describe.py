@@ -141,19 +141,29 @@ def choose_room(frames: list[dict[str, float]], config: DescribeConfig) -> RoomC
     return RoomChoice(best if named else None, average[best], agreeing, len(frames))
 
 
+def _with_article(name: str) -> str:
+    """Return `a laptop` or `an umbrella`. A name that has an article already stays as it is."""
+    words: str = name.strip()
+    if words.lower().split()[0] in ("a", "an", "the", "some"):
+        return words
+    return f"{'an' if words[0].lower() in 'aeiou' else 'a'} {words}"
+
+
 def build_sentence(
     name: str,
     answer: Answer,
     surface: str | None,
     room: str | None,
     config: DescribeConfig | None = None,
+    owned: bool = True,
 ) -> str:
     """Make the sentence for the voice. A weak answer says that the system is not sure.
 
     `surface` and `room` have an article, for example "a table" and "a bedroom". None leaves the part out.
+    `owned` is False for an object that nobody registered: the sentence says "a laptop", not "your laptop".
     """
     assert isinstance(name, str) and name.strip(), "name must not be empty"
-    who: str = f"your {name.strip()}"
+    who: str = f"your {name.strip()}" if owned else _with_article(name)
     if not answer.found or answer.age_seconds is None:
         text: str = f"I have not seen {who} lately."
         return text + (
@@ -196,7 +206,9 @@ class DescribeService:
         self._config: DescribeConfig = config.describe
         self._engine: AiEngine = engine
 
-    def describe(self, object_name: str, answer: Answer) -> Description:
+    def describe(
+        self, object_name: str, answer: Answer, owned: bool = True
+    ) -> Description:
         """Make the sentence for an answer. An error of the scene model, of a file or of the database gives a sentence without the place."""
         assert isinstance(answer, Answer), "answer must be an Answer"
         surface: str | None = None
@@ -216,7 +228,7 @@ class DescribeService:
                     "The place of image %d could not be described", answer.image_id
                 )
         return Description(
-            build_sentence(object_name, answer, surface, room, self._config),
+            build_sentence(object_name, answer, surface, room, self._config, owned),
             surface,
             room,
         )

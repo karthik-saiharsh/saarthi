@@ -41,6 +41,7 @@ from backend.errors import (
     VoiceUnavailableError,
 )
 from backend.ingest import IngestResult, IngestService, IngestStatus
+from backend.open_search import OpenAnswer, OpenSearchService
 from backend.query import QueryCandidate, QueryResolver, QueryResult, QueryStatus
 from backend.search import Answer, SearchService
 from backend.voice import VoiceService
@@ -281,6 +282,7 @@ class UiFindService:
         search: SearchService,
         enrollment: EnrollmentService,
         describer: DescribeService,
+        open_search: OpenSearchService | None = None,
     ) -> None:
         assert isinstance(resolver, QueryResolver), "resolver must be a QueryResolver"
         assert isinstance(search, SearchService), "search must be a SearchService"
@@ -294,6 +296,7 @@ class UiFindService:
         self._search: SearchService = search
         self._enrollment: EnrollmentService = enrollment
         self._describer: DescribeService = describer
+        self._open_search: OpenSearchService | None = open_search
 
     async def _call(
         self, function: Callable[..., _Result], *arguments: object
@@ -331,7 +334,33 @@ class UiFindService:
                     FindChoice(c.object_id, c.name) for c in result.candidates
                 ),
             )
-        return FindResult(FindStatus.NO_MATCH)
+        return self._open_result(text) or FindResult(FindStatus.NO_MATCH)
+
+    def _open_result(self, text: str) -> FindResult | None:
+        """No enrolled object fits: look for what the broad detection saw. The result is always weak."""
+        if self._open_search is None:
+            return None
+        found: OpenAnswer | None
+        picture: bytes | None
+        found, picture = self._open_search.find_with_picture(text, FIND_PICTURE_SIDE)
+        if found is None or found.answer.age_seconds is None:
+            return None
+        name: str = found.label[:1].upper() + found.label[1:]
+        description: str = self._describer.describe(
+            found.label, found.answer, owned=False
+        ).text
+        return FindResult(
+            FindStatus.FOUND,
+            object_name=name,
+            sighting=Sighting(
+                age_seconds=found.answer.age_seconds,
+                in_hand=False,
+                strong=False,
+                stale=False,
+                picture=picture,
+            ),
+            description=description,
+        )
 
     def _find(self, object_id: int, name: str | None) -> FindResult:
         if name is None:

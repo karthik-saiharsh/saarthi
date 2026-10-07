@@ -21,6 +21,7 @@ from backend.http_objects import create_objects_router
 from backend.http_search import create_search_router
 from backend.ingest import IngestService
 from backend.maintenance import Maintenance
+from backend.open_search import OpenSearchService
 from backend.query import QueryResolver
 from backend.search import SearchService
 from backend.settings import (
@@ -60,6 +61,15 @@ class Backend:
                 f"but vectors.dimension in db/config.toml is {vector_size}"
             )
 
+        # The open search stores one SigLIP vector for each box. The index must have the size of the vectors.
+        if engine.open_detection_enabled and engine.scene_enabled:
+            open_size: int = db.current_config().open_vector_dimension
+            if engine.open_vector_dimension != open_size:
+                raise BackendConfigError(
+                    f"The scene model makes vectors of size {engine.open_vector_dimension}, "
+                    f"but vectors.open_dimension in db/config.toml is {open_size}"
+                )
+
         self._worker: Worker = Worker(self._config, engine)
         # An upload wakes the worker, so a new image starts at once.
         self._ingest: IngestService = IngestService(
@@ -72,6 +82,7 @@ class Backend:
         self._search: SearchService = SearchService(self._config, engine)
         self._query: QueryResolver = QueryResolver(self._config, engine)
         self._voice: VoiceService = VoiceService(self._config, engine)
+        self._open_search: OpenSearchService = OpenSearchService(self._config, engine)
         self._describe: DescribeService = DescribeService(self._config, engine)
         self._maintenance: Maintenance = Maintenance(self._config)
         self._token: str | None = read_token(self._config)
@@ -139,7 +150,9 @@ class Backend:
             create_objects_router(self._enrollment, self._max_upload_bytes, self._token)
         )
         router.include_router(
-            create_search_router(self._query, self._search, self._token)
+            create_search_router(
+                self._query, self._search, self._token, self._open_search
+            )
         )
         return router
 
@@ -157,7 +170,11 @@ class Backend:
     def find_service(self) -> UiFindService:
         """The search that the UI calls. It implements `ui.ports.FindService`."""
         return UiFindService(
-            self._query, self._search, self._enrollment, self._describe
+            self._query,
+            self._search,
+            self._enrollment,
+            self._describe,
+            self._open_search,
         )
 
     @property

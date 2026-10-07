@@ -35,11 +35,12 @@ def phrase_with_article(label: str) -> str:
     """Return the label with an article, for example `laptop` gives `a laptop`.
 
     The scene prompt reads like a photo caption. A label without an article reads worse for the model.
-    A label that has an article already stays as it is.
+    A label that has an article already stays as it is. A long text (more than 3 words) is a description,
+    for example "the thing I check my mails on", so it stays as it is too.
     """
     assert isinstance(label, str) and label.strip(), "label must not be empty"
     words: str = " ".join(label.split())
-    if _ARTICLE.match(words):
+    if _ARTICLE.match(words) or len(words.split()) > 3:
         return words
     return f"{'an' if words[0].lower() in 'aeiou' else 'a'} {words}"
 

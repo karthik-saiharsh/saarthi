@@ -19,7 +19,7 @@ import db.api as db
 import storage.api as storage
 from ai.api import AiEngine
 from ai.errors import InferenceError
-from ai.types import Box, RawDetection
+from ai.types import Box, OpenDetection, RawDetection
 from backend.enrollment import EnrollmentService
 from backend.ingest import IngestService
 from backend.settings import BackendConfig, load_config
@@ -37,7 +37,13 @@ from db.schema import (
     ReferencePhoto,
     Region,
 )
-from tests.ai_support import FakeDetector, FakeEmbedder, make_engine
+from tests.ai_support import (
+    FakeDetector,
+    FakeEmbedder,
+    FakeOpenDetector,
+    FakeSceneClassifier,
+    make_engine,
+)
 from tests.db_support import skip_if_actual_data_has_problems
 
 PREFIX: str = "__test__ "
@@ -72,6 +78,8 @@ class Setup:
     ingest: IngestService
     config: BackendConfig
     enrollment: EnrollmentService
+    open_detector: FakeOpenDetector
+    scene: FakeSceneClassifier
 
     def upload(self, data: bytes) -> int:
         return self.ingest.submit(data).image_id
@@ -83,7 +91,14 @@ def make_setup(blur_min: float | None = None, **worker_changes: int) -> Setup:
         base, worker=dataclasses.replace(base.worker, **worker_changes)
     )
     detector, embedder = FakeDetector(), FakeEmbedder()
-    engine: AiEngine = make_engine(detector, embedder, blur_min)
+    open_detector, scene = FakeOpenDetector(), FakeSceneClassifier()
+    engine: AiEngine = make_engine(
+        detector,
+        embedder,
+        blur_min,
+        scene_classifier=scene,
+        open_detector=open_detector,
+    )
     worker: Worker = Worker(config, engine)
     return Setup(
         worker,
@@ -92,6 +107,8 @@ def make_setup(blur_min: float | None = None, **worker_changes: int) -> Setup:
         IngestService(config, on_stored=worker.wake),
         config,
         EnrollmentService(config, engine, on_photo_added=worker.wake),
+        open_detector,
+        scene,
     )
 
 
@@ -653,3 +670,104 @@ def test_the_worker_gives_the_decoded_frame_to_the_memory(
     assert len(calls) == 1
     picture = calls[0][0][4]
     assert isinstance(picture, PilImage.Image) and picture.size == (80, 60)
+
+
+# ---- The broad detection (open boxes) ----
+
+
+def open_box(label: str, box: Box, confidence: float = 0.9) -> OpenDetection:
+    return OpenDetection(box, label, confidence)
+
+
+def test_open_boxes_are_stored_with_a_vector_and_a_model_name(setup: Setup) -> None:
+    setup.open_detector.detections = [
+        open_box("laptop", Box(5, 5, 50, 40), 0.95),
+        open_box("cup", Box(50, 30, 78, 58), 0.4),
+    ]
+    image_id: int = setup.upload(noise(30))
+    assert setup.worker.process_next() is True
+
+    assert state(image_id).status == ImageStatus.DONE.value
+    rows = db.open_regions.get_open_regions(image_id)
+    assert [(r.label, r.confidence) for r in rows] == [("laptop", 0.95), ("cup", 0.4)]
+    assert {r.vector_model for r in rows} == {setup.scene.name}
+    vectors = db.open_regions.get_vectors([r.id for r in rows])
+    assert vectors.shape == (2, setup.scene.dimension)
+    # Each crop has 5 % of space on each side, cut at the edge of the 80 x 60 frame.
+    assert setup.scene.crop_calls == [[(49, 39), (30, 30)]]
+
+
+def test_an_open_box_that_overlaps_a_registered_candidate_is_linked(
+    setup: Setup,
+) -> None:
+    setup.detector.detections = [
+        RawDetection(Box(10, 10, 40, 40), 0.6, "bottle", "full")
+    ]
+    setup.open_detector.detections = [
+        open_box("bottle", Box(11, 11, 41, 41)),  # IoU about 0.88 with the candidate
+        open_box("laptop", Box(45, 20, 78, 55)),  # No overlap
+    ]
+    image_id: int = setup.upload(noise(31))
+    setup.worker.process_next()
+    region = db.get_regions(image_id)[0]
+    rows = {r.label: r for r in db.open_regions.get_open_regions(image_id)}
+    assert rows["bottle"].region_id == region.id
+    assert rows["laptop"].region_id is None
+
+
+def test_a_small_overlap_gives_no_link(setup: Setup) -> None:
+    setup.detector.detections = [
+        RawDetection(Box(10, 10, 40, 40), 0.6, "bottle", "full")
+    ]
+    # IoU = 100 / (900 + 900 - 100) = 0.06, below open_link_iou (0.5)
+    setup.open_detector.detections = [open_box("shelf", Box(30, 30, 60, 60))]
+    image_id: int = setup.upload(noise(32))
+    setup.worker.process_next()
+    assert db.open_regions.get_open_regions(image_id)[0].region_id is None
+
+
+def test_no_open_box_stores_nothing(setup: Setup) -> None:
+    image_id: int = setup.upload(noise(33))
+    setup.worker.process_next()
+    assert state(image_id).status == ImageStatus.DONE.value
+    assert db.open_regions.get_open_regions(image_id) == []
+    assert setup.scene.crop_calls == []  # No box, so no SigLIP run
+
+
+def test_an_error_of_the_broad_detector_does_not_fail_the_image(setup: Setup) -> None:
+    setup.open_detector.error = InferenceError("test")
+    setup.detector.detections = [
+        RawDetection(Box(10, 10, 40, 40), 0.6, "bottle", "full")
+    ]
+    image_id: int = setup.upload(noise(34))
+    setup.worker.process_next()
+    assert state(image_id).status == ImageStatus.DONE.value
+    assert len(db.get_regions(image_id)) == 1  # The registered path is complete
+    assert db.open_regions.get_open_regions(image_id) == []
+
+
+def test_an_error_of_the_scene_model_does_not_fail_the_image(setup: Setup) -> None:
+    setup.open_detector.detections = [open_box("laptop", Box(5, 5, 50, 40))]
+    setup.scene.error = InferenceError("test")
+    image_id: int = setup.upload(noise(35))
+    setup.worker.process_next()
+    assert state(image_id).status == ImageStatus.DONE.value
+    assert db.open_regions.get_open_regions(image_id) == []
+
+
+def test_a_switched_off_broad_detector_is_not_called(setup: Setup) -> None:
+    setup.worker._engine._open_detector = None
+    image_id: int = setup.upload(noise(36))
+    setup.worker.process_next()
+    assert state(image_id).status == ImageStatus.DONE.value
+    assert setup.open_detector.calls == []
+
+
+def test_a_rejected_image_gets_no_broad_detection(setup: Setup) -> None:
+    first: int = setup.upload(noise(37))
+    setup.worker.process_next()
+    near_duplicate: int = setup.upload(noise(37, jitter=2))
+    setup.worker.process_next()
+    assert state(near_duplicate).status == ImageStatus.REJECTED.value
+    assert len(setup.open_detector.calls) == 1  # Only the first image
+    assert state(first).status == ImageStatus.DONE.value

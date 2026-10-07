@@ -26,6 +26,7 @@ IMAGE = Image.new("RGB", (400, 300))
         ("An apple", "An apple"),
         ("my keys", "my keys"),
         ("alarm clock", "an alarm clock"),
+        ("that thing I check my mails on", "that thing I check my mails on"),
     ],
 )
 def test_phrase_with_article(label: str, expected: str) -> None:

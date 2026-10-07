@@ -54,6 +54,7 @@ class AnswerSource(StrEnum):
 
     LAST_SEEN = "last_seen"  # The record of the memory
     ARCHIVE = "archive"  # A search in the stored regions of the frames
+    OPEN = "open"  # A box of the broad detector. The object is not registered
 
 
 @dataclass(frozen=True)

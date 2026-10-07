@@ -3,7 +3,7 @@
 ## Status
 
 This feature is **partly built**. Built (phase 1): the broad detector in the `ai` component (`ai/open_detector.py`, `AiEngine.detect_open`).
-Built (phases 2 and 3): the SigLIP vectors, and the table and the vector index for the boxes (`db/open_regions.py`). Not built: the worker step, the search and the sentence.
+Built (phases 2 and 3): the SigLIP vectors, and the table and the vector index for the boxes (`db/open_regions.py`). The worker step (phase 4) and the search (phase 5) are built. The sentence for an open result is the sentence of the registered path with "a laptop" in place of "your laptop". Not built: the query rewriter, the scene description by a vision-language model, the page text for an open result, and the calibration.
 The owner decided this on 2026-11-10: the main pipeline stays on the registered objects. The broad detection is for objects that nobody registered.
 
 ## Purpose
@@ -26,8 +26,8 @@ The result is always weak: the sentence says "I am not sure". The picture stays 
 | 1 | The detector in `ai/`, the weights check, the settings, the tests | Built |
 | 2 | SigLIP vectors for the crops, and a text vector for a phrase (`ai/`) | Built |
 | 3 | The tables for the boxes and a second vector index (`db/`) | Built |
-| 4 | The worker step: detect, link to registered boxes, embed, store | Planned |
-| 5 | The search: the phrase of the user, the match with the stored names, then the SigLIP retrieval | Planned |
+| 4 | The worker step: detect, link to registered boxes, embed, store | Built |
+| 5 | The search: the phrase of the user, the match with the stored names, then the SigLIP retrieval | Built |
 | 6 | The sentence and the page | Planned |
 | 7 | The calibration on real frames | Planned |
 
@@ -36,6 +36,99 @@ The search of phase 5, in this order:
 2. Compare the phrase with the stored names with the sentence encoder (MiniLM). A score above a cutoff gives a hit.
 3. If there is no hit, compare the SigLIP text vector of the phrase with the stored crop vectors.
 4. Show the best hit as a weak result.
+
+## The search (phase 5)
+
+`backend/open_search.py`, `OpenSearchService.find(words)`. It runs only when no enrolled object fits the words
+(`UiFindService` and the route `POST /api/search` call it when the resolver says `none`). The steps:
+
+1. **The phrase.** `phrase_from_words` removes the question words and the pointing words: "where did I leave my laptop?" gives "laptop".
+   A description keeps its words ("that thing I check my mails on" gives "thing i check my mails on").
+2. **The names.** The sentence encoder (MiniLM) compares the phrase with each name that the detector gave to a stored box.
+   A name with a score of at least `label_min_score` (0.6) fits. The boxes of the names within `label_tier` (0.15) of the best score can be the answer.
+   The newest frame wins.
+3. **The pictures.** If no name fits, the SigLIP vector of the phrase is compared with the vector of each stored box.
+   The best box must reach `visual_min_probability` (0.8) and beat the best neutral phrase ("a wall", "an object") by `visual_margin`.
+4. The answer is weak (`strong` is false, `source` is `open`). The sentence says "I am not sure, but I may have seen a laptop 12 minutes ago. Please look at the picture."
+   The surface and the room come from the description (`docs/backend/Voice.md`). The words of the user are never logged.
+
+The search reads the boxes of `done` frames of the last `max_scan_hours` (72), at most `max_boxes` (5000), and compares them in memory.
+The route gives `status: "open"` with the answer, its `label` and `via` (`label` or `visual`).
+
+### Test on 18 frames (7 of the owner, 11 of the dataset; 158 boxes)
+
+| Question | Result |
+|----------|--------|
+| "where is my laptop" | `laptop` through the names (score 1.0). Correct |
+| "where is my phone" | `smartphone` through the names (0.75). A phone is in the frames |
+| "what I wear on my feet" | `footwear` through the names (0.76) |
+| "where is my water bottle" | `bottle cap` through the names (0.74). The small bottle on the desk was named "bottle cap" by the detector |
+| "where is my piano", "my umbrella" | No result (correct, there is none) |
+| "that thing I check my mails on" | `passbook` through the pictures (0.12). **Wrong** (it is a laptop) |
+| "something to sit on", "where are my headphones", "my charger", "the thing I drink water from" | A wrong box through the pictures (0.18 to 0.63). **Wrong** |
+
+What this shows:
+- The step with the names works when the words name the object or a near word.
+- The step with the pictures was wrong in every case of this test, also with a probability of 0.63. So the start value of `visual_min_probability` is 0.8:
+  the step answers only when it is very sure. A wrong answer is worse than no answer for the patient. Phase 7 sets this value on the new images.
+- A description that needs world knowledge ("check my mails" means a laptop) fails in both steps. A small language model must rewrite such a question into object names (see below).
+
+### The query rewriter (not built)
+
+A small model rewrites a question that both steps could not answer into two or three object names ("laptop, computer, tablet").
+The steps run again with those names. The names only feed the search. They never reach the voice, and a name still needs a stored box that fits it.
+The owner asked to test one vision-language model that does this job and the scene description (see "The scene description").
+
+## The scene description by one model (plan, not built)
+
+The owner wants the sentence at the end of the pipeline to be a full description of the scene, not only the time. A model reads the full frame
+and the facts that the system knows: the object, the time and the room (see `docs/backend/Voice.md`). The owner also wants to know if
+**one model** can do this job and the query rewriting.
+
+A multimodal model has one language model inside. So the same weights can take a text-only prompt (the rewriting) and an image with facts (the description).
+The candidates below were read from their model cards on 2026-11-10. All have the licence Apache-2.0, need no code from the repository, and have safetensors files.
+The installed `transformers` (5.14.1) has the code for `qwen3_5`, `qwen3_vl` and `smolvlm`.
+
+| Model | Size of the weights | Notes |
+|-------|---------------------|-------|
+| `Qwen/Qwen3.5-0.8B` | 1.75 GB | Multimodal from the start. Newest (2026-03). The first to test |
+| `Qwen/Qwen3.5-2B` | 4.55 GB | The next size, if 0.8B is not good enough |
+| `Qwen/Qwen3-VL-2B-Instruct` | 4.26 GB | A vision model of 2025 |
+| `HuggingFaceTB/SmolVLM2-500M-Video-Instruct` | 2.03 GB | The model family of the first test (see `benchmarks/scene/README.md`) |
+| `OpenGVLab/InternVL3_5-1B-HF` | 2.12 GB | |
+
+What the first test of a small vision model showed (SmolVLM, 14 photos): the text was fluent, but a part was invented ("a fireplace", "a painting"),
+with the same confident tone. The patient may believe the voice. So the plan is a **grounded description**:
+- The prompt contains only facts that the system checked: the object, the time, the room (from the room rule), the surface, and the names of the boxes of the broad detector in the frame.
+- The prompt tells the model to use only these facts and to describe nothing else.
+- A check compares the nouns of the answer with the facts. If a noun is not in the facts, the system says the template sentence of today.
+- The picture stays on the page, and a weak result keeps "I am not sure".
+
+The test of one model (not done yet):
+1. Rewriting: 20 questions, for example "that thing I check my mails on". Count the answers that name the right object.
+2. Description: the 14 photos and the frames of the owner. Count the invented nouns, and read the sentences.
+3. Time: seconds for one rewrite and for one description on this CPU. A Raspberry Pi 5 is slower. A report on text-only models of 1 to 3 billion parameters
+   gives about 2 to 11 tokens a second there, and the image adds time before the first word. The description can run when the answer is found, or in the background.
+4. Choose the smallest model that passes. If no small model passes the safety test, the template sentence stays and the model is used for the rewriting only.
+
+## The worker step (phase 4)
+
+After the registered path of a frame (detect, embed, match, memory), the worker runs the broad detector, makes a SigLIP vector for each box,
+and stores the boxes (`Worker._store_open_boxes`, `docs/backend/Worker.md`, step 10).
+- The step needs the broad detector and the scene model. If one is off, the step does nothing.
+- An error of the detector, of the scene model or of the database is logged. The frame is still `done`: the open search is an extra.
+- A box is linked to the region of a registered candidate when the IoU is at least `worker.open_link_iou` (0.5). A box with a link is kept.
+  The owner agreed to this rule on 2026-11-10. The link tells the search that the registered path has seen the same thing.
+- The backend refuses to start if the scene model makes vectors of another size than `vectors.open_dimension` in `db/config.toml`.
+
+Run on the 14 photos of the dataset, with the real models and an empty database (all 11 frames `done`, no error):
+
+| Result | Value |
+|--------|-------|
+| Boxes stored | 108 in 11 frames (4 to 20 a frame), 9 of them linked to a registered candidate |
+| Laptop | Found in photo 14 (0.98) |
+| Bottle | The bottle in the hand (0.82) and the bottle on the shelf (0.68) are linked to registered candidates |
+| Time | A frame took 10 to 13 s in total (Grounding DINO is most of it). The detector took about 0.5 s, and SigLIP about 0.25 s a box |
 
 ## The vectors (phase 2)
 

@@ -161,7 +161,7 @@ class FakeSceneClassifier:
 
     # ---- Vectors for the open search ----
 
-    dimension = 8
+    dimension = 768  # The size of `vectors.open_dimension` in db/config.toml
 
     def _vector(self, text: str) -> np.ndarray:
         rng = np.random.default_rng(zlib.crc32(text.encode()))

@@ -24,6 +24,9 @@ duplicate_window_minutes = 60
 duplicate_max_compared = 200
 # The worker waits this long after an error in its own loop, in seconds.
 error_pause_seconds = 5
+# A box of the broad detector is linked to a candidate box of a registered object when the overlap (IoU) is at least this value.
+# A linked box is kept. The link tells the search that the registered path has seen the same thing.
+open_link_iou = 0.5
 
 [server]
 # The address and the port of the web server. It serves the upload page and the upload route.
@@ -130,3 +133,22 @@ min_seconds = 0.5
 # A recording whose sound level (RMS, 0 to 1) is below this value is silent. It gets no text, because a
 # speech model can write words for silence.
 silence_rms = 0.005
+
+[open_search]
+# The search for objects that nobody registered (see docs/backend/Open Search.md). It runs only when no enrolled
+# object fits the words. The values are start values.
+# Step 1: the phrase is compared with the names that the broad detector gave to the stored boxes.
+# A name counts if the score (the cosine, 0 to 1) is at least this value.
+label_min_score = 0.6
+# ...and the box of a name that scores within this distance of the best name can be the answer. The newest frame wins.
+label_tier = 0.15
+# Step 2, if no name fits: the SigLIP vector of the phrase is compared with the vector of each stored box.
+# The best box must reach this probability. The value is high on purpose: on 18 frames, every answer of this step
+# below 0.63 was wrong (a "passbook" for a laptop, a "laundry room" for a bottle). A wrong answer is worse than none.
+visual_min_probability = 0.8
+# ...and must beat the best of the neutral phrases below by this value.
+visual_margin = 0.02
+neutral_phrases = ["an object", "a wall", "a floor", "a table", "a person"]
+# The search never looks back further than this many hours, and reads at most this many boxes.
+max_scan_hours = 72
+max_boxes = 5000

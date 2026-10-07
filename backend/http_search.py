@@ -2,7 +2,7 @@
 
 | Route | Does |
 |-------|------|
-| `POST /api/search` | The body is JSON: `{"query": "the blue thing I drink from"}`. The answer has `status` (`matched`, `ambiguous` or `none`), the `candidates` and, for `matched`, the `answer` |
+| `POST /api/search` | The body is JSON: `{"query": "the blue thing I drink from"}`. The answer has `status` (`matched`, `ambiguous`, `open` or `none`), the `candidates` and, for `matched` and `open`, the `answer`. `open` means that no enrolled object fits, but the broad detection saw something that fits (a weak answer, with `label` and `via`) |
 | `GET /api/objects/{id}/last-seen` | Where and when the object was seen last: the `answer` |
 | `GET /api/objects/{id}/last-seen/picture` | A JPEG of the answer. `?view=crop` (the default) or `frame`, and `?max_side=` from 32 to 1024 |
 
@@ -35,6 +35,7 @@ from backend.http_objects import (
     map_error,
     parse_id,
 )
+from backend.open_search import OpenAnswer, OpenSearchService
 from backend.query import QueryResolver, QueryResult
 from backend.search import PICTURE_VIEWS, Answer, SearchService
 
@@ -72,6 +73,7 @@ def create_search_router(
     resolver: QueryResolver,
     search: SearchService,
     token: str | None = None,
+    open_search: OpenSearchService | None = None,
 ) -> APIRouter:
     """Make the router of the search. The JSON body has its own size limit."""
     assert isinstance(resolver, QueryResolver), "resolver must be a QueryResolver"
@@ -103,10 +105,21 @@ def create_search_router(
     def search_json(words: str) -> dict[str, Any]:
         result: QueryResult = resolver.resolve(words)
         answer: dict[str, Any] | None = None
-        if result.status.value == "matched":
+        status: str = result.status.value
+        if status == "matched":
             answer = find_json(result.candidates[0].object_id)
+        elif status == "none" and open_search is not None:
+            # No enrolled object fits. The broad detection may have seen what the user means.
+            found: OpenAnswer | None = open_search.find(words)
+            if found is not None:
+                status = "open"
+                answer = {
+                    **answer_json(found.answer),
+                    "label": found.label,
+                    "via": found.via,
+                }
         return {
-            "status": result.status.value,
+            "status": status,
             "candidates": [asdict(c) for c in result.candidates],
             "answer": answer,
         }

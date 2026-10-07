@@ -12,7 +12,9 @@ For each frame the worker does these steps:
    so a model error leaves no half-written regions.
 6. Add the regions and store the vectors.
 7. Match the regions with the objects and update the memory (stages I4 and I6).
-8. Mark the image `done`.
+8. Broad detection: find the objects that nobody registered and store them (see `docs/backend/Open Search.md`).
+   This step is an extra. Its errors are logged and never fail the image.
+9. Mark the image `done`.
 
 Any error marks the image `failed`. The image is not tried again. The worker
 goes on with the next image.
@@ -29,7 +31,7 @@ import db.api as db
 import storage.api as storage
 from ai.api import AiEngine
 from ai.errors import AiError
-from ai.types import Candidate
+from ai.types import Box, Candidate
 from backend.memory import MemoryService
 from backend.settings import BackendConfig, WorkerConfig
 from db.schema import EnrolledObject, Image, ReferencePhoto, RegionSource, utc_now
@@ -40,6 +42,16 @@ REASON_BLURRY: str = "too blurry"
 REASON_DUPLICATE: str = "near duplicate of a recent image"
 # The reason of a reference photo where the detector finds nothing. The UI shows a text for it.
 REASON_OBJECT_NOT_FOUND: str = "object not found"
+
+
+def _iou(a: Box, b: Box) -> float:
+    """Overlap of two boxes: the area of the overlap divided by the area of both together."""
+    width: int = min(a.x1, b.x1) - max(a.x0, b.x0)
+    height: int = min(a.y1, b.y1) - max(a.y0, b.y0)
+    if width <= 0 or height <= 0:
+        return 0.0
+    inside: int = width * height
+    return inside / (a.area + b.area - inside)
 
 
 def _to_new_region(candidate: Candidate) -> db.NewRegion:
@@ -252,5 +264,68 @@ class Worker:
             )
             # Stage I4 and I6. An error here marks the image `failed`. Its regions and vectors stay.
             self._memory.remember(image, candidates, regions, vectors, picture)
+        open_boxes: int = self._store_open_boxes(image, picture, candidates, regions)
         db.mark_image_done(image.id)
-        logger.info("Image %d is done with %d region(s)", image.id, len(regions))
+        logger.info(
+            "Image %d is done with %d region(s) and %d open box(es)",
+            image.id,
+            len(regions),
+            open_boxes,
+        )
+
+    def _store_open_boxes(
+        self,
+        image: Image,
+        picture: PilImage.Image,
+        candidates: list[Candidate],
+        regions: list,
+    ) -> int:
+        """Find the objects that nobody registered, and store their boxes with a SigLIP vector each.
+
+        Return the number of boxes stored. The step needs the broad detector and the scene model (SigLIP).
+        An error is logged, and the image goes on: the open search is an extra.
+        """
+        if not (self._engine.open_detection_enabled and self._engine.scene_enabled):
+            return 0
+        try:
+            found = self._engine.detect_open(picture)
+            if not found:
+                return 0
+            vectors: np.ndarray = self._engine.embed_open_crops(
+                picture, [d.box for d in found]
+            )
+            items: list[db.open_regions.NewOpenRegion] = [
+                db.open_regions.NewOpenRegion(
+                    d.box.x0,
+                    d.box.y0,
+                    d.box.x1,
+                    d.box.y1,
+                    d.label,
+                    d.confidence,
+                    self._linked_region(d.box, candidates, regions),
+                )
+                for d in found
+            ]
+            db.open_regions.add_open_regions(
+                image.id, items, vectors, self._engine.open_vector_model
+            )
+        except (AiError, db.DbError) as error:
+            logger.warning(
+                "The broad detection of image %d failed: %s",
+                image.id,
+                type(error).__name__,
+            )
+            return 0
+        return len(items)
+
+    def _linked_region(
+        self, box: Box, candidates: list[Candidate], regions: list
+    ) -> int | None:
+        """Return the id of the registered-object region that this box overlaps most, if the overlap is enough."""
+        best_id: int | None = None
+        best: float = self._config.open_link_iou
+        for candidate, region in zip(candidates, regions, strict=True):
+            overlap: float = _iou(box, candidate.box)
+            if overlap >= best:
+                best, best_id = overlap, region.id
+        return best_id
