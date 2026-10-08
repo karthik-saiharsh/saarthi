@@ -34,6 +34,7 @@ For the full design, see `docs/backend/Upload Endpoint.md`, `docs/backend/Enroll
 | `search.py` | `SearchService`: answers "where is my object?" from the last-seen record, then from the archive of frames |
 | `query.py` | `QueryResolver`: turns the words of a user into an enrolled object, or a short list to choose from |
 | `open_search.py` | `OpenSearchService`: finds objects that nobody registered. It compares the words with the names and the SigLIP vectors of the stored boxes of the broad detector |
+| `browser.py` | `MemoryBrowser`: the frames that the worker took, and what the pipeline stored for each (for the memory page). It only reads |
 | `describe.py` | `DescribeService`: makes the sentence for the voice (stage Q2). It chooses the room from neighbouring frames, the surface from the box, and builds the text |
 | `voice.py` | `VoiceService`: checks a WAV recording and turns it into text with the speech recognizer (stage Q0) |
 | `worker.py` | `Worker`: runs the ai stages on `pending` photos and images, in a background thread |

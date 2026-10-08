@@ -13,6 +13,7 @@ import numpy as np
 from peewee import PeeweeException, SqliteDatabase
 
 from db import (
+    browse,
     gallery,
     open_regions,
     scenes,
@@ -56,6 +57,7 @@ __all__ = [
     "InvalidRecordError",
     "InvalidStateError",
     "VectorIndexError",
+    "browse",
     "gallery",
     "open_regions",
     "scenes",

@@ -199,6 +199,7 @@ def test_the_pages_use_the_real_upload_service_and_the_home_page_leads_to_it(
         "UiEnrollmentService",
         "UiFindService",
         "UiVoiceService",
+        "UiBrowseService",
     ]
     answer = pages["/"]()
     assert (

@@ -15,7 +15,7 @@ from ui.components.object_detail import (
 from ui.components.object_list import photo_summary
 from ui.components.status_badge import PHOTO_LABELS
 from ui.ports import PhotoState, Sighting
-from ui.routes import ENROLL_ROUTE, FIND_ROUTE, UPLOAD_ROUTE
+from ui.routes import ENROLL_ROUTE, FIND_ROUTE, MEMORY_ROUTE, UPLOAD_ROUTE
 
 
 def test_photo_summary_counts_the_states() -> None:
@@ -54,12 +54,17 @@ def test_every_photo_state_has_a_label() -> None:
 
 
 def test_routes_are_different_and_absolute() -> None:
-    routes: list[str] = [UPLOAD_ROUTE, ENROLL_ROUTE, FIND_ROUTE]
-    assert len(set(routes)) == 3 and all(r.startswith("/") for r in routes)
+    routes: list[str] = [UPLOAD_ROUTE, ENROLL_ROUTE, FIND_ROUTE, MEMORY_ROUTE]
+    assert len(set(routes)) == 4 and all(r.startswith("/") for r in routes)
 
 
 def test_every_page_is_in_the_navigation_and_find_comes_first() -> None:
-    assert [route for route, _ in PAGES] == [FIND_ROUTE, UPLOAD_ROUTE, ENROLL_ROUTE]
+    assert [route for route, _ in PAGES] == [
+        FIND_ROUTE,
+        UPLOAD_ROUTE,
+        ENROLL_ROUTE,
+        MEMORY_ROUTE,
+    ]
 
 
 def test_help_steps_are_short() -> None:

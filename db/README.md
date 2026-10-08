@@ -17,6 +17,7 @@ For the full design, see `docs/db/Ingestion Database Schema.md`.
 |------|---------|
 | `schema.py` | The tables: `Image`, `Region`, `EnrolledObject`, `ReferencePhoto`, `ObjectView` |
 | `gallery.py` | The helpers of the gallery. `api.py` gives them as `db.gallery` |
+| `browse.py` | Read-only views of the frames for the memory browser: the list with counts, and everything stored for one frame. `api.py` gives them as `db.browse` |
 | `open_regions.py` | The helpers of the open search: the boxes of the broad detector (table `open_region`) and their vectors in a second FAISS index. `api.py` gives them as `db.open_regions` |
 | `scenes.py` | The helpers of the description of a place: the room scores of a frame (a cache), and the frames near a frame in time. `api.py` gives them as `db.scenes` |
 | `sightings.py` | The helpers of the memory: the sighting log and the last-seen record. `api.py` gives them as `db.sightings` |

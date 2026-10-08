@@ -42,6 +42,7 @@ The pages:
 | `http://localhost:8080/enroll` | The carer: add objects and photos |
 | `http://localhost:8080/upload` | The wearable (or you): send pictures |
 | `http://localhost:8080/find` | The patient: ask where an object is |
+| `http://localhost:8080/memory` | The carer or you: see every frame, and what the pipeline found in it |
 
 ### Quick path: the whole run from the command line
 
@@ -112,6 +113,13 @@ The similarity of photo 14 is only 0.001 above `tau`. A small change can make it
 Two more tests:
 - Send `1.jpeg` again. The answer is `duplicate`. Nothing is stored twice.
 - Send a text file. The answer is 415 (not an image).
+
+### The memory page
+
+Open `/memory` after the pictures are processed. You see one card for each frame, with the status and a line such as `1 match, 1 region, 14 other boxes`.
+Tap a card. The details show the picture with the boxes: green for a match of a registered object, orange for a box without a match,
+dashed for the other objects that the broad detector named. Photo 10 (the bottle in a hand) shows the match "Speckled bottle - match 0.63 - strong - in a hand".
+Use the filter to see only rejected or failed frames. The page shows every picture, so open it only on a network that you trust.
 
 ## 4. Look inside the data
 

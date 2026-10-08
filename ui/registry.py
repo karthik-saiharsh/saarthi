@@ -7,9 +7,16 @@ from nicegui import ui
 
 from ui.pages.enroll_page import build_enroll_page
 from ui.pages.find_page import build_find_page
+from ui.pages.memory_page import build_memory_page
 from ui.pages.upload_page import build_upload_page
-from ui.ports import EnrollmentService, FindService, UploadService, VoiceService
-from ui.routes import ENROLL_ROUTE, FIND_ROUTE, UPLOAD_ROUTE
+from ui.ports import (
+    BrowseService,
+    EnrollmentService,
+    FindService,
+    UploadService,
+    VoiceService,
+)
+from ui.routes import ENROLL_ROUTE, FIND_ROUTE, MEMORY_ROUTE, UPLOAD_ROUTE
 from ui.theme import register_static
 from ui.voice_route import register_voice_route
 
@@ -21,6 +28,7 @@ def register_pages(
     enrollment_service: EnrollmentService,
     find_service: FindService,
     voice_service: VoiceService | None = None,
+    browse_service: BrowseService | None = None,
 ) -> None:
     """Register the pages of the UI. The caller starts the server."""
     assert upload_service is not None, "upload_service is required"
@@ -41,6 +49,12 @@ def register_pages(
     @ui.page(FIND_ROUTE)
     def find() -> None:
         build_find_page(find_service, voice_service)
+
+    if browse_service is not None:
+
+        @ui.page(MEMORY_ROUTE)
+        def memory() -> None:
+            build_memory_page(browse_service)
 
     logger.info(
         "Registered pages %s, %s and %s", UPLOAD_ROUTE, ENROLL_ROUTE, FIND_ROUTE

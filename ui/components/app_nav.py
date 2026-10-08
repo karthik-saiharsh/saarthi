@@ -2,13 +2,14 @@
 
 from nicegui import ui
 
-from ui.routes import ENROLL_ROUTE, FIND_ROUTE, UPLOAD_ROUTE
+from ui.routes import ENROLL_ROUTE, FIND_ROUTE, MEMORY_ROUTE, UPLOAD_ROUTE
 
 # (route, label) for each page, in display order.
 PAGES: tuple[tuple[str, str], ...] = (
     (FIND_ROUTE, "Find"),
     (UPLOAD_ROUTE, "Upload"),
     (ENROLL_ROUTE, "My objects"),
+    (MEMORY_ROUTE, "Memory"),
 )
 
 

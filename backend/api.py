@@ -13,6 +13,7 @@ from fastapi import APIRouter
 import db.api as db
 import storage.api as storage
 from ai.api import AiEngine
+from backend.browser import MemoryBrowser
 from backend.describe import DescribeService
 from backend.enrollment import EnrollmentService
 from backend.errors import BackendConfigError
@@ -31,6 +32,7 @@ from backend.settings import (
     load_config,
 )
 from backend.ui_adapter import (
+    UiBrowseService,
     UiEnrollmentService,
     UiFindService,
     UiUploadService,
@@ -83,6 +85,7 @@ class Backend:
         self._query: QueryResolver = QueryResolver(self._config, engine)
         self._voice: VoiceService = VoiceService(self._config, engine)
         self._open_search: OpenSearchService = OpenSearchService(self._config, engine)
+        self._browser: MemoryBrowser = MemoryBrowser()
         self._describe: DescribeService = DescribeService(self._config, engine)
         self._maintenance: Maintenance = Maintenance(self._config)
         self._token: str | None = read_token(self._config)
@@ -181,3 +184,8 @@ class Backend:
     def voice_service(self) -> UiVoiceService | None:
         """The voice input that the UI calls (`ui.ports.VoiceService`). None if listening is switched off."""
         return UiVoiceService(self._voice) if self._voice.enabled else None
+
+    @property
+    def browse_service(self) -> UiBrowseService:
+        """The memory browser that the UI calls. It implements `ui.ports.BrowseService`."""
+        return UiBrowseService(self._browser)

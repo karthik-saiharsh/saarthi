@@ -122,6 +122,106 @@ class EnrollmentService(Protocol):
         ...
 
 
+class BrowseError(Exception):
+    """An expected problem of the memory browser. `str(error)` is a short text that the UI shows.
+
+    The text must not contain personal data or internal error text.
+    """
+
+
+@dataclass(frozen=True)
+class FrameInfo:
+    """A frame that the worker took, ready to show in the list."""
+
+    id: int
+    status: str  # pending, processing, done, rejected or failed
+    detail: str | None  # For example the reason of a rejection
+    age_seconds: int  # The time since the server received the frame
+    width: int
+    height: int
+    regions: int  # The boxes of the registered objects
+    sightings: int  # The matches of enrolled objects
+    open_boxes: int  # The boxes of the broad detector
+
+
+@dataclass(frozen=True)
+class FramesPage:
+    """One page of frames."""
+
+    frames: list[FrameInfo]
+    total: int  # The number of frames with the filter
+    offset: int
+    limit: int
+    counts: dict[str, int]  # The number of frames for each status
+
+
+@dataclass(frozen=True)
+class RegionInfo:
+    """A box of the registered-object detector."""
+
+    id: int
+    box: tuple[int, int, int, int]  # x0, y0, x1, y1 in pixels of the frame
+    phrases: tuple[str, ...]
+    confidence: float
+    source: str
+    in_hand: bool
+    quality_ok: bool  # False: the crop is not used for matching
+
+
+@dataclass(frozen=True)
+class SightingInfo:
+    """A match of an enrolled object."""
+
+    object_name: str
+    region_id: int
+    similarity: float
+    margin: float
+    strong: bool
+    in_hand: bool
+
+
+@dataclass(frozen=True)
+class OpenBoxInfo:
+    """A box of the broad detector."""
+
+    id: int
+    box: tuple[int, int, int, int]
+    label: str  # The name from the detector. It can be wrong
+    confidence: float
+    linked_region_id: int | None
+
+
+@dataclass(frozen=True)
+class FrameDetail:
+    """What the pipeline stored for one frame."""
+
+    frame: FrameInfo
+    blur_score: float | None
+    regions: tuple[RegionInfo, ...]
+    sightings: tuple[SightingInfo, ...]
+    open_boxes: tuple[OpenBoxInfo, ...]
+    rooms: tuple[tuple[str, float], ...]  # The best rooms with their probability
+    last_seen_of: tuple[str, ...]
+
+
+class BrowseService(Protocol):
+    """The memory browser. Every method raises `BrowseError` for an expected problem."""
+
+    async def list_frames(
+        self, status: str | None, offset: int, limit: int
+    ) -> FramesPage:
+        """Return one page of frames, the newest first. `status` None lists all."""
+        ...
+
+    async def get_frame(self, image_id: int) -> FrameDetail:
+        """Return what the pipeline stored for a frame."""
+        ...
+
+    async def get_picture(self, image_id: int, max_side: int) -> bytes:
+        """Return a JPEG of the whole frame, at most `max_side` pixels on the longest side."""
+        ...
+
+
 class VoiceError(Exception):
     """An expected problem of the voice input. `str(error)` is a short text that the UI shows.
 

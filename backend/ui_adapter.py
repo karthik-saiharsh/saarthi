@@ -18,6 +18,8 @@ from typing import TypeVar
 import db.api as db
 import storage.api as storage
 from ai.api import AiError
+from backend.browser import FrameDetailView, FrameSummary, MemoryBrowser
+from backend.browser import FramePage as BrowserPage
 from backend.describe import DescribeService
 from backend.enrollment import (
     EnrollmentService,
@@ -47,17 +49,24 @@ from backend.search import Answer, SearchService
 from backend.voice import VoiceService
 from db.schema import ObjectStatus
 from ui.ports import (
+    BrowseError,
     EnrollmentError,
     FindChoice,
     FindError,
     FindResult,
     FindStatus,
+    FrameDetail,
+    FrameInfo,
+    FramesPage,
     ObjectDetail,
     ObjectInfo,
+    OpenBoxInfo,
     OutcomeStatus,
     PhotoInfo,
     PhotoState,
+    RegionInfo,
     Sighting,
+    SightingInfo,
     UploadOutcome,
     VoiceError,
 )
@@ -413,3 +422,102 @@ class UiVoiceService:
         except Exception as error:  # The boundary to the UI: map every error.
             logger.error("Listening failed: %s", type(error).__name__, exc_info=error)
             raise VoiceError(MESSAGE_VOICE_FAILED) from error
+
+
+MESSAGE_BROWSE_FAILED: str = "The memory could not be read. Please try again."
+MESSAGE_BROWSE_NOT_FOUND: str = "This frame does not exist any more."
+
+
+def _frame_info(summary: FrameSummary) -> FrameInfo:
+    return FrameInfo(
+        summary.id,
+        summary.status,
+        summary.status_detail,
+        summary.age_seconds,
+        summary.width,
+        summary.height,
+        summary.regions,
+        summary.sightings,
+        summary.open_boxes,
+    )
+
+
+class UiBrowseService:
+    """Implements `ui.ports.BrowseService` with the real memory browser.
+
+    The work blocks, so each call runs in a thread. Each error becomes a `BrowseError` with a fixed text.
+    """
+
+    def __init__(self, browser: MemoryBrowser) -> None:
+        assert isinstance(browser, MemoryBrowser), "browser must be a MemoryBrowser"
+        self._browser: MemoryBrowser = browser
+
+    async def _call(
+        self, function: Callable[..., _Result], *arguments: object
+    ) -> _Result:
+        try:
+            return await asyncio.to_thread(function, *arguments)
+        except NotFoundError as error:
+            raise BrowseError(MESSAGE_BROWSE_NOT_FOUND) from error
+        except InvalidInputError as error:
+            raise BrowseError(str(error)) from error  # A fixed text
+        except Exception as error:  # The boundary to the UI: map every error.
+            logger.error(
+                "Memory browser failed: %s", type(error).__name__, exc_info=error
+            )
+            raise BrowseError(MESSAGE_BROWSE_FAILED) from error
+
+    async def list_frames(
+        self, status: str | None, offset: int, limit: int
+    ) -> FramesPage:
+        page: BrowserPage = await self._call(
+            self._browser.list_frames, status, offset, limit
+        )
+        return FramesPage(
+            [_frame_info(f) for f in page.frames],
+            page.total,
+            page.offset,
+            page.limit,
+            dict(page.counts),
+        )
+
+    async def get_frame(self, image_id: int) -> FrameDetail:
+        assert isinstance(image_id, int), "image_id must be an int"
+        view: FrameDetailView = await self._call(self._browser.get_frame, image_id)
+        return FrameDetail(
+            _frame_info(view.summary),
+            view.summary.blur_score,
+            tuple(
+                RegionInfo(
+                    r.id,
+                    r.box,
+                    tuple(r.phrases),
+                    r.confidence,
+                    r.source,
+                    r.in_hand,
+                    r.quality_ok,
+                )
+                for r in view.regions
+            ),
+            tuple(
+                SightingInfo(
+                    s.object_name,
+                    s.region_id,
+                    s.similarity,
+                    s.margin,
+                    s.strong,
+                    s.in_hand,
+                )
+                for s in view.sightings
+            ),
+            tuple(
+                OpenBoxInfo(o.id, o.box, o.label, o.confidence, o.linked_region_id)
+                for o in view.open_boxes
+            ),
+            tuple(view.rooms),
+            tuple(view.last_seen_of),
+        )
+
+    async def get_picture(self, image_id: int, max_side: int) -> bytes:
+        assert isinstance(image_id, int), "image_id must be an int"
+        return await self._call(self._browser.get_picture, image_id, max_side)
