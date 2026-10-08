@@ -116,6 +116,8 @@ class OpenSearchConfig:
     visual_min_probability: float
     visual_margin: float
     neutral_phrases: tuple[str, ...]
+    rewrite_min_words: int
+    rewrite_min_score: float
     max_scan_hours: int
     max_boxes: int
 
@@ -368,6 +370,12 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> BackendConfig:
         ),
         visual_margin=_number(open_search, "open_search", "visual_margin", 0.0, 1.0),
         neutral_phrases=tuple(p.strip() for p in neutral),
+        rewrite_min_words=_integer(
+            open_search, "open_search", "rewrite_min_words", 1, 20
+        ),
+        rewrite_min_score=_number(
+            open_search, "open_search", "rewrite_min_score", 0.0, 1.0
+        ),
         max_scan_hours=_integer(open_search, "open_search", "max_scan_hours", 1),
         max_boxes=_integer(open_search, "open_search", "max_boxes", 1, 20000),
     )

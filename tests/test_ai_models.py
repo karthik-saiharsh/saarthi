@@ -16,6 +16,7 @@ from ai.settings import AiConfig, load_config
 from ai.types import Box, RawDetection
 from db.api import load_config as load_db_config
 from tests.ai_support import (
+    FakeLanguageModel,
     FakeOpenDetector,
     FakeQueryEncoder,
     FakeSceneClassifier,
@@ -145,7 +146,7 @@ def test_engine_runs_the_stages_and_matches_the_db_vector_size(
 def test_the_phone_is_located_in_the_real_photo(
     detector: CandidateDetector, embedder: RegionEmbedder, config: AiConfig
 ) -> None:
-    engine: AiEngine = AiEngine(config, detector=detector, embedder=embedder, query_encoder=FakeQueryEncoder(), verifier=FakeVerifier(), scene_classifier=FakeSceneClassifier(), speech_recognizer=FakeSpeechRecognizer(), open_detector=FakeOpenDetector())  # type: ignore[arg-type]
+    engine: AiEngine = AiEngine(config, detector=detector, embedder=embedder, query_encoder=FakeQueryEncoder(), verifier=FakeVerifier(), scene_classifier=FakeSceneClassifier(), speech_recognizer=FakeSpeechRecognizer(), open_detector=FakeOpenDetector(), language_model=FakeLanguageModel())  # type: ignore[arg-type]
     image: Image.Image = Image.open(TEST_IMAGE).convert("RGB")
     found = engine.locate_object(image, "a mobile phone")
     assert found is not None and found.phrase == "a mobile phone"
@@ -170,7 +171,7 @@ def test_the_phone_is_located_in_the_real_photo(
 def test_the_views_of_the_phone_look_alike_and_differ_from_the_pen(
     detector: CandidateDetector, embedder: RegionEmbedder, config: AiConfig
 ) -> None:
-    engine: AiEngine = AiEngine(config, detector=detector, embedder=embedder, query_encoder=FakeQueryEncoder(), verifier=FakeVerifier(), scene_classifier=FakeSceneClassifier(), speech_recognizer=FakeSpeechRecognizer(), open_detector=FakeOpenDetector())  # type: ignore[arg-type]
+    engine: AiEngine = AiEngine(config, detector=detector, embedder=embedder, query_encoder=FakeQueryEncoder(), verifier=FakeVerifier(), scene_classifier=FakeSceneClassifier(), speech_recognizer=FakeSpeechRecognizer(), open_detector=FakeOpenDetector(), language_model=FakeLanguageModel())  # type: ignore[arg-type]
     image: Image.Image = Image.open(TEST_IMAGE).convert("RGB")
     found = engine.locate_object(image, "a mobile phone")
     assert found is not None

@@ -33,6 +33,7 @@ from db.schema import Sighting as SightingRow
 from tests.ai_support import (
     FakeDetector,
     FakeEmbedder,
+    FakeLanguageModel,
     FakeOpenDetector,
     FakeQueryEncoder,
     FakeSceneClassifier,
@@ -243,6 +244,7 @@ def test_no_check_is_made_when_it_is_off_or_cannot_be_made(
             scene_classifier=FakeSceneClassifier(),  # type: ignore[arg-type]
             speech_recognizer=FakeSpeechRecognizer(),  # type: ignore[arg-type]
             open_detector=FakeOpenDetector(),  # type: ignore[arg-type]
+            language_model=FakeLanguageModel(),  # type: ignore[arg-type]
         )
         service = MemoryService(CONFIG, engine)
     assert run(service, obj, picture=picture) == 1

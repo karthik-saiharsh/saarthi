@@ -149,6 +149,12 @@ visual_min_probability = 0.8
 # ...and must beat the best of the neutral phrases below by this value.
 visual_margin = 0.02
 neutral_phrases = ["an object", "a wall", "a floor", "a table", "a person"]
+# Step 3: a small language model rewrites a description into object names. It runs only for a description of at least
+# this many words. A name ("piano") is not rewritten: the model would give a neighbour ("keyboard") and find a wrong box.
+rewrite_min_words = 3
+# A name from the model must fit the name of a stored box almost exactly. A looser fit ("keyboard" and "laptop keyboard"
+# score 0.83) gave a wrong answer in a test.
+rewrite_min_score = 0.9
 # The search never looks back further than this many hours, and reads at most this many boxes.
 max_scan_hours = 72
 max_boxes = 5000

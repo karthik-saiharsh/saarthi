@@ -18,6 +18,7 @@ from ai.types import Box
 from tests.ai_support import (
     FakeDetector,
     FakeEmbedder,
+    FakeLanguageModel,
     FakeOpenDetector,
     FakeQueryEncoder,
     FakeSpeechRecognizer,
@@ -54,6 +55,7 @@ def engine() -> AiEngine:
         query_encoder=FakeQueryEncoder(),  # type: ignore[arg-type]
         speech_recognizer=FakeSpeechRecognizer(),  # type: ignore[arg-type]
         open_detector=FakeOpenDetector(),  # type: ignore[arg-type]
+        language_model=FakeLanguageModel(),  # type: ignore[arg-type]
     )
 
 

@@ -32,6 +32,8 @@ class ModelsConfig:
     scene_revision: str
     speech_id: str
     speech_revision: str
+    language_id: str
+    language_revision: str
     open_detector_file: str
     open_detector_url: str
     open_detector_sha256: str
@@ -131,6 +133,16 @@ class SpeechConfig:
 
 
 @dataclass(frozen=True)
+class LanguageConfig:
+    enabled: bool
+    max_input_chars: int
+    max_new_tokens: int
+    max_names: int
+    rewrite_system: str
+    rewrite_examples: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
 class OpenDetectionConfig:
     enabled: bool
     confidence: float
@@ -153,6 +165,7 @@ class AiConfig:
     scene: SceneConfig
     speech: SpeechConfig
     open_detection: OpenDetectionConfig
+    language: LanguageConfig
 
 
 class _Table:
@@ -252,6 +265,19 @@ def _sha256(value: str) -> str:
     return value
 
 
+def _examples(table: _Table) -> tuple[tuple[str, str], ...]:
+    """Read `rewrite_examples`: a list of `[question, answer]` pairs. The list can be empty."""
+    value: object = table._value("rewrite_examples")
+    if not isinstance(value, list) or not all(
+        isinstance(pair, list)
+        and len(pair) == 2
+        and all(isinstance(text, str) and text.strip() for text in pair)
+        for pair in value
+    ):
+        raise table._fail("rewrite_examples", "a list of [question, answer] pairs")
+    return tuple((pair[0], pair[1]) for pair in value)
+
+
 def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> AiConfig:
     """Read and check the config file. Raise `AiConfigError` if it is not correct."""
     assert isinstance(config_path, Path), "config_path must be a Path"
@@ -274,6 +300,7 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> AiConfig:
     scene: _Table = _Table(raw, "scene")
     speech: _Table = _Table(raw, "speech")
     open_detection: _Table = _Table(raw, "open_detection")
+    language: _Table = _Table(raw, "language")
 
     default_phrases: tuple[str, ...] = detection.texts("default_phrases")
     small_phrases: tuple[str, ...] = detection.texts("small_phrases", allow_empty=True)
@@ -334,6 +361,8 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> AiConfig:
             scene_revision=models.text("scene_revision"),
             speech_id=models.text("speech_id"),
             speech_revision=models.text("speech_revision"),
+            language_id=models.text("language_id"),
+            language_revision=models.text("language_revision"),
             open_detector_file=_weights_file(models.text("open_detector_file")),
             open_detector_url=_https_url(models.text("open_detector_url")),
             open_detector_sha256=_sha256(models.text("open_detector_sha256")),
@@ -408,6 +437,16 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> AiConfig:
             ),
             min_box_side=open_detection.integer("min_box_side"),
             crop_padding=open_detection.number("crop_padding", 0.0, 1.0),
+        ),
+        language=LanguageConfig(
+            enabled=language.boolean("enabled"),
+            max_input_chars=language.integer(
+                "max_input_chars", minimum=10, maximum=2000
+            ),
+            max_new_tokens=language.integer("max_new_tokens", minimum=1, maximum=200),
+            max_names=language.integer("max_names", minimum=1, maximum=10),
+            rewrite_system=language.text("rewrite_system"),
+            rewrite_examples=_examples(language),
         ),
     )
     logger.info("Loaded ai config from %s", config_path)

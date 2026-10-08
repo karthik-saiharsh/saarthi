@@ -79,6 +79,8 @@ def test_default_config_loads() -> None:
         ('time_zone = ""', "time_zone = 5"),
         ("day_part_min_hours = 6", "day_part_min_hours = 0"),
         ("day_part_min_hours = 6", "day_part_min_hours = 25"),
+        ("rewrite_min_words = 3", "rewrite_min_words = 0"),
+        ("rewrite_min_score = 0.9", "rewrite_min_score = 1.5"),
         ("max_pending = 500", "max_pending = 0"),
         ("max_pending = 500", "max_pending = true"),
         ("max_pending = 500", 'max_pending = "many"'),

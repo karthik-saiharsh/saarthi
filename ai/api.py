@@ -24,6 +24,7 @@ from ai.errors import (
     MatchingError,
     ModelLoadError,
 )
+from ai.language import LanguageModel
 from ai.matching import match_regions
 from ai.open_detector import OpenDetector
 from ai.postprocess import apply_crop_quality, select_candidates
@@ -103,6 +104,7 @@ class AiEngine:
         scene_classifier: SceneClassifier | None = None,
         speech_recognizer: SpeechRecognizer | None = None,
         open_detector: OpenDetector | None = None,
+        language_model: LanguageModel | None = None,
     ) -> None:
         """Load the models. Pass `detector`, `embedder`, `query_encoder`, `verifier` or `scene_classifier` only in tests.
 
@@ -110,6 +112,7 @@ class AiEngine:
         The scene classifier loads only if `scene.enabled` is true.
         The speech recognizer loads only if `speech.enabled` is true.
         The broad detector loads only if `open_detection.enabled` is true.
+        The language model loads only if `language.enabled` is true.
         """
         self._config: AiConfig = config if config is not None else load_config()
         configure_threads(self._config.models.cpu_threads)
@@ -125,13 +128,16 @@ class AiEngine:
         self._open_detector: OpenDetector | None = open_detector or (
             OpenDetector(self._config) if self._config.open_detection.enabled else None
         )
+        self._language: LanguageModel | None = language_model or (
+            LanguageModel(self._config) if self._config.language.enabled else None
+        )
         self._verifier: KeypointVerifier | None = verifier or (
             KeypointVerifier(self._config)
             if self._config.verification.enabled
             else None
         )
         logger.info(
-            "AI engine ready: detector %s, embedder %s, query encoder %s, verifier %s, scene %s, speech %s, broad detector %s",
+            "AI engine ready: detector %s, embedder %s, query encoder %s, verifier %s, scene %s, speech %s, broad detector %s, language %s",
             self._detector.name,
             self._embedder.name,
             self._query_encoder.name,
@@ -139,6 +145,7 @@ class AiEngine:
             self._scene.name if self._scene is not None else "off",
             self._speech.name if self._speech is not None else "off",
             self._open_detector.name if self._open_detector is not None else "off",
+            self._language.name if self._language is not None else "off",
         )
 
     @property
@@ -382,6 +389,21 @@ class AiEngine:
         return result
 
     # ---- The place of an object (stage Q2) ----
+
+    @property
+    def language_enabled(self) -> bool:
+        """True if the language model is loaded. If False, `rewrite_query` must not be called."""
+        return self._language is not None
+
+    def rewrite_query(self, words: str) -> list[str]:
+        """Turn a description of an object into up to `language.max_names` common names, for example "laptop, computer".
+
+        Use it when the words name no object that the system knows. The names only feed the search.
+        The list can be empty. The words stay in memory and are never logged.
+        """
+        assert isinstance(words, str), "words must be a string"
+        assert self._language is not None, "the language model is switched off"
+        return self._language.rewrite_query(words)
 
     @property
     def open_detection_enabled(self) -> bool:

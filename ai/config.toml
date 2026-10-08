@@ -22,6 +22,10 @@ scene_revision = "7fd15f0689c79d79e38b1c2e2e2370a7bf2761ed"
 # Turns the speech of the user into text (stage Q0), on the device. English only (Apache-2.0).
 speech_id = "openai/whisper-base"
 speech_revision = "e37978b90ca9030d5170a5c07aadb050351a65bb"
+# A small language model for words (Qwen3.5-0.8B, Apache-2.0). It is a multimodal model, so the same weights can later
+# describe a frame. Now it rewrites a description of an object ("that thing I check my mails on") into object names.
+language_id = "Qwen/Qwen3.5-0.8B"
+language_revision = "2fc06364715b967f1860aea9cf38778875588b17"
 # Finds objects that nobody registered (broad detection). YOLOE, prompt-free: no class list is given. It labels each box
 # from its own list of 4585 names. LICENCE: AGPL-3.0 (Ultralytics). The owner accepted it for this academic project.
 # The weights come from the Ultralytics release below. The file is downloaded one time into ai/models and its SHA-256 is checked.
@@ -199,3 +203,21 @@ input_size = 640
 min_box_side = 24
 # The SigLIP vector of a crop is made from the box with this much space around it (a part of the box, on each side).
 crop_padding = 0.05
+
+[language]
+# false: the model is not loaded, and the open search does not rewrite a description into names.
+enabled = true
+# The longest text that the model gets, in characters. A longer text is cut.
+max_input_chars = 300
+# The most new tokens that the model writes for one rewrite. Three short names need about 15.
+max_new_tokens = 24
+# The most names that a rewrite gives back.
+max_names = 3
+# The instruction for the rewrite. The model writes the names and nothing else, so its words cannot reach the voice.
+# The instruction names no object that could be a right answer, because the model repeats such an example.
+rewrite_system = "You help a person with memory loss to find lost objects. The person describes an object by what they do with it. Think about which physical object or device people use for that, and answer with the 3 most likely common names of that object, separated by commas, and nothing else. Name the object itself, not the activity or the content."
+# Examples of a question and the right answer. They are far from the questions of the test (see docs/backend/Open Search.md).
+rewrite_examples = [
+  ["what I listen to music on", "phone, speaker, radio"],
+  ["what I cook rice in", "pot, cooker, pan"],
+]

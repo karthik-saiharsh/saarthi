@@ -177,6 +177,8 @@ A variable that is set but empty stops the start, so the route cannot open by mi
 | `open_search.label_tier` | The boxes of the names within this distance of the best score can be the answer. The newest frame wins |
 | `open_search.visual_min_probability` | The SigLIP step answers only if the best box reaches this probability |
 | `open_search.visual_margin` | ...and beats the best neutral phrase by this value |
+| `open_search.rewrite_min_words` | The language model rewrites only a description of at least this many words, not a name |
+| `open_search.rewrite_min_score` | A name from the model must fit the name of a stored box at least this well |
 | `open_search.neutral_phrases` | Phrases for the comparison of the SigLIP step ("a wall", "an object") |
 | `open_search.max_scan_hours`, `open_search.max_boxes` | How far back the search looks, and how many boxes it reads |
 

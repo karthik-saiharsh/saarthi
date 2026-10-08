@@ -228,6 +228,24 @@ class FakeOpenDetector:
         return list(self.detections)
 
 
+class FakeLanguageModel:
+    """Gives the names that the test sets. It records the words that it gets."""
+
+    name = "fake-language@00000000"
+
+    def __init__(self, names: dict[str, list[str]] | None = None) -> None:
+        # The names for a text. A text that is not in the dict gives no name.
+        self.names: dict[str, list[str]] = names or {}
+        self.error: Exception | None = None
+        self.calls: list[str] = []
+
+    def rewrite_query(self, words):
+        if self.error is not None:
+            raise self.error
+        self.calls.append(words)
+        return list(self.names.get(words, []))
+
+
 def make_engine(
     detector: FakeDetector | None = None,
     embedder: FakeEmbedder | None = None,
@@ -237,6 +255,7 @@ def make_engine(
     scene_classifier: FakeSceneClassifier | None = None,
     speech_recognizer: FakeSpeechRecognizer | None = None,
     open_detector: FakeOpenDetector | None = None,
+    language_model: FakeLanguageModel | None = None,
 ) -> AiEngine:
     """An `AiEngine` with fake models. The quality gate and post-processing are real.
 
@@ -256,4 +275,5 @@ def make_engine(
         scene_classifier=scene_classifier or FakeSceneClassifier(),  # type: ignore[arg-type]
         speech_recognizer=speech_recognizer or FakeSpeechRecognizer(),  # type: ignore[arg-type]
         open_detector=open_detector or FakeOpenDetector(),  # type: ignore[arg-type]
+        language_model=language_model or FakeLanguageModel(),  # type: ignore[arg-type]
     )

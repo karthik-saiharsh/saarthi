@@ -9,7 +9,7 @@ The expected results come from a real run with the real models. The run used the
 
 ## What you need
 
-- The models in the Hugging Face cache. They are on this machine. A new machine downloads about 2 GB at the first start.
+- The models in the Hugging Face cache. They are on this machine. A new machine downloads about 3.8 GB at the first start.
   If the download does not start, set `HF_HUB_DISABLE_XET=1`.
 - The test photos: `/home/ks/Desktop/Project Saarthi/Dataset/` (`1.jpeg` to `14.jpeg`).
 - A browser. Two terminals help: one for the application, one for the commands.
@@ -31,7 +31,7 @@ The log shows the start-up order. Each line starts with the name of a component:
 |----------------------|-----------|--------------------------|
 | `storage.` | Storage | Prepared the folder `storage/uploads` for the pictures |
 | `db.` | Database and vector index | Opened `db/data/saarthi.db` and the index. The recovery repaired nothing |
-| `ai.detector`, `ai.embedder`, `ai.query`, `ai.verifier`, `ai.scene`, `ai.speech`, `ai.open_detector` | The models | Detector, region embedder, query encoder, verifier, scene classifier, speech recognizer, broad detector |
+| `ai.detector`, `ai.embedder`, `ai.query`, `ai.verifier`, `ai.scene`, `ai.speech`, `ai.open_detector`, `ai.language` | The models | Detector, region embedder, query encoder, verifier, scene classifier, speech recognizer, broad detector, language model |
 | `backend.` | Control flow | Started the upload step, the worker and the maintenance thread |
 | `main` | Entry point | Held the order, and printed the address |
 

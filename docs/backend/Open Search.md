@@ -3,7 +3,7 @@
 ## Status
 
 This feature is **partly built**. Built (phase 1): the broad detector in the `ai` component (`ai/open_detector.py`, `AiEngine.detect_open`).
-Built (phases 2 and 3): the SigLIP vectors, and the table and the vector index for the boxes (`db/open_regions.py`). The worker step (phase 4) and the search (phase 5) are built. The sentence for an open result is the sentence of the registered path with "a laptop" in place of "your laptop". Not built: the query rewriter, the scene description by a vision-language model, the page text for an open result, and the calibration.
+Built (phases 2 and 3): the SigLIP vectors, and the table and the vector index for the boxes (`db/open_regions.py`). The worker step (phase 4) and the search (phase 5) are built. The sentence for an open result is the sentence of the registered path with "a laptop" in place of "your laptop". The query rewriter (phase 6) is built. Not built: the scene description by the language model, the page text for an open result, and the calibration.
 The owner decided this on 2026-11-10: the main pipeline stays on the registered objects. The broad detection is for objects that nobody registered.
 
 ## Purpose
@@ -73,7 +73,23 @@ What this shows:
   the step answers only when it is very sure. A wrong answer is worse than no answer for the patient. Phase 7 sets this value on the new images.
 - A description that needs world knowledge ("check my mails" means a laptop) fails in both steps. A small language model must rewrite such a question into object names (see below).
 
-### The query rewriter (not built)
+### The query rewriter (built)
+
+`ai/language.py`, `LanguageModel.rewrite_query`, with Qwen3.5-0.8B (`AiEngine.rewrite_query`). Step 3 of the search runs it when the names and the pictures fail and the words are a description (3 words or more).
+The model writes up to 3 common names ("laptop, computer, tablet"). The code keeps short names that have letters only. Step 1 runs again with each name, and a name must fit the name of a stored box almost exactly (`rewrite_min_score` 0.9).
+The best score wins. The model runs for 3 to 5 s on this CPU. The instruction and the two examples are in `ai/config.toml`, `[language]`.
+
+**A correction of the first test.** The first test gave "that thing I check my mails on" the answer "laptop, computer, tablet". That instruction had the example "laptop, computer, tablet", so the model repeated it.
+Without such an example, the model answers "mail, inbox, folder" (5 prompts tested). It does not know that mail is read on a computer. The first count of 16 of 20 right answers was too high for the same reason.
+The final instruction has no example that is a right answer. On 30 questions it gives 28 right answers. It misses "that thing I check my mails on" and "what I eat soup with".
+A larger model may know more: Qwen3.5-2B is being downloaded for the same test.
+
+**A wrong answer in the real test, and the fix.** The question "where is my piano" gave the name "keyboard", and the search showed a "laptop keyboard" (score 0.83). The first version of step 3 ran for every question.
+Now it runs only for a description (3 words or more) and a name from the model must score 0.9. The question "the thing I carry my stuff in" still finds the bag (name "bag", score 1.0).
+
+### The old text of this section
+
+The first plan of the rewriter, kept for the record:
 
 A small model rewrites a question that both steps could not answer into two or three object names ("laptop, computer, tablet").
 The steps run again with those names. The names only feed the search. They never reach the voice, and a name still needs a stored box that fits it.
@@ -104,7 +120,28 @@ with the same confident tone. The patient may believe the voice. So the plan is 
 - A check compares the nouns of the answer with the facts. If a noun is not in the facts, the system says the template sentence of today.
 - The picture stays on the page, and a weak result keeps "I am not sure".
 
-The test of one model (not done yet):
+### Result of the test of Qwen3.5-0.8B (2026-11-10)
+
+The model has 853 million parameters (the vision part included). It loads in 1.8 s. The times below are from this development CPU (no GPU, 32-bit numbers).
+
+| Job | Result | Time |
+|-----|--------|------|
+| Rewrite a description into 3 object names (20 questions) | 16 of 20 right without examples, 18 of 20 with 2 examples. "that thing I check my mails on" gives "laptop, computer, tablet" | 3 to 5 s |
+| Describe a frame (image and facts) | Fluent, and right for 3 of 6 frames, with the errors below | 10 to 17 s (330 to 560 prompt tokens) |
+| Describe with facts only (no image) | Worse: it invents a table, a lamp and a clock | 6 to 8 s |
+
+The model copies what it gets. The errors in the description test:
+- It repeats a wrong name of the broad detector: "on a bed" (the detector named a soap tray "bed") and "with a cork nearby" (the detector named a cable "cork").
+- It adds details that nobody checked: "on a ledge", the colours "black" and "light grey", "a wooden handle". The prompt told it not to.
+- Wrong names of the detector are common (see "Test on 18 frames"), so the facts in the prompt must not contain names that nobody checked.
+
+What this means for the plan:
+- The **rewriting** works well enough as a fallback. It needs no image, and a wrong guess still needs a stored box that fits.
+- The **description** is not safe without gates: only checked facts in the prompt (the object, the time, the room, the surface, and detector names above a high confidence that SigLIP confirmed),
+  a check of the nouns in the answer, and the template sentence as the fallback.
+- The description takes 10 to 17 s here, and a Raspberry Pi is slower. So it must be made in the background, when a last-seen record changes, and stored. The answer then uses the stored text.
+
+The plan of the test (done for Qwen3.5-0.8B):
 1. Rewriting: 20 questions, for example "that thing I check my mails on". Count the answers that name the right object.
 2. Description: the 14 photos and the frames of the owner. Count the invented nouns, and read the sentences.
 3. Time: seconds for one rewrite and for one description on this CPU. A Raspberry Pi 5 is slower. A report on text-only models of 1 to 3 billion parameters

@@ -7,6 +7,9 @@ of each frame with a name and a SigLIP vector. This service finds the newest box
    detector gave to the stored boxes. A name with a high score fits. The newest box among the best names wins.
 2. **Pictures.** If no name fits, the SigLIP text vector of the phrase is compared with the vector of each box.
    The best box must reach a probability, and must beat a few neutral phrases ("a wall", "an object").
+3. **Rewrite.** If both fail, and the words are a description (3 words or more), a small language model rewrites them
+   into two or three common names. Step 1 runs again with these names, and a name must fit almost exactly.
+   The names only feed the search. They never reach the voice.
 
 The answer is always weak: the voice says "I am not sure". The words of the user are private. The log shows counts only.
 """
@@ -70,7 +73,7 @@ class OpenAnswer:
 
     label: str  # The name that the detector gave the box, for example "laptop"
     phrase: str  # What was searched for
-    via: str  # "label" (step 1) or "visual" (step 2)
+    via: str  # "label" (step 1), "visual" (step 2) or "rewrite" (step 3)
     score: float  # The label score (cosine), or the SigLIP probability
     answer: Answer  # For the description: `source` is `open`, `strong` is False
 
@@ -116,6 +119,8 @@ class OpenSearchService:
             hit: tuple[OpenRegion, str, float] | None = self._by_label(phrase, rows)
             if hit is None:
                 hit = self._by_picture(phrase, rows)
+            if hit is None:
+                hit = self._by_rewrite(phrase, rows)
         except AiError:
             logger.exception("Open search failed in a model")
             return None
@@ -171,16 +176,17 @@ class OpenSearchService:
             return np.stack([self._label_vectors[l] for l in labels])
 
     def _by_label(
-        self, phrase: str, rows: list[OpenRegion]
+        self, phrase: str, rows: list[OpenRegion], min_score: float | None = None
     ) -> tuple[OpenRegion, str, float] | None:
         labels: list[str] = sorted({row.label for row in rows})
         scores: np.ndarray = (
             self._vectors_of_labels(labels) @ self._engine.encode_texts([phrase])[0]
         )
         best: float = float(scores.max())
-        if best < self._config.label_min_score:
+        needed: float = self._config.label_min_score if min_score is None else min_score
+        if best < needed:
             return None
-        floor: float = max(self._config.label_min_score, best - self._config.label_tier)
+        floor: float = max(needed, best - self._config.label_tier)
         fits: dict[str, float] = {
             label: float(score)
             for label, score in zip(labels, scores, strict=True)
@@ -190,6 +196,27 @@ class OpenSearchService:
             if row.label in fits:
                 return row, "label", fits[row.label]
         return None
+
+    # ---- Step 3: the rewrite ----
+
+    def _by_rewrite(
+        self, phrase: str, rows: list[OpenRegion]
+    ) -> tuple[OpenRegion, str, float] | None:
+        """Rewrite the words into names with the language model, and look for each name (step 1).
+
+        The best score wins. A name from the model is never shown to the user: only the name of a stored box is.
+        """
+        if (
+            not self._engine.language_enabled
+            or len(phrase.split()) < self._config.rewrite_min_words
+        ):
+            return None  # A name is not a description. The model would give a neighbour of the name.
+        best: tuple[OpenRegion, str, float] | None = None
+        for name in self._engine.rewrite_query(phrase):
+            hit = self._by_label(name, rows, self._config.rewrite_min_score)
+            if hit is not None and (best is None or hit[2] > best[2]):
+                best = hit
+        return None if best is None else (best[0], "rewrite", best[2])
 
     # ---- Step 2: the pictures ----
 

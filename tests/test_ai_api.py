@@ -12,6 +12,7 @@ from ai.errors import ImageError
 from ai.settings import AiConfig, load_config
 from ai.types import Box, MatchObject, MatchRegion, RawDetection
 from tests.ai_support import (
+    FakeLanguageModel,
     FakeOpenDetector,
     FakeQueryEncoder,
     FakeSceneClassifier,
@@ -108,7 +109,7 @@ def make_engine(
     detections: list[RawDetection] | None = None,
 ) -> tuple[AiEngine, FakeDetector]:
     detector: FakeDetector = FakeDetector(detections or [])
-    engine: AiEngine = AiEngine(CONFIG, detector=detector, embedder=FakeEmbedder(), query_encoder=FakeQueryEncoder(), verifier=FakeVerifier(), scene_classifier=FakeSceneClassifier(), speech_recognizer=FakeSpeechRecognizer(), open_detector=FakeOpenDetector())  # type: ignore[arg-type]
+    engine: AiEngine = AiEngine(CONFIG, detector=detector, embedder=FakeEmbedder(), query_encoder=FakeQueryEncoder(), verifier=FakeVerifier(), scene_classifier=FakeSceneClassifier(), speech_recognizer=FakeSpeechRecognizer(), open_detector=FakeOpenDetector(), language_model=FakeLanguageModel())  # type: ignore[arg-type]
     return engine, detector
 
 
@@ -123,7 +124,7 @@ def test_quality_assessment_and_blur_gate() -> None:
     config: AiConfig = dataclasses.replace(
         CONFIG, quality=dataclasses.replace(CONFIG.quality, blur_min=100.0)
     )
-    engine: AiEngine = AiEngine(config, detector=FakeDetector([]), embedder=FakeEmbedder(), query_encoder=FakeQueryEncoder(), verifier=FakeVerifier(), scene_classifier=FakeSceneClassifier(), speech_recognizer=FakeSpeechRecognizer(), open_detector=FakeOpenDetector())  # type: ignore[arg-type]
+    engine: AiEngine = AiEngine(config, detector=FakeDetector([]), embedder=FakeEmbedder(), query_encoder=FakeQueryEncoder(), verifier=FakeVerifier(), scene_classifier=FakeSceneClassifier(), speech_recognizer=FakeSpeechRecognizer(), open_detector=FakeOpenDetector(), language_model=FakeLanguageModel())  # type: ignore[arg-type]
     sharp: Image.Image = noise_image()
     blurred: Image.Image = sharp.filter(ImageFilter.GaussianBlur(10))
     sharp_report = engine.assess_quality(sharp)

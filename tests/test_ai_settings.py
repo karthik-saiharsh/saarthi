@@ -91,6 +91,7 @@ def test_bad_values_are_refused(tmp_path: Path, old: str, new: str) -> None:
         "scene",
         "speech",
         "open_detection",
+        "language",
     ],
 )
 def test_missing_table_is_refused(tmp_path: Path, table: str) -> None:
@@ -177,3 +178,36 @@ def test_the_broad_detector_settings_are_checked(tmp_path: Path) -> None:
         assert old in DEFAULT_TEXT, old
         with pytest.raises(AiConfigError):
             load_config(write(tmp_path, DEFAULT_TEXT.replace(old, new, 1)))
+
+
+def test_the_language_model_settings_are_checked(tmp_path: Path) -> None:
+    config = load_config()
+    assert re.fullmatch(r"[0-9a-f]{40}", config.models.language_revision)
+    assert config.models.language_id and config.language.enabled
+    assert len(config.language.rewrite_examples) == 2 and config.language.max_names == 3
+    for old, new in (
+        ("max_input_chars = 300", "max_input_chars = 5"),
+        ("max_new_tokens = 24", "max_new_tokens = 0"),
+        ("max_names = 3", "max_names = 0"),
+        ("max_names = 3", "max_names = 11"),
+        ("enabled = true\n# The longest text", "enabled = 1\n# The longest text"),
+        ('rewrite_system = "You help', 'rewrite_system = ""  # You help'),
+        (
+            '  ["what I listen to music on", "phone, speaker, radio"],\n',
+            '  ["only a question"],\n',
+        ),
+        (
+            '  ["what I listen to music on", "phone, speaker, radio"],\n',
+            '  "not a pair",\n',
+        ),
+    ):
+        assert old in DEFAULT_TEXT, old
+        with pytest.raises(AiConfigError):
+            load_config(write(tmp_path, DEFAULT_TEXT.replace(old, new, 1)))
+
+
+def test_no_example_is_allowed(tmp_path: Path) -> None:
+    text = DEFAULT_TEXT.replace(
+        '  ["what I listen to music on", "phone, speaker, radio"],\n', ""
+    ).replace('  ["what I cook rice in", "pot, cooker, pan"],\n', "")
+    assert load_config(write(tmp_path, text)).language.rewrite_examples == ()

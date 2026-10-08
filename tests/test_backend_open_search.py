@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 
 import db.api as db
 import storage.api as storage
+from ai.errors import InferenceError
 from backend.describe import DescribeService
 from backend.enrollment import EnrollmentService
 from backend.http_search import SEARCH_ROUTE, create_search_router
@@ -24,7 +25,7 @@ from backend.settings import BackendConfig, load_config
 from backend.ui_adapter import UiFindService
 from db.open_regions import NewOpenRegion
 from db.schema import EnrolledObject, Image
-from tests.ai_support import FakeSceneClassifier, make_engine
+from tests.ai_support import FakeLanguageModel, FakeSceneClassifier, make_engine
 from tests.db_support import skip_if_actual_data_has_problems
 from tests.search_support import PREFIX, store_frame
 from ui.ports import FindStatus
@@ -47,12 +48,15 @@ def actual_system() -> Iterator[None]:
         storage.delete_images(db.delete_images([i.id for i in made]))
 
 
-def make_service(**changes: object) -> OpenSearchService:
+def make_service(
+    language: FakeLanguageModel | None = None, **changes: object
+) -> OpenSearchService:
     base: BackendConfig = load_config()
     config = dataclasses.replace(
         base, open_search=dataclasses.replace(base.open_search, **changes)
     )
-    return OpenSearchService(config, make_engine(scene_classifier=SCENE))
+    engine = make_engine(scene_classifier=SCENE, language_model=language)
+    return OpenSearchService(config, engine)
 
 
 def add_box(frame: Image, label: str, shows: str | None = None) -> None:
@@ -159,6 +163,88 @@ def test_a_description_is_searched_as_it_is() -> None:
     add_box(frame, "stuff", shows="thing i check my mails on")
     found = make_service().find("that thing I check my mails on")
     assert found is not None and found.via == "visual"
+
+
+# ---- Step 3: the rewrite ----
+
+DESCRIPTION = "that thing I check my mails on"
+PHRASE = "thing i check my mails on"  # The words without "that", as the search gives them to the model
+
+
+def test_a_description_is_rewritten_into_names_and_a_name_fits() -> None:
+    frame = store_frame(8)
+    add_box(frame, "laptop")
+    language = FakeLanguageModel({PHRASE: ["computer", "laptop", "tablet"]})
+    found = make_service(language).find(DESCRIPTION)
+    assert found is not None and found.via == "rewrite" and found.label == "laptop"
+    assert found.answer.image_id == frame.id and language.calls == [PHRASE]
+
+
+def test_the_best_name_wins() -> None:
+    old, new = store_frame(50), store_frame(5)
+    add_box(old, "laptop")
+    add_box(new, "tablet")
+    language = FakeLanguageModel({PHRASE: ["laptop", "tablet"]})
+    found = make_service(language).find(DESCRIPTION)
+    # Both names fit with the score 1.0. The first name found with that score stays.
+    assert found is not None and found.label == "laptop"
+
+
+def test_a_name_is_not_rewritten() -> None:
+    # "piano" is a name. The model would give a neighbour ("keyboard"), and a wrong box would fit it.
+    add_box(store_frame(8), "laptop keyboard")
+    language = FakeLanguageModel({"piano": ["keyboard"]})
+    assert make_service(language).find("where is my piano") is None
+    assert language.calls == []
+
+
+def test_a_name_from_the_model_must_fit_almost_exactly() -> None:
+    add_box(store_frame(8), "laptop keyboard")
+    language = FakeLanguageModel(
+        {PHRASE: ["laptop"]}
+    )  # The score with "laptop keyboard" is 0.71
+    assert make_service(language).find(DESCRIPTION) is None
+    assert make_service(language, rewrite_min_score=0.7).find(DESCRIPTION) is not None
+
+
+def test_the_rewrite_runs_only_when_the_other_steps_fail() -> None:
+    add_box(store_frame(8), "laptop")
+    language = FakeLanguageModel({"laptop": ["computer"]})
+    found = make_service(language).find("laptop")
+    assert found is not None and found.via == "label" and language.calls == []
+
+
+def test_names_that_fit_no_box_give_none() -> None:
+    add_box(store_frame(8), "laptop")
+    language = FakeLanguageModel({PHRASE: ["piano", "umbrella"]})
+    assert make_service(language).find(DESCRIPTION) is None
+    assert language.calls == [PHRASE]
+
+
+def test_a_switched_off_language_model_is_not_called() -> None:
+    add_box(store_frame(8), "laptop")
+    service = make_service(FakeLanguageModel({PHRASE: ["laptop"]}))
+    service._engine._language = None
+    assert service.find(DESCRIPTION) is None
+
+
+def test_an_error_of_the_language_model_gives_none() -> None:
+    add_box(store_frame(8), "laptop")
+    language = FakeLanguageModel({PHRASE: ["laptop"]})
+    language.error = InferenceError("test")
+    assert make_service(language).find(DESCRIPTION) is None
+
+
+def test_the_log_never_shows_the_words_or_the_names(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    import logging
+
+    add_box(store_frame(8), "laptop")
+    language = FakeLanguageModel({PHRASE: ["laptop"]})
+    with caplog.at_level(logging.DEBUG):
+        make_service(language).find(DESCRIPTION)
+    assert "mails" not in caplog.text
 
 
 # ---- Other cases ----

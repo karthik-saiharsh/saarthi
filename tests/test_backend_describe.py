@@ -28,7 +28,7 @@ from backend.search import Answer, AnswerSource
 from backend.settings import BackendConfig, DescribeConfig
 from backend.settings import load_config as backend_config
 from db.schema import Image
-from tests.ai_support import FakeSceneClassifier, make_engine
+from tests.ai_support import FakeLanguageModel, FakeSceneClassifier, make_engine
 from tests.db_support import skip_if_actual_data_has_problems
 from tests.search_support import BOX, store_frame
 
@@ -356,6 +356,7 @@ def test_a_switched_off_scene_gives_a_sentence_with_the_time_only() -> None:
         verifier=FakeVerifier(),  # type: ignore[arg-type]
         speech_recognizer=FakeSpeechRecognizer(),  # type: ignore[arg-type]
         open_detector=FakeOpenDetector(),  # type: ignore[arg-type]
+        language_model=FakeLanguageModel(),  # type: ignore[arg-type]
     )
     service = DescribeService(backend_config(), engine)
     result = service.describe("bottle", answer_for(frame_at(0)))
