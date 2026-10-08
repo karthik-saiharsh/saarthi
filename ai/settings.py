@@ -140,6 +140,9 @@ class LanguageConfig:
     max_names: int
     rewrite_system: str
     rewrite_examples: tuple[tuple[str, str], ...]
+    describe_system: str
+    describe_max_new_tokens: int
+    describe_image_side: int
 
 
 @dataclass(frozen=True)
@@ -447,6 +450,13 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> AiConfig:
             max_names=language.integer("max_names", minimum=1, maximum=10),
             rewrite_system=language.text("rewrite_system"),
             rewrite_examples=_examples(language),
+            describe_system=language.text("describe_system"),
+            describe_max_new_tokens=language.integer(
+                "describe_max_new_tokens", minimum=1, maximum=300
+            ),
+            describe_image_side=language.integer(
+                "describe_image_side", minimum=64, maximum=2048
+            ),
         ),
     )
     logger.info("Loaded ai config from %s", config_path)

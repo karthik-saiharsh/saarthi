@@ -34,6 +34,7 @@ For the full design, see `docs/backend/Upload Endpoint.md`, `docs/backend/Enroll
 | `search.py` | `SearchService`: answers "where is my object?" from the last-seen record, then from the archive of frames |
 | `query.py` | `QueryResolver`: turns the words of a user into an enrolled object, or a short list to choose from |
 | `open_search.py` | `OpenSearchService`: finds objects that nobody registered. It compares the words with the names and the SigLIP vectors of the stored boxes of the broad detector |
+| `scene_writer.py` | `SceneWriter`: writes the sentence about the place of a last-seen frame with the language model, checks every word, and stores it. The worker runs it when no frame waits |
 | `browser.py` | `MemoryBrowser`: the frames that the worker took, and what the pipeline stored for each (for the memory page). It only reads |
 | `describe.py` | `DescribeService`: makes the sentence for the voice (stage Q2). It chooses the room from neighbouring frames, the surface from the box, and builds the text |
 | `voice.py` | `VoiceService`: checks a WAV recording and turns it into text with the speech recognizer (stage Q0) |
@@ -169,6 +170,10 @@ A variable that is set but empty stops the start, so the route cannot open by mi
 | `describe.room_agree_fraction` | ...and at least this part of them have the room as the best room |
 | `describe.room_min_score` | ...and the average score of the room is at least this value |
 | `describe.surface_min_score` | The surface is named only if its score is at least this value |
+| `describe.write` | false: the language model writes no sentence about the place |
+| `describe.name_min_confidence` | A name of the broad detector goes into the facts only if its confidence is at least this value |
+| `describe.max_words` | A sentence of the model with more words is refused |
+| `describe.safe_words` | Words that a sentence may use without being in the facts |
 | `describe.time_zone` | The time zone for the part of the day (IANA name). Empty: the time zone of the computer |
 | `describe.day_part_min_hours` | A sighting this old or older gets a part of the day ("yesterday evening") |
 | `voice.min_seconds` | A recording shorter than this is refused |

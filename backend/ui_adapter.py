@@ -516,6 +516,7 @@ class UiBrowseService:
             ),
             tuple(view.rooms),
             tuple(view.last_seen_of),
+            tuple(view.descriptions),
         )
 
     async def get_picture(self, image_id: int, max_side: int) -> bytes:

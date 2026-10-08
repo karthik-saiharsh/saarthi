@@ -22,6 +22,7 @@ goes on with the next image.
 
 import logging
 import threading
+from collections.abc import Callable
 from datetime import timedelta
 
 import numpy as np
@@ -72,11 +73,19 @@ def _to_new_region(candidate: Candidate) -> db.NewRegion:
 class Worker:
     """Runs the ai stages on `pending` images. Use `start` for a background thread."""
 
-    def __init__(self, config: BackendConfig, engine: AiEngine) -> None:
+    def __init__(
+        self,
+        config: BackendConfig,
+        engine: AiEngine,
+        idle_task: Callable[[], bool] | None = None,
+    ) -> None:
         assert isinstance(config, BackendConfig), "config must be a BackendConfig"
         assert isinstance(engine, AiEngine), "engine must be an AiEngine"
         self._config: WorkerConfig = config.worker
         self._engine: AiEngine = engine
+        # Work for the time when no frame waits (for example, writing the description of a frame).
+        # It returns True if it did something. An error inside it must not stop the worker.
+        self._idle_task: Callable[[], bool] | None = idle_task
         self._memory: MemoryService = MemoryService(config.memory, engine)
         self._analysed: int = (
             0  # Images that reached the detector. Used for the generic pass
@@ -130,11 +139,23 @@ class Worker:
                     logger.exception("Unexpected error in the worker loop")
                     self._stop.wait(self._config.error_pause_seconds)
                     continue
+                if not worked and self._run_idle_task():
+                    continue  # Look for a new frame before the next idle task
                 if not worked:
                     self._wake.wait(self._config.idle_wait_seconds)
                     self._wake.clear()
         finally:
             db.close_connection()
+
+    def _run_idle_task(self) -> bool:
+        """Run the idle task. Return True if it did something."""
+        if self._idle_task is None or self._stop.is_set():
+            return False
+        try:
+            return self._idle_task()
+        except Exception:  # The loop must never die because of an extra task.
+            logger.exception("The idle task of the worker failed")
+            return False
 
     # ---- One image ----
 

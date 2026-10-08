@@ -24,6 +24,7 @@ from backend.ingest import IngestService
 from backend.maintenance import Maintenance
 from backend.open_search import OpenSearchService
 from backend.query import QueryResolver
+from backend.scene_writer import SceneWriter
 from backend.search import SearchService
 from backend.settings import (
     DEFAULT_CONFIG_PATH,
@@ -72,7 +73,14 @@ class Backend:
                     f"but vectors.open_dimension in db/config.toml is {open_size}"
                 )
 
-        self._worker: Worker = Worker(self._config, engine)
+        self._describe: DescribeService = DescribeService(self._config, engine)
+        # The writer of the descriptions runs when no frame waits.
+        self._scene_writer: SceneWriter = SceneWriter(
+            self._config, engine, self._describe
+        )
+        self._worker: Worker = Worker(
+            self._config, engine, idle_task=self._scene_writer.write_next
+        )
         # An upload wakes the worker, so a new image starts at once.
         self._ingest: IngestService = IngestService(
             self._config, on_stored=self._worker.wake
@@ -86,7 +94,6 @@ class Backend:
         self._voice: VoiceService = VoiceService(self._config, engine)
         self._open_search: OpenSearchService = OpenSearchService(self._config, engine)
         self._browser: MemoryBrowser = MemoryBrowser()
-        self._describe: DescribeService = DescribeService(self._config, engine)
         self._maintenance: Maintenance = Maintenance(self._config)
         self._token: str | None = read_token(self._config)
         self._max_upload_bytes: int = storage.current_config().max_bytes

@@ -45,6 +45,7 @@ For the full design, see `docs/db/Ingestion Database Schema.md`.
 - `sighting`: one row for each accepted match of an object in a frame.
 - `frame_scene`: one row for each frame that the scene model scored: the probability of each room. It is a cache. The row goes with its frame.
 - `open_region`: one row for each box that the broad detector found, with its name, its confidence and the model of its vector. The SigLIP vector is in a second FAISS index (`data/open_regions.faiss`). The row goes with its frame.
+- `frame_description`: one row for each frame and object: the checked sentence of the language model about the place, or an empty text if the check refused it. It is a cache. The row goes with its frame and its object.
 - `last_seen`: one row for each object, with the frame, the box and the time of the last accepted sighting. The frame cannot be deleted while the row exists.
 
 ## Configuration

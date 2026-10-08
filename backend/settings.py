@@ -107,6 +107,10 @@ class DescribeConfig:
     time_zone: str
     # A sighting at least this old gets a part of the day ("yesterday evening") in the sentence.
     day_part_min_hours: int
+    write: bool
+    name_min_confidence: float
+    max_words: int
+    safe_words: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -198,6 +202,30 @@ def _number(table: dict, name: str, key: str, low: float, high: float) -> float:
     if not low <= value <= high:
         raise BackendConfigError(f"{name}.{key} must be between {low} and {high}")
     return float(value)
+
+
+def _boolean(table: dict, name: str, key: str) -> bool:
+    """Read a boolean from a table. Raise `BackendConfigError` if it is missing or not a boolean."""
+    if key not in table:
+        raise BackendConfigError(f"Missing key {name}.{key} in config")
+    value: object = table[key]
+    if not isinstance(value, bool):
+        raise BackendConfigError(f"{name}.{key} must be true or false")
+    return value
+
+
+def _words(table: dict, name: str, key: str) -> tuple[str, ...]:
+    """Read a list of single lower-case words. The list can be empty."""
+    if key not in table:
+        raise BackendConfigError(f"Missing key {name}.{key} in config")
+    value: object = table[key]
+    if not isinstance(value, list) or not all(
+        isinstance(w, str) and re.fullmatch(r"[a-z']+", w) for w in value
+    ):
+        raise BackendConfigError(
+            f"{name}.{key} must be a list of single lower-case words"
+        )
+    return tuple(value)
 
 
 def _time_zone(table: dict) -> str:
@@ -344,6 +372,12 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> BackendConfig:
         surface_min_score=_number(describe, "describe", "surface_min_score", 0.0, 1.0),
         time_zone=_time_zone(describe),
         day_part_min_hours=_integer(describe, "describe", "day_part_min_hours", 1, 24),
+        write=_boolean(describe, "describe", "write"),
+        name_min_confidence=_number(
+            describe, "describe", "name_min_confidence", 0.0, 1.0
+        ),
+        max_words=_integer(describe, "describe", "max_words", 3, 100),
+        safe_words=_words(describe, "describe", "safe_words"),
     )
     voice: dict = _table(raw, "voice")
     voice_config: VoiceConfig = VoiceConfig(

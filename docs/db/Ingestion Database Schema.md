@@ -118,6 +118,19 @@ One row for each vector of a photo.
 
 The gallery vectors are in SQLite, not in FAISS. The gallery is small (tens of objects, tens of views each).
 
+## Description table
+
+The table `frame_description` holds the sentence about the place of an object in a frame (see `docs/backend/Open Search.md`).
+The helpers are in `db/scenes.py` (`get_description`, `set_description`, `list_frames_to_describe`).
+
+| Column | Meaning |
+|--------|---------|
+| `image`, `enrolled_object` | The frame and the object. The pair is unique. The row goes with either of them (cascade) |
+| `model` | The language model and a fingerprint of the instruction and the check. A row of another name is not used |
+| `text` | The checked sentence, without a time. An empty text means that the check refused the sentence |
+| `facts` | JSON: the facts that the model got |
+| `computed_at` | Naive UTC time |
+
 ## Open region table
 
 The table `open_region` holds the boxes of the broad detector (see `docs/backend/Open Search.md`).

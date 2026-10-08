@@ -14,6 +14,7 @@ import threading
 import time
 
 import torch
+from PIL import Image
 from transformers import AutoModelForMultimodalLM, AutoProcessor
 
 from ai.errors import InferenceError, ModelLoadError
@@ -138,3 +139,63 @@ class LanguageModel:
             time.perf_counter() - started,
         )
         return names
+
+    def describe_scene(self, picture: Image.Image, facts: list[str]) -> str:
+        """Write one sentence about the place of an object, from the picture and the checked facts.
+
+        The text can be wrong or can contain details that nobody checked. The caller must check every word
+        of it against the facts before it uses it. The text can be empty.
+        """
+        assert isinstance(picture, Image.Image), "picture must be a PIL image"
+        assert isinstance(facts, list) and facts, "facts must not be empty"
+        cfg = self._config.language
+        view: Image.Image = picture.convert("RGB")
+        view.thumbnail((cfg.describe_image_side, cfg.describe_image_side))
+        text: str = (
+            "FACTS:\n"
+            + "\n".join(f"- {fact}" for fact in facts)
+            + "\nWrite the sentence."
+        )
+        messages: list[dict] = [
+            {
+                "role": "system",
+                "content": [{"type": "text", "text": cfg.describe_system}],
+            },
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image", "image": view},
+                    {"type": "text", "text": text},
+                ],
+            },
+        ]
+        try:
+            prompt: str = self._processor.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
+                enable_thinking=False,
+            )
+            inputs = self._processor(
+                text=[prompt], images=[view], return_tensors="pt"
+            ).to(self._device)
+            started: float = time.perf_counter()
+            with self._lock, torch.inference_mode():
+                output = self._model.generate(
+                    **inputs,
+                    max_new_tokens=cfg.describe_max_new_tokens,
+                    do_sample=False,
+                )
+            answer: str = self._processor.batch_decode(
+                output[:, inputs["input_ids"].shape[1] :], skip_special_tokens=True
+            )[0]
+        except (RuntimeError, ValueError, KeyError, TypeError) as error:
+            logger.error("Description failed: %s: %s", type(error).__name__, error)
+            raise InferenceError("Description failed") from error
+        sentence: str = " ".join(answer.split())
+        logger.info(
+            "Description has %d word(s), made in %.1f s",
+            len(sentence.split()),
+            time.perf_counter() - started,
+        )
+        return sentence

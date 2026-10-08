@@ -76,6 +76,12 @@ The day and the part come from the time zone. The server stores UTC. The setting
 If it is empty (the default), the application uses the time zone of the computer that runs it. A wrong time zone gives a wrong part of the day, so set it on a device that has no zone.
 The time is the time at which the server received the frame (see `docs/backend/Memory.md`). A frame that arrives late has a wrong time.
 
+## The description of the place by the language model (built)
+
+A sure answer can use a checked sentence of the language model about the place, in place of the surface and the room.
+The model gets the picture and the checked facts, and the backend checks every word of its sentence. The sentence is made in the background and stored.
+See `docs/backend/Open Search.md`, "The scene description by one model".
+
 ## The room rule (built, `backend/describe.py`)
 
 The room comes from the answer frame and its neighbouring frames in time (settings: `[describe]` in `backend/config.toml`).

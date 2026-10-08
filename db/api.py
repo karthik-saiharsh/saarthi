@@ -30,6 +30,7 @@ from db.errors import (
 )
 from db.schema import (
     EnrolledObject,
+    FrameDescription,
     FrameScene,
     Image,
     ImageStatus,
@@ -281,6 +282,7 @@ def init_db(config_path: Path = DEFAULT_CONFIG_PATH) -> tuple[SqliteDatabase, Db
                 Sighting,
                 LastSeen,
                 FrameScene,
+                FrameDescription,
                 OpenRegion,
             ],
             safe=True,
@@ -295,7 +297,7 @@ def init_db(config_path: Path = DEFAULT_CONFIG_PATH) -> tuple[SqliteDatabase, Db
         raise
     logger.info(
         "Tables ready: image, region, enrolled_object, reference_photo, object_view, "
-        "sighting, last_seen, frame_scene, open_region"
+        "sighting, last_seen, frame_scene, frame_description, open_region"
     )
     _replace_vector_index(config)
     open_regions.configure(

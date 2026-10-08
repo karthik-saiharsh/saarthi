@@ -12,6 +12,7 @@ The description is an extra. An error of the model or of a file never fails an a
 then has the time only. The log shows counts and ids. It never shows a name or a word of the lists.
 """
 
+import hashlib
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -149,6 +150,21 @@ def _with_article(name: str) -> str:
     return f"{'an' if words[0].lower() in 'aeiou' else 'a'} {words}"
 
 
+def description_model(config: DescribeConfig, engine: AiEngine) -> str:
+    """Name for the stored sentences: the language model, its instruction, and the rules of the check.
+
+    A stored sentence of another name is not used, so a change of the instruction or of the check makes new sentences.
+    """
+    text: str = "\n".join(
+        [
+            *config.safe_words,
+            f"{config.name_min_confidence:.3f}",
+            str(config.max_words),
+        ]
+    )
+    return f"{engine.description_model}/{hashlib.sha1(text.encode()).hexdigest()[:8]}"
+
+
 def build_sentence(
     name: str,
     answer: Answer,
@@ -156,8 +172,12 @@ def build_sentence(
     room: str | None,
     config: DescribeConfig | None = None,
     owned: bool = True,
+    scene: str | None = None,
 ) -> str:
     """Make the sentence for the voice. A weak answer says that the system is not sure.
+
+    `scene` is the checked sentence of the language model about the place (see `backend/scene_writer.py`). It takes the
+    place of the surface and the room, and only a sure answer uses it.
 
     `surface` and `room` have an article, for example "a table" and "a bedroom". None leaves the part out.
     `owned` is False for an object that nobody registered: the sentence says "a laptop", not "your laptop".
@@ -188,9 +208,13 @@ def build_sentence(
             parts.append(f"{who[0].upper()}{who[1:]} was last seen {when}.")
         else:
             parts.append(f"I am not sure, but I may have seen {who} {when}.")
-        if surface:
+        if surface and not (scene and sure):
             parts.append(f"It {'was' if sure else 'may have been'} on {surface}.")
-    if room:
+    if scene and sure:
+        parts.append(
+            scene.strip() if scene.strip().endswith(".") else scene.strip() + "."
+        )
+    elif room:
         parts.append(f"The room {'looks' if sure else 'may look'} like {room}.")
     if not sure:
         parts.append("Please look at the picture.")
@@ -211,9 +235,10 @@ class DescribeService:
     ) -> Description:
         """Make the sentence for an answer. An error of the scene model, of a file or of the database gives a sentence without the place."""
         assert isinstance(answer, Answer), "answer must be an Answer"
+        scene: str | None = self._stored_scene(answer)
         surface: str | None = None
         room: str | None = None
-        if (
+        if scene is None and (
             answer.found
             and answer.image_id is not None
             and answer.box is not None
@@ -228,10 +253,45 @@ class DescribeService:
                     "The place of image %d could not be described", answer.image_id
                 )
         return Description(
-            build_sentence(object_name, answer, surface, room, self._config, owned),
+            build_sentence(
+                object_name, answer, surface, room, self._config, owned, scene
+            ),
             surface,
             room,
         )
+
+    def _stored_scene(self, answer: Answer) -> str | None:
+        """Return the checked sentence of the language model for this answer, or None.
+
+        Only a sure answer of a registered object uses it. None: no sentence was made, or the check refused it.
+        """
+        if (
+            not answer.found
+            or not answer.strong
+            or answer.object_id <= 0
+            or answer.image_id is None
+            or not self._engine.language_enabled
+        ):
+            return None
+        try:
+            text: str | None = db.scenes.get_description(
+                answer.image_id,
+                answer.object_id,
+                description_model(self._config, self._engine),
+            )
+        except db.DbError:
+            logger.warning(
+                "The description of image %d could not be read", answer.image_id
+            )
+            return None
+        return text or None
+
+    def place(
+        self, image_id: int, box: tuple[int, int, int, int], in_hand: bool
+    ) -> tuple[str | None, str | None]:
+        """Return the surface and the room of a frame. Each can be None. The scene model must be on."""
+        assert self._engine.scene_enabled, "the scene classifier is switched off"
+        return self._place(image_id, box, in_hand)
 
     # ---- The place ----
 

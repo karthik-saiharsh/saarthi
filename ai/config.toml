@@ -221,3 +221,10 @@ rewrite_examples = [
   ["what I listen to music on", "phone, speaker, radio"],
   ["what I cook rice in", "pot, cooker, pan"],
 ]
+# The description of a frame (image and checked facts). The model writes one sentence about the place of an object.
+# The sentence has no time: the answer adds the time. The backend checks every word of the sentence against the facts.
+describe_system = "You describe a photo for a person with memory loss. You get FACTS that were checked. Write ONE short, calm sentence of at most 25 words that says where the object is and what is next to it. Use ONLY the facts and what you clearly see in the photo. Do not mention colours, time, people or details that you are not sure about. If you are not sure, say less."
+# The most new tokens for one description.
+describe_max_new_tokens = 60
+# The longest side of the picture that the model gets, in pixels. A larger picture costs more time.
+describe_image_side = 640

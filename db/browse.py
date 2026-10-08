@@ -12,6 +12,7 @@ from peewee import fn
 
 from db.schema import (
     EnrolledObject,
+    FrameDescription,
     FrameScene,
     Image,
     ImageStatus,
@@ -58,6 +59,8 @@ class FrameDetail:
     rooms: dict[str, float] | None
     # The names of the objects whose last-seen record is this frame.
     last_seen_of: list[str]
+    # The sentences about the place of an object (object name, text). A refused sentence is not listed.
+    descriptions: list[tuple[str, str]]
 
 
 def _check_status(status: str | None) -> None:
@@ -144,6 +147,13 @@ def get_frame_detail(image_id: int) -> FrameDetail | None:
             .where(LastSeen.image == image_id)
             .order_by(EnrolledObject.name)
         ]
+        descriptions: list[tuple[str, str]] = [
+            (row.enrolled_object.name, row.text)
+            for row in FrameDescription.select(FrameDescription, EnrolledObject)
+            .join(EnrolledObject)
+            .where(FrameDescription.image == image_id, FrameDescription.text != "")
+            .order_by(EnrolledObject.name)
+        ]
         return FrameDetail(
             image,
             regions,
@@ -151,4 +161,5 @@ def get_frame_detail(image_id: int) -> FrameDetail | None:
             open_regions,
             dict(scene.rooms) if scene is not None else None,
             last_seen_of,
+            descriptions,
         )

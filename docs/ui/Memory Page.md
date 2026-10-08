@@ -29,6 +29,7 @@ Use it on a network that only the household uses. A carer-only page needs a sign
      and every box of the registered-object detector (words, confidence, source, in a hand, and why a crop is not used).
    - **Other objects:** every box of the broad detector with its name and confidence, and the link to a registered box that it overlaps.
      The text reminds the reader that a name can be wrong.
+   - **Description:** the checked sentence of the language model about the place of an object, if one was made for this frame.
    - **Room:** the best room scores, if a description already scored this frame.
 
 ## How it is built

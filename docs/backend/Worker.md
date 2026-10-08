@@ -46,6 +46,9 @@ The db connection is per thread. The worker closes its connection when the threa
 | 10. Broad detection | `engine.detect_open`, `engine.embed_open_crops`, `db.open_regions.add_open_regions` | The objects that nobody registered: boxes with a name, and a SigLIP vector for each box (see `docs/backend/Open Search.md`). A box that overlaps a candidate of step 6 by `open_link_iou` or more is linked to its region. An error is logged and the image goes on |
 | 11. Finish | `db.mark_image_done` | The image is `done` |
 
+When no frame waits, the worker runs an idle task (`Worker(idle_task=...)`). The backend gives it `SceneWriter.write_next`, which writes the sentence about the place of one last-seen frame.
+The task runs one frame at a time, and then the worker looks for a new frame first. An error of the task is logged and never stops the worker.
+
 An image with no candidates is also `done`, with no regions.
 
 In step 6, the phrases for the detector come from the gallery: `db.gallery.gallery_phrases()` gives the category phrase and

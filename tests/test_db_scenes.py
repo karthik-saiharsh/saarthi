@@ -11,13 +11,15 @@ import pytest
 
 import db.api as db
 from db.api import scenes
-from db.schema import FrameScene, Image, ImageStatus
+from db.errors import InvalidRecordError
+from db.schema import EnrolledObject, FrameScene, Image, ImageStatus
 from tests.db_support import (
     TEST_PREFIX,
     make_image,
     set_status,
     skip_if_actual_data_has_problems,
 )
+from tests.search_support import PREFIX
 
 MODEL: str = "test-scene-model"
 NOW: datetime = datetime(2000, 1, 1, 12, 0, 0)
@@ -35,6 +37,8 @@ def actual_database() -> Iterator[None]:
 @pytest.fixture(autouse=True)
 def cleanup() -> Iterator[None]:
     yield
+    # A last-seen record keeps its frame, so the objects of the test go first.
+    EnrolledObject.delete().where(EnrolledObject.name.startswith(PREFIX)).execute()
     ids: list[int] = [
         i.id for i in Image.select().where(Image.file_path.startswith(TEST_PREFIX))
     ]
@@ -180,3 +184,117 @@ def test_a_wrong_window_or_limit_is_refused() -> None:
         scenes.list_neighbour_images(frame.id, 0, 10)
     with pytest.raises(AssertionError):
         scenes.list_neighbour_images(frame.id, 60, 0)
+
+
+# ---- The descriptions ----
+
+DESCRIPTION_MODEL: str = "test-language/abc"
+
+
+def make_last_seen(seconds: int = 0, name: str = "bottle"):
+    """A `done` frame that is the last-seen record of a new object. Return (frame, object)."""
+    from tests.search_support import make_object
+
+    obj = make_object(name=name)
+    frame: Image = make_frame(seconds)
+    db.sightings.set_last_seen(
+        obj.id, frame.id, (1, 1, 5, 5), frame.captured_at, 0.7, 0.2, True, False
+    )
+    return frame, obj
+
+
+def test_a_description_is_saved_and_read_back() -> None:
+    frame, obj = make_last_seen()
+    assert scenes.get_description(frame.id, obj.id, DESCRIPTION_MODEL) is None
+    scenes.set_description(
+        frame.id, obj.id, DESCRIPTION_MODEL, "It is on a table.", ["Object: bottle"]
+    )
+    assert (
+        scenes.get_description(frame.id, obj.id, DESCRIPTION_MODEL)
+        == "It is on a table."
+    )
+    assert scenes.get_description(frame.id, obj.id, "another-model") is None
+
+
+def test_a_refused_description_is_an_empty_text_and_a_new_one_replaces_the_old() -> (
+    None
+):
+    frame, obj = make_last_seen()
+    scenes.set_description(frame.id, obj.id, DESCRIPTION_MODEL, "", [])
+    assert scenes.get_description(frame.id, obj.id, DESCRIPTION_MODEL) == ""
+    scenes.set_description(frame.id, obj.id, DESCRIPTION_MODEL, "New text.", ["x"])
+    assert scenes.get_description(frame.id, obj.id, DESCRIPTION_MODEL) == "New text."
+
+
+def test_two_objects_in_one_frame_have_two_descriptions() -> None:
+    from tests.search_support import make_object
+
+    frame, first = make_last_seen()
+    second = make_object(name="keys")
+    db.sightings.set_last_seen(
+        second.id, frame.id, (2, 2, 6, 6), frame.captured_at, 0.7, 0.2, True, False
+    )
+    scenes.set_description(frame.id, first.id, DESCRIPTION_MODEL, "One.", [])
+    scenes.set_description(frame.id, second.id, DESCRIPTION_MODEL, "Two.", [])
+    assert scenes.get_description(frame.id, first.id, DESCRIPTION_MODEL) == "One."
+    assert scenes.get_description(frame.id, second.id, DESCRIPTION_MODEL) == "Two."
+
+
+def test_the_frames_to_describe_are_the_last_seen_frames_without_a_description_of_the_model() -> (
+    None
+):
+    frame, obj = make_last_seen()
+    todo = [
+        t
+        for t in scenes.list_frames_to_describe(DESCRIPTION_MODEL, 100)
+        if t.object_id == obj.id
+    ]
+    assert [(t.image_id, t.object_name, t.box, t.in_hand) for t in todo] == [
+        (frame.id, obj.name, (1, 1, 5, 5), False)
+    ]
+    scenes.set_description(frame.id, obj.id, DESCRIPTION_MODEL, "Text.", [])
+    assert not [
+        t
+        for t in scenes.list_frames_to_describe(DESCRIPTION_MODEL, 100)
+        if t.object_id == obj.id
+    ]
+    # A description of another model does not count
+    assert [
+        t
+        for t in scenes.list_frames_to_describe("newer-model", 100)
+        if t.object_id == obj.id
+    ]
+
+
+def test_a_frame_that_is_not_done_is_not_described() -> None:
+    frame, obj = make_last_seen()
+    Image.update(status=ImageStatus.REJECTED.value).where(
+        Image.id == frame.id
+    ).execute()
+    assert not [
+        t
+        for t in scenes.list_frames_to_describe(DESCRIPTION_MODEL, 100)
+        if t.object_id == obj.id
+    ]
+    Image.update(status=ImageStatus.DONE.value).where(Image.id == frame.id).execute()
+
+
+def test_a_description_goes_with_its_frame_and_its_object() -> None:
+    from db.schema import FrameDescription
+
+    frame, obj = make_last_seen()
+    scenes.set_description(frame.id, obj.id, DESCRIPTION_MODEL, "Text.", [])
+    EnrolledObject.delete().where(
+        EnrolledObject.id == obj.id
+    ).execute()  # The last-seen record goes with it
+    assert (
+        FrameDescription.select().where(FrameDescription.image == frame.id).count() == 0
+    )
+
+
+def test_the_description_values_are_checked() -> None:
+    frame, obj = make_last_seen()
+    with pytest.raises(AssertionError):
+        scenes.set_description(frame.id, obj.id, DESCRIPTION_MODEL, "x" * 601, [])
+    with pytest.raises(InvalidRecordError):
+        scenes.set_description(frame.id, 2_000_000_000, DESCRIPTION_MODEL, "x", [])

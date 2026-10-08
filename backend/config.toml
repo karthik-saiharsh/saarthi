@@ -126,6 +126,16 @@ surface_min_score = 0.4
 time_zone = ""
 # A sighting at least this many hours old gets a part of the day. A younger one gets "12 minutes ago" or "3 hours ago".
 day_part_min_hours = 6
+# The language model writes one sentence about the place of each last-seen frame, in the background, when the worker has
+# no frame to process. The answer uses the sentence if the check passes, and the template sentence if not.
+write = true
+# A name of the broad detector goes into the facts only if its confidence is at least this value.
+# Wrong names are common below it ("bed" for a soap tray, "cork" for a cable).
+name_min_confidence = 0.7
+# A sentence with more words is refused.
+max_words = 30
+# Words that a sentence may use without being in the facts. They make no claim about the scene.
+safe_words = ["wall", "floor", "room", "background", "side", "edge", "corner", "top", "area"]
 
 [voice]
 # A recording shorter than this (in seconds) is refused.

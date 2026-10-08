@@ -97,6 +97,9 @@ class FrameDetailView:
         tuple[str, float]
     ]  # The best rooms with their probability. Empty if not scored
     last_seen_of: list[str]  # The objects whose last-seen record is this frame
+    descriptions: list[
+        tuple[str, str]
+    ]  # The checked sentences about the place of an object
 
 
 def _summary(row: FrameRow, now: datetime) -> FrameSummary:
@@ -184,6 +187,7 @@ class MemoryBrowser:
             ],
             rooms=rooms,
             last_seen_of=detail.last_seen_of,
+            descriptions=detail.descriptions,
         )
 
     def get_picture(self, image_id: int, max_side: int = 512) -> bytes:

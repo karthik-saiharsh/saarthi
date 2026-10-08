@@ -5,6 +5,7 @@ decoding and all the post-processing are the real code.
 """
 
 import dataclasses
+import threading
 import time
 import uuid
 from collections.abc import Callable, Iterator
@@ -771,3 +772,46 @@ def test_a_rejected_image_gets_no_broad_detection(setup: Setup) -> None:
     assert state(near_duplicate).status == ImageStatus.REJECTED.value
     assert len(setup.open_detector.calls) == 1  # Only the first image
     assert state(first).status == ImageStatus.DONE.value
+
+
+# ---- The idle task ----
+
+
+def test_the_idle_task_runs_when_no_frame_waits_and_its_result_is_used() -> None:
+    calls: list[int] = []
+    results = [True, False]
+    base = load_config()
+    worker = Worker(
+        base, make_engine(), idle_task=lambda: (calls.append(1), results.pop(0))[1]
+    )
+    assert worker._run_idle_task() is True and worker._run_idle_task() is False
+    assert len(calls) == 2
+
+
+def test_an_error_of_the_idle_task_does_not_stop_the_worker() -> None:
+    def fail() -> bool:
+        raise RuntimeError("test")
+
+    worker = Worker(load_config(), make_engine(), idle_task=fail)
+    assert worker._run_idle_task() is False
+
+
+def test_the_idle_task_does_not_run_after_a_stop_or_without_a_task() -> None:
+    calls: list[int] = []
+    worker = Worker(
+        load_config(), make_engine(), idle_task=lambda: calls.append(1) is None
+    )
+    worker._stop.set()
+    assert worker._run_idle_task() is False and calls == []
+    assert Worker(load_config(), make_engine())._run_idle_task() is False
+
+
+def test_the_thread_runs_the_idle_task_when_the_queue_is_empty() -> None:
+    ran = threading.Event()
+    setup = make_setup(idle_wait_seconds=1, error_pause_seconds=0, generic_pass_every=0)
+    setup.worker._idle_task = lambda: ran.set() is None and False
+    setup.worker.start()
+    try:
+        assert ran.wait(10)
+    finally:
+        setup.worker.stop(timeout=10)

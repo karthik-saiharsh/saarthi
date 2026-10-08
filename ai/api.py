@@ -406,6 +406,24 @@ class AiEngine:
         return self._language.rewrite_query(words)
 
     @property
+    def description_model(self) -> str:
+        """Name for the stored descriptions: the language model and a fingerprint of the instruction. It changes when either changes."""
+        assert self._language is not None, "the language model is switched off"
+        text: str = self._config.language.describe_system
+        return f"{self._language.name}/{hashlib.sha1(text.encode()).hexdigest()[:8]}"
+
+    def describe_scene(self, picture: Image.Image, facts: list[str]) -> str:
+        """Write one sentence about the place of an object from the picture and the checked facts (a description).
+
+        The sentence can contain details that nobody checked: the caller must check its words against the facts.
+        It takes 10 to 17 s on a CPU, so call it in the background.
+        """
+        assert isinstance(picture, Image.Image), "picture must be a PIL image"
+        assert isinstance(facts, list) and facts, "facts must not be empty"
+        assert self._language is not None, "the language model is switched off"
+        return self._language.describe_scene(picture, facts)
+
+    @property
     def open_detection_enabled(self) -> bool:
         """True if the broad detector is loaded. If False, `detect_open` must not be called."""
         return self._open_detector is not None

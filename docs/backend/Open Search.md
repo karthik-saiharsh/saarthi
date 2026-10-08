@@ -3,7 +3,7 @@
 ## Status
 
 This feature is **partly built**. Built (phase 1): the broad detector in the `ai` component (`ai/open_detector.py`, `AiEngine.detect_open`).
-Built (phases 2 and 3): the SigLIP vectors, and the table and the vector index for the boxes (`db/open_regions.py`). The worker step (phase 4) and the search (phase 5) are built. The sentence for an open result is the sentence of the registered path with "a laptop" in place of "your laptop". The query rewriter (phase 6) is built. Not built: the scene description by the language model, the page text for an open result, and the calibration.
+Built (phases 2 and 3): the SigLIP vectors, and the table and the vector index for the boxes (`db/open_regions.py`). The worker step (phase 4) and the search (phase 5) are built. The sentence for an open result is the sentence of the registered path with "a laptop" in place of "your laptop". The query rewriter (phase 6) and the scene description by the language model (phase 7) are built. Not built: the description for an open result, the page text for an open result, and the calibration.
 The owner decided this on 2026-11-10: the main pipeline stays on the registered objects. The broad detection is for objects that nobody registered.
 
 ## Purpose
@@ -95,7 +95,7 @@ A small model rewrites a question that both steps could not answer into two or t
 The steps run again with those names. The names only feed the search. They never reach the voice, and a name still needs a stored box that fits it.
 The owner asked to test one vision-language model that does this job and the scene description (see "The scene description").
 
-## The scene description by one model (plan, not built)
+## The scene description by one model (built)
 
 The owner wants the sentence at the end of the pipeline to be a full description of the scene, not only the time. A model reads the full frame
 and the facts that the system knows: the object, the time and the room (see `docs/backend/Voice.md`). The owner also wants to know if
@@ -119,6 +119,25 @@ with the same confident tone. The patient may believe the voice. So the plan is 
 - The prompt tells the model to use only these facts and to describe nothing else.
 - A check compares the nouns of the answer with the facts. If a noun is not in the facts, the system says the template sentence of today.
 - The picture stays on the page, and a weak result keeps "I am not sure".
+
+### How the description works (built)
+
+`backend/scene_writer.py`, `SceneWriter`. The owner decided on 2026-11-10 to use Qwen3.5-0.8B and to give it the picture and the checked facts.
+
+1. **When.** The worker calls `SceneWriter.write_next` when no frame waits. It takes the newest last-seen record whose frame has no sentence
+   (a sentence takes 8 to 17 s here, so it must not delay an answer). The sentence is stored for the frame and the object (`frame_description`).
+2. **The facts.** The object, "A hand holds the object" (if it is in a hand), the surface and the room (the checked rules of `docs/backend/Voice.md`),
+   and the names of the broad detector with a confidence of at least `describe.name_min_confidence` (0.7).
+3. **The model.** `AiEngine.describe_scene(picture, facts)` gives one sentence of at most 25 words, with no colour and no time.
+4. **The check.** `check_sentence` checks every word. A word must be a function word ("on", "next", "is"), a word of the facts, or a safe word (`describe.safe_words`).
+   A digit, a long sentence or any other word refuses the sentence. A refused sentence is stored as an empty text, so it is not made again, and the answer uses the template sentence.
+5. **The answer.** `DescribeService` uses the stored sentence in place of the surface and the room, for a **sure** answer of a registered object only:
+   "Your bottle was last seen 2 minutes ago. The bottle is on the desk." A weak answer, an open result and a refused sentence keep the template.
+   The time always comes from the answer.
+6. A change of the instruction, of `max_words`, of `name_min_confidence` or of `safe_words` changes the name of the stored sentences, so new sentences are made.
+
+Test on the dataset with the real models (one object): the sentence "The speckled bottle is on the desk." passed the check (8.7 s).
+The earlier test without the check had shown wrong names and invented details, so the check stays strict. Phase 8 (the calibration) will count how many sentences it refuses on your new images.
 
 ### Result of the test of Qwen3.5-0.8B (2026-11-10)
 

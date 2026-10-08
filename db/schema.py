@@ -22,6 +22,9 @@ Description (the place of an object, for the voice):
 - `FrameScene`: the room scores of a frame. One row for each frame. It is a cache:
   the scene model makes the scores when a description needs them (see `db/scenes.py`).
 
+- `FrameDescription`: the sentence about the place of an object in a frame, written by the language model and
+  checked by the backend (see `db/scenes.py`). One row for each frame and object. It is a cache too.
+
 Open search (objects that nobody registered, see `docs/backend/Open Search.md`):
 - `OpenRegion`: a box that the broad detector found, with its name and its confidence. The SigLIP
   vector of the box is in a second FAISS index (see `db/open_regions.py`).
@@ -346,3 +349,26 @@ class OpenRegion(BaseModel):
 
     class Meta:
         table_name = "open_region"
+
+
+class FrameDescription(BaseModel):
+    """A sentence about the place of an object in a frame. An empty text means that the sentence was refused."""
+
+    # The rows go with the frame (retention) and with the object.
+    image: ForeignKeyField = ForeignKeyField(
+        Image, backref="descriptions", on_delete="CASCADE", index=True
+    )
+    enrolled_object: ForeignKeyField = ForeignKeyField(
+        EnrolledObject, backref="descriptions", on_delete="CASCADE", index=True
+    )
+    # The language model with a fingerprint of the instruction. A row of another name is not used.
+    model: CharField = CharField()
+    # The checked sentence, or "" if the check refused the sentence of the model. It has no time.
+    text: TextField = TextField()
+    # The facts that the model got, for example ["Object: bottle", "It is on: a desk"].
+    facts: JSONField = JSONField()
+    computed_at: DateTimeField = DateTimeField(default=utc_now)
+
+    class Meta:
+        table_name = "frame_description"
+        indexes = ((("image", "enrolled_object"), True),)

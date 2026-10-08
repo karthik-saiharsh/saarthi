@@ -8,10 +8,20 @@ They change rows only. They do not run a model and do not read files.
 
 import logging
 import math
+from dataclasses import dataclass
 from datetime import timedelta
 
 from db.errors import InvalidRecordError
-from db.schema import FrameScene, Image, ImageStatus, database_proxy, utc_now
+from db.schema import (
+    EnrolledObject,
+    FrameDescription,
+    FrameScene,
+    Image,
+    ImageStatus,
+    LastSeen,
+    database_proxy,
+    utc_now,
+)
 from db.support import translate_errors
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -100,3 +110,101 @@ def list_neighbour_images(
         )
     near.sort(key=lambda image: (abs(image.captured_at - centre.captured_at), image.id))
     return near[:limit]
+
+
+# ---- The descriptions ----
+
+# The longest sentence that the table stores, in characters.
+MAX_TEXT: int = 600
+
+
+@dataclass(frozen=True)
+class FrameToDescribe:
+    """A last-seen record whose frame has no description yet."""
+
+    image_id: int
+    object_id: int
+    object_name: str
+    box: tuple[int, int, int, int]
+    in_hand: bool
+
+
+def get_description(image_id: int, object_id: int, model: str) -> str | None:
+    """Return the sentence for an object in a frame, made by `model`.
+
+    None: no sentence was made yet. An empty text: the sentence was refused, so the answer uses its template.
+    """
+    _check_id(image_id, "image_id")
+    _check_id(object_id, "object_id")
+    assert isinstance(model, str) and model, "model name needed"
+    with translate_errors("get_description"):
+        row: FrameDescription | None = FrameDescription.get_or_none(
+            FrameDescription.image == image_id,
+            FrameDescription.enrolled_object == object_id,
+            FrameDescription.model == model,
+        )
+    return None if row is None else row.text
+
+
+def set_description(
+    image_id: int, object_id: int, model: str, text: str, facts: list[str]
+) -> None:
+    """Save the sentence for an object in a frame. A sentence that exists is replaced.
+
+    An empty text marks a sentence that the check refused, so it is not made again.
+    Raise `InvalidRecordError` if the frame or the object does not exist.
+    """
+    _check_id(image_id, "image_id")
+    _check_id(object_id, "object_id")
+    assert isinstance(model, str) and model, "model name needed"
+    assert isinstance(text, str) and len(text) <= MAX_TEXT, "text too long"
+    assert isinstance(facts, list) and all(isinstance(f, str) for f in facts)
+    with translate_errors("set_description"), database_proxy.atomic():
+        FrameDescription.insert(
+            image=image_id,
+            enrolled_object=object_id,
+            model=model,
+            text=text,
+            facts=list(facts),
+            computed_at=utc_now(),
+        ).on_conflict_replace().execute()
+
+
+def list_frames_to_describe(model: str, limit: int) -> list[FrameToDescribe]:
+    """Return the last-seen records whose frame has no description of `model`, the newest first.
+
+    Only `done` frames are listed. A frame with a description of another model is listed again.
+    """
+    assert isinstance(model, str) and model, "model name needed"
+    assert isinstance(limit, int) and 0 < limit <= 100, "limit out of range"
+    with translate_errors("list_frames_to_describe"):
+        rows: list[LastSeen] = list(
+            LastSeen.select(LastSeen, EnrolledObject, Image)
+            .join(EnrolledObject)
+            .switch(LastSeen)
+            .join(Image)
+            .where(Image.status == ImageStatus.DONE.value)
+            .order_by(LastSeen.seen_at.desc(), LastSeen.enrolled_object.asc())
+        )
+        if not rows:
+            return []
+        done: set[tuple[int, int]] = {
+            (d.image_id, d.enrolled_object_id)
+            for d in FrameDescription.select(
+                FrameDescription.image, FrameDescription.enrolled_object
+            ).where(
+                FrameDescription.model == model,
+                FrameDescription.image.in_({row.image_id for row in rows}),
+            )
+        }
+        return [
+            FrameToDescribe(
+                row.image_id,
+                row.enrolled_object_id,
+                row.enrolled_object.name,
+                (row.x0, row.y0, row.x1, row.y1),
+                bool(row.in_hand),
+            )
+            for row in rows
+            if (row.image_id, row.enrolled_object_id) not in done
+        ][:limit]

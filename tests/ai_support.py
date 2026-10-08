@@ -238,12 +238,21 @@ class FakeLanguageModel:
         self.names: dict[str, list[str]] = names or {}
         self.error: Exception | None = None
         self.calls: list[str] = []
+        # The text that `describe_scene` gives, and the pictures and facts that it got.
+        self.description: str = ""
+        self.described: list[tuple[tuple[int, int], list[str]]] = []
 
     def rewrite_query(self, words):
         if self.error is not None:
             raise self.error
         self.calls.append(words)
         return list(self.names.get(words, []))
+
+    def describe_scene(self, picture, facts):
+        if self.error is not None:
+            raise self.error
+        self.described.append((picture.size, list(facts)))
+        return self.description
 
 
 def make_engine(

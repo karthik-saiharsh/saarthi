@@ -202,6 +202,9 @@ class FrameDetail:
     open_boxes: tuple[OpenBoxInfo, ...]
     rooms: tuple[tuple[str, float], ...]  # The best rooms with their probability
     last_seen_of: tuple[str, ...]
+    descriptions: tuple[
+        tuple[str, str], ...
+    ] = ()  # (object name, sentence about its place)
 
 
 class BrowseService(Protocol):

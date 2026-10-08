@@ -1,5 +1,6 @@
 """The language model that rewrites a description into object names. The model is a stub, so the tests are fast."""
 
+import dataclasses
 import threading
 from types import SimpleNamespace
 
@@ -149,3 +150,95 @@ def test_a_switched_off_language_model_is_reported() -> None:
     assert not engine.language_enabled
     with pytest.raises(AssertionError, match="switched off"):
         engine.rewrite_query("words")
+
+
+# ---- The description of a frame ----
+
+
+class StubDescribeProcessor(StubProcessor):
+    def __init__(self, answer: str) -> None:
+        super().__init__(answer)
+        self.images: list = []
+
+    def __call__(self, text, return_tensors, images=None):
+        self.images = images
+        return super().__call__(text, return_tensors)
+
+
+def make_describer(
+    answer: str = "The bottle is on a table.",
+) -> tuple[LanguageModel, StubDescribeProcessor]:
+    model, _ = make_model()
+    processor = StubDescribeProcessor(answer)
+    model._processor = processor
+    return model, processor
+
+
+def test_a_description_gets_the_picture_and_the_facts() -> None:
+    from PIL import Image
+
+    model, processor = make_describer("  The bottle   is on a table.\n")
+    picture = Image.new("RGB", (1600, 800))
+    sentence = model.describe_scene(picture, ["Object: bottle", "It is on: a table"])
+    assert sentence == "The bottle is on a table."
+    user = processor.messages[-1]["content"]
+    assert (
+        user[0]["type"] == "image"
+        and max(user[0]["image"].size) == CONFIG.language.describe_image_side
+    )
+    assert (
+        "- Object: bottle" in user[1]["text"]
+        and "- It is on: a table" in user[1]["text"]
+    )
+    assert processor.images and picture.size == (
+        1600,
+        800,
+    )  # The picture of the caller is not changed
+
+
+def test_a_model_error_in_a_description_becomes_an_inference_error() -> None:
+    from PIL import Image
+
+    model, _ = make_describer()
+
+    def fail(**kwargs: object) -> None:
+        raise RuntimeError("secret detail")
+
+    model._model = SimpleNamespace(generate=fail)
+    with pytest.raises(InferenceError) as caught:
+        model.describe_scene(Image.new("RGB", (10, 10)), ["Object: x"])
+    assert "secret" not in str(caught.value)
+
+
+def test_the_engine_describes_and_names_the_model_with_a_fingerprint() -> None:
+    from PIL import Image
+
+    fake = FakeLanguageModel()
+    fake.description = "A sentence."
+    engine = make_engine(language_model=fake)
+    assert (
+        engine.describe_scene(Image.new("RGB", (20, 10)), ["Object: x"])
+        == "A sentence."
+    )
+    assert fake.described == [((20, 10), ["Object: x"])]
+    assert engine.description_model.startswith(fake.name + "/")
+    changed = dataclasses.replace(
+        CONFIG,
+        language=dataclasses.replace(
+            CONFIG.language, describe_system="Another instruction."
+        ),
+    )
+    other = make_engine(language_model=fake)
+    other._config = changed
+    assert other.description_model != engine.description_model
+
+
+def test_a_switched_off_language_model_cannot_describe() -> None:
+    from PIL import Image
+
+    engine = make_engine()
+    engine._language = None
+    with pytest.raises(AssertionError, match="switched off"):
+        engine.describe_scene(Image.new("RGB", (10, 10)), ["Object: x"])
+    with pytest.raises(AssertionError, match="switched off"):
+        _ = engine.description_model

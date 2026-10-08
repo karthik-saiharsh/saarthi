@@ -175,6 +175,11 @@ def frame_detail(
     else:
         ui.label(NO_OPEN_TEXT).classes("up-detail__meta")
 
+    if detail.descriptions:
+        ui.label("Description").classes("up-section-title")
+        for name, text in detail.descriptions:
+            ui.label(f"{name}: {text}").classes("up-detail__meta")
+
     ui.label("Room").classes("up-section-title")
     if detail.rooms:
         ui.label(

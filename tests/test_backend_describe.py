@@ -21,6 +21,7 @@ from backend.describe import (
     build_sentence,
     choose_room,
     day_phrase,
+    description_model,
     part_of_day,
     time_phrase,
 )
@@ -50,6 +51,11 @@ def actual_system() -> Iterator[None]:
     skip_if_actual_data_has_problems()
     before: set[str] = set(db.list_image_paths())
     yield
+    # The objects go first: a last-seen record keeps its frame. Their reference photos have no file.
+    from db.schema import EnrolledObject
+    from tests.search_support import PREFIX
+
+    EnrolledObject.delete().where(EnrolledObject.name.startswith(PREFIX)).execute()
     made: list[Image] = [i for i in Image.select() if i.file_path not in before]
     if made:
         storage.delete_images(db.delete_images([i.id for i in made]))
@@ -493,3 +499,76 @@ def test_the_server_time_zone_is_used_when_the_name_is_empty() -> None:
     assert phrase is not None and (
         "this" in phrase or "night" in phrase or "yesterday" in phrase
     )
+
+
+# ---- The sentence of the language model ----
+
+
+def stored_description(
+    frame: Image, text: str, **changes: object
+) -> tuple[DescribeService, FakeSceneClassifier]:
+    """A service, and a sentence in the database for the object 1 of `answer_for`. Return the service."""
+    from db.schema import EnrolledObject
+    from tests.search_support import make_object
+
+    obj: EnrolledObject = make_object()
+    service, scene = make_service(**changes)
+    model = description_model(service._config, service._engine)
+    db.scenes.set_description(frame.id, obj.id, model, text, ["Object: x"])
+    service._test_object_id = obj.id  # type: ignore[attr-defined]
+    return service, scene
+
+
+def test_a_checked_sentence_takes_the_place_of_the_surface_and_the_room() -> None:
+    frame = frame_at(0)
+    service, scene = stored_description(
+        frame, "The bottle is on a table next to a laptop"
+    )
+    answer = answer_for(frame, object_id=service._test_object_id)  # type: ignore[attr-defined]
+    result = service.describe("bottle", answer)
+    assert result.text == (
+        "Your bottle was last seen 10 minutes ago. The bottle is on a table next to a laptop."
+    )
+    assert (
+        scene.room_calls == [] and scene.surface_calls == []
+    )  # No scene model run is needed
+
+
+def test_a_refused_sentence_gives_the_template() -> None:
+    frame = frame_at(0)
+    service, _ = stored_description(frame, "")  # Refused
+    answer = answer_for(frame, object_id=service._test_object_id)  # type: ignore[attr-defined]
+    assert "It was on a table." in service.describe("bottle", answer).text
+
+
+def test_a_weak_answer_does_not_use_the_sentence() -> None:
+    frame = frame_at(0)
+    service, _ = stored_description(frame, "The bottle is on a table")
+    answer = answer_for(frame, object_id=service._test_object_id, strong=False)  # type: ignore[attr-defined]
+    text = service.describe("bottle", answer).text
+    assert "I am not sure" in text and "The bottle is on a table." not in text
+
+
+def test_an_answer_of_an_open_object_does_not_use_a_sentence() -> None:
+    frame = frame_at(0)
+    service, _ = stored_description(frame, "The bottle is on a table")
+    answer = answer_for(frame, object_id=0, strong=True)
+    assert "The bottle is on a table." not in service.describe("bottle", answer).text
+
+
+def test_a_sentence_of_another_instruction_or_check_is_not_used() -> None:
+    frame = frame_at(0)
+    service, _ = stored_description(frame, "The bottle is on a table")
+    changed = dataclasses.replace(
+        service._config, max_words=29
+    )  # A change of the check changes the name
+    service._config = changed
+    answer = answer_for(frame, object_id=service._test_object_id)  # type: ignore[attr-defined]
+    assert "It was on a table." in service.describe("bottle", answer).text
+
+
+def test_the_time_of_the_answer_stays_in_the_sentence() -> None:
+    frame = frame_at(0)
+    service, _ = stored_description(frame, "The bottle is on a table.")
+    answer = answer_for(frame, object_id=service._test_object_id, age_seconds=3 * 3600)  # type: ignore[attr-defined]
+    assert "3 hours ago" in service.describe("bottle", answer).text
