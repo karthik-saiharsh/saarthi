@@ -24,16 +24,16 @@ dev = [
     "pytest>=9.1.1",
 ]
 
-# On x86 use the CPU-only torch wheel. The default wheel adds several GB of CUDA libraries.
-# On the Raspberry Pi (aarch64) the normal wheel is already CPU-only.
+# On Linux (x86 and the Raspberry Pi, aarch64) use the CPU-only torch wheel from the PyTorch CPU index.
+# The wheel of PyPI for Linux needs the CUDA libraries (several GB), and neither machine has a GPU.
 [[tool.uv.index]]
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
 [tool.uv.sources]
-torch = [{ index = "pytorch-cpu", marker = "platform_machine == 'x86_64'" }]
-torchvision = [{ index = "pytorch-cpu", marker = "platform_machine == 'x86_64'" }]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
 
 [tool.pytest.ini_options]
 # Tests that load the real models are slow. Run them with: pytest -m slow

@@ -21,7 +21,8 @@ logger: logging.Logger = logging.getLogger(__name__)
 
 PRODUCT_NAME: str = "Saarthi"
 PAGE_TITLE: str = "Find my things"
-TALK_SCRIPT: str = "window.saarthiTalk.toggle()"
+# NiceGUI needs a JavaScript function here. A bare expression runs at once when the page is built, and it breaks the card.
+TALK_SCRIPT: str = "() => window.saarthiTalk.toggle()"
 MESSAGE_VOICE: str = "The computer could not listen. Please try again."
 PAGE_SUBTITLE: str = "Choose an object, or tell Saarthi what you are looking for."
 

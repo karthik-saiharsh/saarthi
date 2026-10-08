@@ -203,3 +203,28 @@ def test_the_tls_keys_must_be_strings(tmp_path: Path) -> None:
 def test_a_known_time_zone_is_accepted(tmp_path: Path) -> None:
     text = DEFAULT_TEXT.replace('time_zone = ""', 'time_zone = "Asia/Kolkata"', 1)
     assert load_config(write(tmp_path, text)).describe.time_zone == "Asia/Kolkata"
+
+
+def test_the_variables_replace_the_tls_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cert, key = tmp_path / "c.pem", tmp_path / "k.pem"
+    cert.write_text("x")
+    key.write_text("x")
+    monkeypatch.setenv("SAARTHI_TLS_CERT", str(cert))
+    monkeypatch.setenv("SAARTHI_TLS_KEY", str(key))
+    server = load_config().server
+    assert server.tls_enabled and server.tls_paths() == (cert, key)
+
+
+def test_one_tls_variable_alone_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SAARTHI_TLS_CERT", "/tmp/c.pem")
+    monkeypatch.delenv("SAARTHI_TLS_KEY", raising=False)
+    with pytest.raises(BackendConfigError, match="both"):
+        load_config()
+
+
+def test_empty_tls_variables_change_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SAARTHI_TLS_CERT", "  ")
+    monkeypatch.setenv("SAARTHI_TLS_KEY", "")
+    assert not load_config().server.tls_enabled

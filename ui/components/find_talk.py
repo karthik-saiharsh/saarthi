@@ -6,6 +6,7 @@ TITLE: str = "Say what you look for"
 HINT: str = "Tap Talk, say for example: where is my bottle. Tap Stop when you finish."
 HEARD_PREFIX: str = "I heard: "
 BUTTON_ID: str = "saarthi-talk"
+IDLE_TEXT: str = "Talk"
 
 
 def find_talk(on_talk_tap_script: str, heard: str | None) -> None:
@@ -17,6 +18,7 @@ def find_talk(on_talk_tap_script: str, heard: str | None) -> None:
     button.classes("up-talk")
     button.on("click", js_handler=on_talk_tap_script)
     with button:
-        ui.element("span").classes("up-talk__text").text = "Talk"
+        # A label shows its text. (A plain `ui.element` has no text.) The script of the browser changes this text.
+        ui.label(IDLE_TEXT).classes("up-talk__text")
     if heard:
         ui.label(f"{HEARD_PREFIX}{heard}").classes("up-find-text up-talk__heard")

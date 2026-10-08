@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+# Remove everything that Saarthi stored, so the next ./start is a first run:
+# the pictures, the database, the vector indexes, and all registered objects with their photos.
+# The packages, the downloaded models and the certificate stay.
+#
+#   ./clear          ask first
+#   ./clear --yes    do not ask
+#   ./clear --all    also remove the local certificate (certs/). The phones must install a new one.
+#   ./clear --help
+#
+# The application must not run. Stop it first (Ctrl+C in the window of ./start).
+set -euo pipefail
+cd "$(dirname "$(readlink -f "$0")")"
+PROJECT="$PWD"
+
+ASK=1
+ALL=0
+for argument in "$@"; do
+  case "$argument" in
+    --yes | -y) ASK=0 ;;
+    --all) ALL=1 ;;
+    -h | --help) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "Unknown option: $argument (try ./clear --help)" >&2; exit 2 ;;
+  esac
+done
+
+say() { printf '%s\n' "$*"; }
+fail() { printf 'Error: %s\n' "$*" >&2; exit 1; }
+export PATH="$HOME/.local/bin:$PATH"
+
+# ---- Where is the data? The settings of the components say. If they cannot be read, the usual places are used. ----
+FILES=()
+FOLDER=""
+if command -v uv >/dev/null 2>&1 && LIST="$(uv run --frozen --offline python -m deploy.helpers paths 2>/dev/null)"; then
+  while read -r kind path; do
+    case "$kind" in
+      file) FILES+=("$path") ;;
+      folder) FOLDER="$path" ;;
+    esac
+  done <<<"$LIST"
+fi
+if [ -z "$FOLDER" ]; then
+  say "The settings could not be read. The usual places are used."
+  for name in saarthi.db saarthi.db-wal saarthi.db-shm saarthi.db-journal regions.faiss open_regions.faiss saarthi.lock; do
+    FILES+=("$PROJECT/db/data/$name")
+  done
+  FOLDER="$PROJECT/storage/uploads"
+fi
+
+# A path outside the project folder is never removed.
+inside_project() {
+  local resolved
+  resolved="$(realpath -m "$1")"
+  [ "$resolved" != "$PROJECT" ] && [[ "$resolved" == "$PROJECT"/* ]]
+}
+for path in "${FILES[@]}" "$FOLDER"; do
+  inside_project "$path" || fail "Refused: $path is not inside the project folder."
+done
+
+# ---- The application must not run ----
+for path in "${FILES[@]}"; do
+  if [ "$(basename "$path")" = "saarthi.lock" ] && [ -f "$path" ]; then
+    pid="$(tr -dc '0-9' <"$path" || true)"
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && ps -p "$pid" -o args= | grep -q "main.py"; then
+      fail "Saarthi runs (process $pid). Stop it first with Ctrl+C, then run ./clear again."
+    fi
+  fi
+done
+
+# ---- What will go ----
+say "This removes all stored data of Saarthi:"
+if command -v uv >/dev/null 2>&1 && SUMMARY="$(uv run --frozen --offline python -m deploy.helpers summary 2>/dev/null)"; then
+  while read -r key number; do
+    say "  ${number} ${key}"
+  done <<<"$SUMMARY"
+fi
+say "  The database, the vector indexes and the pictures in ${FOLDER}"
+[ "$ALL" = 1 ] && say "  The local certificate (certs/)"
+say "The packages, the downloaded models and (without --all) the certificate stay."
+if [ "$ASK" = 1 ]; then
+  printf 'Type yes to remove it: '
+  read -r answer
+  [ "$answer" = "yes" ] || { say "Nothing was removed."; exit 1; }
+fi
+
+# ---- Remove ----
+for path in "${FILES[@]}"; do
+  rm -f -- "$path"
+done
+if [ -d "$FOLDER" ]; then
+  find "$FOLDER" -mindepth 1 -delete
+fi
+if [ "$ALL" = 1 ]; then
+  inside_project "$PROJECT/certs" && rm -rf -- "$PROJECT/certs"
+fi
+say "Done. Saarthi is clean. The next ./start is a first run."

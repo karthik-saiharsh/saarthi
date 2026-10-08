@@ -8,6 +8,13 @@ This guide shows how to make the application serve HTTPS on the local network.
 
 The application stays on HTTP when you set no certificate. This is the default.
 
+## The quick way: ./start
+
+`./start` does all the steps of this guide on its own. It makes the local authority and the certificate (for every address of the machine, and for `hostname.local`),
+renews the certificate when the address changes or when it ends in less than 30 days, sets the variables `SAARTHI_TLS_CERT` and `SAARTHI_TLS_KEY`, and starts the application with HTTPS.
+It also serves the public certificate of the authority at `http://<address>:8081/ca.pem` for the phone, as long as it runs. Nothing else of `certs/` is served.
+The steps below are for a manual setup.
+
 ## Settings
 
 In `backend/config.toml`, section `[server]`:
@@ -17,7 +24,7 @@ In `backend/config.toml`, section `[server]`:
 | `tls_certfile` | The path of the certificate file (PEM). A relative path starts at the project folder |
 | `tls_keyfile` | The path of the key file (PEM) |
 
-Set both keys, or set none. One key alone is an error. A path that is not a file stops the start with a clear message.
+Set both keys, or set none. The variables `SAARTHI_TLS_CERT` and `SAARTHI_TLS_KEY` replace the keys, and `./start` sets them. One key alone is an error. A path that is not a file stops the start with a clear message.
 With both keys set, the log says `Serving on https://...`.
 
 The folder `certs/` and the files `*.pem` and `*.key` are in `.gitignore`. Never commit a key.

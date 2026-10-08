@@ -37,6 +37,7 @@ port = 8080
 worker_stop_seconds = 120
 # HTTPS. A phone allows the microphone only on a page with HTTPS. Set both paths to turn it on.
 # A relative path starts at the project folder. Empty: the server uses HTTP. See docs/backend/HTTPS.md.
+# The variables SAARTHI_TLS_CERT and SAARTHI_TLS_KEY replace these two keys. The script ./start sets them.
 tls_certfile = ""
 tls_keyfile = ""
 

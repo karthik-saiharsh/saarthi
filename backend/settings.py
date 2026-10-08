@@ -1,6 +1,7 @@
 """Settings of the backend component. They come from `config.toml`."""
 
 import logging
+import os
 import re
 import tomllib
 from dataclasses import dataclass
@@ -13,6 +14,9 @@ logger: logging.Logger = logging.getLogger(__name__)
 
 BACKEND_DIR: Path = Path(__file__).resolve().parent
 PROJECT_DIR: Path = BACKEND_DIR.parent
+# These environment variables replace `server.tls_certfile` and `server.tls_keyfile`.
+TLS_CERT_VARIABLE: str = "SAARTHI_TLS_CERT"
+TLS_KEY_VARIABLE: str = "SAARTHI_TLS_KEY"
 DEFAULT_CONFIG_PATH: Path = BACKEND_DIR / "config.toml"
 
 _ENV_NAME: re.Pattern[str] = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
@@ -300,6 +304,14 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> BackendConfig:
         if not isinstance(value, str):
             raise BackendConfigError(f"server.{key} must be a string")
         tls[key] = value.strip()
+    # The script `./start` sets these variables, so the config file stays the same on every machine.
+    for key, variable in (
+        ("tls_certfile", TLS_CERT_VARIABLE),
+        ("tls_keyfile", TLS_KEY_VARIABLE),
+    ):
+        override: str = os.environ.get(variable, "").strip()
+        if override:
+            tls[key] = override
     if bool(tls["tls_certfile"]) != bool(tls["tls_keyfile"]):
         raise BackendConfigError(
             "server.tls_certfile and server.tls_keyfile must both be set, or both be empty"

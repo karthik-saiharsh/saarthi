@@ -54,3 +54,11 @@ def test_a_voice_error_gives_its_fixed_text() -> None:
     answer = client.post(VOICE_ROUTE, content=b"x")
     assert answer.status_code == 422
     assert answer.json() == {"error": "The recording is too short."}
+
+
+def test_the_talk_button_handler_is_a_javascript_function() -> None:
+    # NiceGUI gives the text to the browser as a handler. A bare expression such as `window.x()` runs when the page
+    # is built, returns nothing, and breaks the whole card ("Cannot read properties of undefined (reading '_withMods')").
+    from ui.pages.find_page import TALK_SCRIPT
+
+    assert TALK_SCRIPT.startswith("() =>") and TALK_SCRIPT.endswith(")")

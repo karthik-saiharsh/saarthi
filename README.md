@@ -12,7 +12,14 @@ Edge Efficient Episodic Memory Aid
 1. Update the `pre-commit` to use the latest versions of `ruff` and `black` with `pre-commit autoupdate` in this project directory.
 1. That's it! You're good to begin development :)
 
-## Run the application
+## Quick start (a computer or a Raspberry Pi)
+
+- `./start` starts everything and hosts it on the local network. It installs the packages, makes a local certificate for HTTPS,
+  and prints the addresses to open on the phone. The phone must use the same Wi-Fi. `./start --http` starts without HTTPS.
+- `./clear` removes all stored data (pictures, database, indexes, registered objects). Stop the application first. `./clear --all` also removes the certificate.
+- For a Raspberry Pi 5, see `docs/Raspberry Pi.md`.
+
+## Run the application by hand
 
 1. Run: `uv run python main.py`
 1. Open `http://<address of this computer>:8080/upload` in a browser to upload pictures.

@@ -1,0 +1,20 @@
+# systemd unit for Saarthi. ./deploy/install_service.sh fills the two names and installs it.
+[Unit]
+Description=Saarthi, the memory aid
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__PROJECT__
+ExecStart=__PROJECT__/start
+# Ctrl+C is the safe way to stop Saarthi. The worker finishes its picture and the index is saved.
+KillSignal=SIGINT
+# The worker may need up to 120 seconds to finish (server.worker_stop_seconds in backend/config.toml).
+TimeoutStopSec=150
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

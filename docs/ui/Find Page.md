@@ -163,4 +163,13 @@ If the server hears no speech, the page says so and starts no search. The audio 
 The microphone works only on a page with HTTPS (see `docs/backend/HTTPS.md`) or on `localhost`. Without it, the page shows a short notice.
 The script is `ui/static/js/talk.js`. It uses a script processor node, which is old but works in all browsers.
 The buttons and the text box stay. They are the way for a carer to use the page.
+
+How to use it on a phone:
+1. Open the page with `https://` and trust the local certificate (`docs/backend/HTTPS.md`). Without HTTPS the browser blocks the microphone.
+2. The **Talk** card is the first card under the menu. It shows only if `speech.enabled` is true in `ai/config.toml`.
+3. The first tap on **Talk** asks for the permission to use the microphone. Allow it.
+4. Speak, and tap **Stop**. A recording of more than 15 seconds stops by itself. The words show under the button, and the answer shows above it.
+
+The test with a fake microphone in a headless Chromium (a beep as the sound) went through all steps: the button, the recording, the upload, "I heard: ...", and the search.
+A first version of the card showed an empty box, because the click handler was not a JavaScript function. `tests/test_ui_pages.py` now builds the pages and checks the button and its handler.
 A test on the real phone and tablet is still to do.
