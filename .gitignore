@@ -23,7 +23,6 @@ ai/indexes/
 # AI assistant files
 CLAUDE.md
 .claude/
-docs/ai/
 
 db/data/
 certs/

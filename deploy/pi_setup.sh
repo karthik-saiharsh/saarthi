@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# One-time setup of a Raspberry Pi 5 for Saarthi. Run it as a normal user (it asks for sudo for the packages).
+# One-time setup of a Raspberry Pi 5 for Saarthi (Raspberry Pi OS 64-bit, Bookworm or Trixie).
+# Run it as a normal user (it asks for sudo for the packages).
 #
 #   ./deploy/pi_setup.sh
 #
@@ -26,11 +27,17 @@ say "Free disk space here: ${FREE_GB} GB"
 [ "$FREE_GB" -ge 15 ] || fail "Less than 15 GB of free disk space. The packages and the models need about 10 GB, and the pictures need more."
 
 # ---- The system packages ----
-# libgl1 and libglib2.0-0: the package opencv (a dependency of the broad detector) needs them. openssl: the local certificate.
+# libgl1 and libglib: the package opencv (a dependency of the broad detector) needs them. openssl: the local certificate.
 # avahi-daemon: the name hostname.local, so a phone can use a name and not an address.
+# The package libglib2.0-0 is named libglib2.0-0t64 in Debian 13 (Trixie).
+# Without a terminal, give the program that prints the password in SUDO_ASKPASS. Then `sudo -A` asks it.
+SUDO="sudo"
+[ -n "${SUDO_ASKPASS:-}" ] && SUDO="sudo -A"
 say "Installing the system packages (sudo)..."
-sudo apt-get update
-sudo apt-get install -y --no-install-recommends curl ca-certificates git openssl python3 libgl1 libglib2.0-0 avahi-daemon
+$SUDO apt-get update
+GLIB="libglib2.0-0"
+apt-cache show libglib2.0-0t64 >/dev/null 2>&1 && GLIB="libglib2.0-0t64"
+$SUDO apt-get install -y --no-install-recommends curl ca-certificates git openssl python3 libgl1 "$GLIB" avahi-daemon rsync
 
 # ---- uv ----
 export PATH="$HOME/.local/bin:$PATH"

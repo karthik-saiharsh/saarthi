@@ -65,9 +65,11 @@ def make_cache(tmp_path: Path, missing: str | None = None) -> Path:
         (models.language_id, models.language_revision),
     ):
         if model_id != missing:
-            (
+            snapshot = (
                 hub / f"models--{model_id.replace('/', '--')}" / "snapshots" / revision
-            ).mkdir(parents=True)
+            )
+            snapshot.mkdir(parents=True)
+            (snapshot / "model.safetensors").write_bytes(b"weights")
     return hub
 
 
@@ -105,3 +107,27 @@ def test_a_missing_detector_file_means_not_cached(
 ) -> None:
     monkeypatch.setattr(helpers, "PROJECT_DIR", tmp_path / "empty-project")
     assert helpers.models_cached(make_cache(tmp_path)) is False
+
+
+def test_a_broken_link_to_the_weights_means_not_cached(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A copy of the cache can leave a link to a blob that is not there. The first start then fails in offline mode.
+    project = tmp_path / "project"
+    (project / "ai" / "models").mkdir(parents=True)
+    (project / "ai" / "models" / load_config().models.open_detector_file).write_bytes(
+        b"x"
+    )
+    monkeypatch.setattr(helpers, "PROJECT_DIR", project)
+    hub = make_cache(tmp_path)
+    models = load_config().models
+    weights = (
+        hub
+        / f"models--{models.query_encoder_id.replace('/', '--')}"
+        / "snapshots"
+        / models.query_encoder_revision
+        / "model.safetensors"
+    )
+    weights.unlink()
+    weights.symlink_to(tmp_path / "missing-blob")
+    assert helpers.models_cached(hub) is False

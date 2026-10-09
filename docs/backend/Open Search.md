@@ -69,7 +69,7 @@ The route gives `status: "open"` with the answer, its `label` and `via` (`label`
 
 What this shows:
 - The step with the names works when the words name the object or a near word.
-- The step with the pictures was wrong in every case of this test, also with a probability of 0.63. So the start value of `visual_min_probability` is 0.8:
+- The step with the pictures was wrong in every case of this test, also with a probability of 0.63. So the start value of `visual_min_probability` is 0.8 (a later test on the Pi, with 11 frames, still gave a wrong box: the question "the thing I carry my stuff in" found "floor" with a probability of 0.91, before the rewrite could run):
   the step answers only when it is very sure. A wrong answer is worse than no answer for the patient. Phase 7 sets this value on the new images.
 - A description that needs world knowledge ("check my mails" means a laptop) fails in both steps. A small language model must rewrite such a question into object names (see below).
 

@@ -18,6 +18,8 @@ PROJECT_DIR: Path = Path(__file__).resolve().parent.parent
 # The files of the vector indexes and the lock sit next to the database. The suffixes belong to SQLite.
 SQLITE_SUFFIXES: tuple[str, ...] = ("", "-wal", "-shm", "-journal")
 LOCK_NAME: str = "saarthi.lock"
+# A model has at least one file with these endings.
+WEIGHT_SUFFIXES: tuple[str, ...] = (".safetensors", ".bin")
 
 
 def data_paths() -> tuple[list[Path], Path]:
@@ -83,6 +85,12 @@ def models_cached(cache_dir: Path | None = None) -> bool:
             hub / f"models--{model_id.replace('/', '--')}" / "snapshots" / revision
         )
         if not snapshot.is_dir():
+            return False
+        # A file of the snapshot is a link to a blob. A copy of the cache can leave a broken link, so the weights must open.
+        if not any(
+            item.is_file() and item.suffix in WEIGHT_SUFFIXES
+            for item in snapshot.iterdir()
+        ):
             return False
     # The broad detector is a file in ai/models, not a Hugging Face model.
     return (PROJECT_DIR / "ai" / "models" / models.open_detector_file).is_file()
