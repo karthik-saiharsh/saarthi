@@ -113,6 +113,31 @@ def make_engine(
     return engine, detector
 
 
+def test_detect_phrases_cleans_the_phrases_and_gives_all_boxes() -> None:
+    boxes = [
+        RawDetection(Box(1, 1, 20, 20), 0.31, "laptop", "full"),
+        RawDetection(Box(30, 30, 60, 60), 0.9, "laptop", "full"),
+    ]
+    engine, detector = make_engine(boxes)
+    long_text: str = "word " * 40
+    found = engine.detect_phrases(
+        Image.new("RGB", (100, 100)),
+        ["Laptop.", "  A  Blue. Notebook ", "laptop", long_text, "..."],
+    )
+    assert found == boxes  # No filter and no merge
+    phrases, small, generic, tiling = detector.calls[0]
+    limit: int = CONFIG.detection.phrase_max_chars
+    assert phrases[:2] == ["laptop", "a blue notebook"]
+    assert len(phrases) == 3 and 0 < len(phrases[2]) <= limit
+    assert small == [] and generic is False and tiling is False
+
+
+def test_detect_phrases_without_a_phrase_does_not_run_the_detector() -> None:
+    engine, detector = make_engine()
+    assert engine.detect_phrases(Image.new("RGB", (10, 10)), [" . ", ""]) == []
+    assert detector.calls == []
+
+
 def test_engine_reports_the_embedding_model() -> None:
     engine, _ = make_engine()
     assert engine.embedding_model == "fake-embedder@00000000"

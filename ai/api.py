@@ -43,6 +43,7 @@ from ai.types import (
     MatchRegion,
     OpenDetection,
     QualityReport,
+    RawDetection,
     Sighting,
     VerifyResult,
 )
@@ -220,6 +221,29 @@ class AiEngine:
             sum(c.quality_ok for c in result),
         )
         return result
+
+    def detect_phrases(
+        self, image: Image.Image, phrases: list[str]
+    ) -> list[RawDetection]:
+        """Run the detector on one frame with the words of a user. Return every box with its score.
+
+        Each phrase is made lowercase, loses its periods and is cut to `detection.phrase_max_chars`.
+        There are no hand or depiction phrases, and no tiles. The boxes are raw: the caller decides.
+        The result is empty if no phrase is left. It is used by the verified open search.
+        """
+        assert isinstance(image, Image.Image), "image must be a PIL image"
+        assert isinstance(phrases, list), "phrases must be a list"
+        limit: int = self._config.detection.phrase_max_chars
+        cleaned: list[str] = []
+        for phrase in phrases:
+            text: str = " ".join(phrase.lower().replace(".", " ").split())[
+                :limit
+            ].strip()
+            if text and text not in cleaned:
+                cleaned.append(text)
+        if not cleaned:
+            return []
+        return self._detector.detect(image, cleaned, (), False, False, False)
 
     def embed_regions(self, image: Image.Image, boxes: list[Box]) -> np.ndarray:
         """Return one unit-length float32 vector for each box."""
