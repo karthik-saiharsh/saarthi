@@ -65,6 +65,8 @@ input_short_edge = 800
 max_per_phrase = 10
 # Number of phrases in one detector pass. Each pass is a full model run.
 chunk_size = 30
+# A phrase of a user, for `detect_phrases`, is cut to this many characters. A long phrase fills the prompt.
+phrase_max_chars = 60
 # Boxes with an IoU at or above this value are merged.
 nms_iou = 0.5
 # A box larger than this part of the frame, or with a side shorter than min_box_side, is dropped.

@@ -75,6 +75,7 @@ class DetectionConfig:
     generic_phrase: str
     tiling_enabled: bool
     tile_overlap: float
+    phrase_max_chars: int
 
 
 @dataclass(frozen=True)
@@ -399,6 +400,7 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> AiConfig:
             generic_phrase=detection.text("generic_phrase"),
             tiling_enabled=detection.boolean("tiling_enabled"),
             tile_overlap=detection.number("tile_overlap", 0.0, 0.9),
+            phrase_max_chars=detection.integer("phrase_max_chars", 8, 200),
         ),
         embedding=EmbeddingConfig(
             frame_short_edge=frame_short,
