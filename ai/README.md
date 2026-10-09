@@ -54,6 +54,7 @@ The source of the design is `docs/ai/DINO-Based Object Recall Pipeline.md`.
 | I2 Detect | `engine.detect_candidates(image, ...)` | A list of `Candidate`. The best score comes first |
 | I3 Embed | `engine.embed_regions(image, boxes)` | A `float32` array of shape `(n, 384)`, each row of unit length |
 | E2 Locate | `engine.locate_object(image, category_phrase, synonyms)` | A `LocatedObject` (the best box and its score), or `None` |
+| Q Detect phrases | `engine.detect_phrases(image, phrases)` | A list of `RawDetection` (box, score, label), with no merge and no filter. The open search in the mode `verified` uses it |
 | E3 Views | `engine.embed_views(image, box)` | A list of (view name, vector). The views are in `[enrollment]` of `config.toml` |
 | E4 Calibrate | `engine.calibrate_object(views, photo_ids, others)` | A `Calibration` with `tau`, `tau_strong` and a note. `engine.min_photos` is the number of photos that an object needs |
 

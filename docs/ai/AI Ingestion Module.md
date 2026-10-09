@@ -242,6 +242,12 @@ The module gives three helpers. The `backend` module calls them.
   The hand and depiction phrases are not in the prompt (`context_phrases=False`), because a depiction box can cover the object.
   The post-processing is the usual one. The result is the best box and its score, or `None`.
   The detector also gives a box for an object that is not in the photo, so the carer must check the crop.
+- **`engine.detect_phrases(image, phrases)`.** One detector pass with the words of a user. The open search in the mode `verified` uses it
+  (`docs/backend/Open Search.md`). Each phrase is made lowercase, loses its periods and is cut to `[detection].phrase_max_chars` (60).
+  A duplicate phrase is dropped. The prompt has no hand phrase, no depiction phrase and no tiles (as in `locate_object`).
+  The result is the list of raw `RawDetection` objects (box, score, label). There is no merge and no filter, so the caller sees every box
+  that is at or above `box_threshold`. If no phrase is left, the result is empty and the detector does not run.
+  The detector raises `InferenceError` when a pass fails.
 - **E3 `engine.embed_views(image, box)`.** One vector for each view of `[enrollment].augmentations`:
   `original`, `box_smaller` and `box_larger` (the box scaled by `box_scale`), and `brighter` (`brightness`).
   The three box views use one model run.
