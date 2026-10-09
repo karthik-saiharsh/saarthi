@@ -128,6 +128,14 @@ class OpenSearchConfig:
     rewrite_min_score: float
     max_scan_hours: int
     max_boxes: int
+    mode: str  # "classic" or "verified"
+    verify_top_boxes: int
+    verify_max_frames: int
+    verify_min_score: float
+    verify_min_iou: float
+
+
+OPEN_SEARCH_MODES: tuple[str, ...] = ("classic", "verified")
 
 
 @dataclass(frozen=True)
@@ -406,6 +414,11 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> BackendConfig:
         raise BackendConfigError(
             "open_search.neutral_phrases must be a list of words that is not empty"
         )
+    mode: object = open_search.get("mode")
+    if mode not in OPEN_SEARCH_MODES:
+        raise BackendConfigError(
+            f"open_search.mode must be one of {', '.join(OPEN_SEARCH_MODES)}"
+        )
     open_search_config: OpenSearchConfig = OpenSearchConfig(
         label_min_score=_number(
             open_search, "open_search", "label_min_score", 0.0, 1.0
@@ -424,6 +437,17 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> BackendConfig:
         ),
         max_scan_hours=_integer(open_search, "open_search", "max_scan_hours", 1),
         max_boxes=_integer(open_search, "open_search", "max_boxes", 1, 20000),
+        mode=str(mode),
+        verify_top_boxes=_integer(
+            open_search, "open_search", "verify_top_boxes", 1, 200
+        ),
+        verify_max_frames=_integer(
+            open_search, "open_search", "verify_max_frames", 1, 50
+        ),
+        verify_min_score=_number(
+            open_search, "open_search", "verify_min_score", 0.0, 1.0
+        ),
+        verify_min_iou=_number(open_search, "open_search", "verify_min_iou", 0.0, 1.0),
     )
     logger.info("Loaded backend config from %s", config_path)
     return BackendConfig(

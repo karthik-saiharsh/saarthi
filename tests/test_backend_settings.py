@@ -86,6 +86,14 @@ def test_default_config_loads() -> None:
         ('safe_words = ["wall"', 'safe_words = ["two words"'),
         ('safe_words = ["wall"', 'safe_words = [5, "wall"'),
         ("rewrite_min_score = 0.9", "rewrite_min_score = 1.5"),
+        ('mode = "classic"', 'mode = "fast"'),
+        ('mode = "classic"', "mode = 1"),
+        ("verify_top_boxes = 20", "verify_top_boxes = 0"),
+        ("verify_top_boxes = 20", "verify_top_boxes = true"),
+        ("verify_max_frames = 3", "verify_max_frames = 0"),
+        ("verify_min_score = 0.35", "verify_min_score = 1.5"),
+        ("verify_min_score = 0.35", 'verify_min_score = "high"'),
+        ("verify_min_iou = 0.3", "verify_min_iou = -0.1"),
         ("max_pending = 500", "max_pending = 0"),
         ("max_pending = 500", "max_pending = true"),
         ("max_pending = 500", 'max_pending = "many"'),
@@ -160,6 +168,17 @@ def test_the_verify_keys_of_the_search_are_checked(
     text: str = before + "[search]" + after.replace(old, new, 1)
     with pytest.raises(BackendConfigError, match="search.verify"):
         load_config(write(tmp_path, text))
+
+
+def test_the_open_search_is_classic_by_default(tmp_path: Path) -> None:
+    assert load_config().open_search.mode == "classic"
+    text: str = DEFAULT_TEXT.replace('mode = "classic"', 'mode = "verified"', 1)
+    assert load_config(write(tmp_path, text)).open_search.mode == "verified"
+
+
+def test_a_missing_open_search_mode_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(BackendConfigError, match="open_search.mode"):
+        load_config(write(tmp_path, DEFAULT_TEXT.replace('mode = "classic"', "", 1)))
 
 
 def test_tls_is_off_by_default() -> None:
