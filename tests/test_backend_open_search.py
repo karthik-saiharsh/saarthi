@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 import db.api as db
 import storage.api as storage
 from ai.errors import InferenceError
+from ai.types import Box, RawDetection
 from backend.describe import DescribeService
 from backend.enrollment import EnrollmentService
 from backend.http_search import SEARCH_ROUTE, create_search_router
@@ -25,7 +26,12 @@ from backend.settings import BackendConfig, load_config
 from backend.ui_adapter import UiFindService
 from db.open_regions import NewOpenRegion
 from db.schema import EnrolledObject, Image
-from tests.ai_support import FakeLanguageModel, FakeSceneClassifier, make_engine
+from tests.ai_support import (
+    FakeDetector,
+    FakeLanguageModel,
+    FakeSceneClassifier,
+    make_engine,
+)
 from tests.db_support import skip_if_actual_data_has_problems
 from tests.search_support import PREFIX, store_frame
 from ui.ports import FindStatus
@@ -49,13 +55,17 @@ def actual_system() -> Iterator[None]:
 
 
 def make_service(
-    language: FakeLanguageModel | None = None, **changes: object
+    language: FakeLanguageModel | None = None,
+    detector: FakeDetector | None = None,
+    **changes: object,
 ) -> OpenSearchService:
     base: BackendConfig = load_config()
     config = dataclasses.replace(
         base, open_search=dataclasses.replace(base.open_search, **changes)
     )
-    engine = make_engine(scene_classifier=SCENE, language_model=language)
+    engine = make_engine(
+        detector=detector, scene_classifier=SCENE, language_model=language
+    )
     return OpenSearchService(config, engine)
 
 
@@ -244,6 +254,251 @@ def test_the_log_never_shows_the_words_or_the_names(
     language = FakeLanguageModel({PHRASE: ["laptop"]})
     with caplog.at_level(logging.DEBUG):
         make_service(language).find(DESCRIPTION)
+    assert "mails" not in caplog.text
+
+
+# ---- The mode "verified" ----
+
+HIT = RawDetection(Box(10, 10, 50, 40), 0.8, "laptop", "full")  # The box of add_box
+FAR = RawDetection(Box(60, 2, 78, 12), 0.9, "laptop", "full")  # No overlap with it
+WEAK_HIT = RawDetection(Box(10, 10, 50, 40), 0.3, "laptop", "full")  # Below 0.35
+
+
+class ScriptedDetector(FakeDetector):
+    """Gives one list of boxes for each call, in order. After that it gives nothing."""
+
+    def __init__(self, *results: list[RawDetection]) -> None:
+        super().__init__()
+        self.results: list[list[RawDetection]] = list(results)
+
+    def detect(self, image, phrases, *args, **kwargs):
+        super().detect(
+            image, phrases, *args, **kwargs
+        )  # Records, and fails once if set
+        return self.results.pop(0) if self.results else []
+
+
+def verified(
+    detector: FakeDetector,
+    language: FakeLanguageModel | None = None,
+    **changes: object,
+) -> OpenSearchService:
+    return make_service(language, detector, mode="verified", **changes)
+
+
+def test_the_mode_decides_the_path() -> None:
+    frame = store_frame(8)
+    add_box(frame, "laptop")
+    classic = make_service(detector=ScriptedDetector([HIT]))
+    found = classic.find("laptop")
+    assert found is not None and found.via == "label"
+    assert classic._engine._detector.phrase_calls == []  # type: ignore[attr-defined]
+    detector = ScriptedDetector([HIT])
+    found = verified(detector).find("laptop")
+    assert found is not None and found.via == "verified" and found.label == "laptop"
+    assert len(detector.phrase_calls) == 1
+
+
+def test_the_classic_mode_stays_the_default_and_is_unchanged() -> None:
+    assert load_config().open_search.mode == "classic"
+    add_box(store_frame(8), "stuff", shows="umbrella")
+    detector = ScriptedDetector()
+    found = make_service(detector=detector).find("umbrella")
+    assert found is not None and found.via == "visual"
+    assert detector.phrase_calls == []
+
+
+def test_a_wrong_mode_is_refused_by_the_service() -> None:
+    with pytest.raises(AssertionError):
+        make_service(mode="fast")
+
+
+def test_a_frame_that_passes_gives_a_weak_answer_with_the_detector_score() -> None:
+    frame = store_frame(12)
+    add_box(frame, "laptop")
+    found = verified(ScriptedDetector([HIT])).find("where is my laptop")
+    assert found is not None and found.via == "verified" and found.score == 0.8
+    assert found.answer.source == AnswerSource.OPEN and found.answer.strong is False
+    assert found.answer.image_id == frame.id and found.answer.box == (10, 10, 50, 40)
+
+
+def test_the_newest_frame_that_passes_wins() -> None:
+    old, new = store_frame(50), store_frame(5)
+    add_box(old, "laptop")
+    add_box(new, "laptop")
+    detector = ScriptedDetector([HIT], [HIT])
+    found = verified(detector).find("laptop")
+    assert found is not None and found.answer.image_id == new.id
+    assert len(detector.phrase_calls) == 1  # It stops at the first frame that passes
+
+
+def test_a_failed_frame_gives_way_to_an_older_frame_that_passes() -> None:
+    old, new = store_frame(50), store_frame(5)
+    add_box(old, "laptop")
+    add_box(new, "laptop")
+    detector = ScriptedDetector([], [HIT])
+    found = verified(detector).find("laptop")
+    assert found is not None and found.answer.image_id == old.id
+    assert len(detector.phrase_calls) == 2
+
+
+def test_no_frame_that_passes_gives_none() -> None:
+    add_box(store_frame(5), "laptop")
+    add_box(store_frame(50), "laptop")
+    assert verified(ScriptedDetector([], [])).find("laptop") is None
+
+
+@pytest.mark.parametrize("detection", [FAR, WEAK_HIT])
+def test_a_detector_box_with_a_low_score_or_far_from_the_box_fails(
+    detection: RawDetection,
+) -> None:
+    add_box(store_frame(5), "laptop")
+    assert verified(ScriptedDetector([detection])).find("laptop") is None
+
+
+def test_the_thresholds_of_the_check_come_from_the_config() -> None:
+    add_box(store_frame(5), "laptop")
+    assert verified(ScriptedDetector([WEAK_HIT]), verify_min_score=0.3).find("laptop")
+    half = RawDetection(Box(10, 10, 50, 25), 0.8, "laptop", "full")  # IoU 0.5
+    assert verified(ScriptedDetector([half]), verify_min_iou=0.6).find("laptop") is None
+    assert verified(ScriptedDetector([half]), verify_min_iou=0.4).find("laptop")
+
+
+def test_only_a_limited_number_of_frames_is_checked() -> None:
+    for minutes in (5, 20, 40, 60):
+        add_box(store_frame(minutes), "laptop")
+    detector = ScriptedDetector([], [], [HIT])  # It would pass on the third frame
+    assert verified(detector, verify_max_frames=2).find("laptop") is None
+    assert len(detector.phrase_calls) == 2
+    detector = ScriptedDetector([], [], [HIT])
+    assert verified(detector, verify_max_frames=3).find("laptop") is not None
+
+
+def test_one_frame_is_checked_one_time_with_its_best_box() -> None:
+    frame = store_frame(8)
+    add_box(frame, "laptop")
+    add_box(frame, "laptop", shows="piano")  # A second box of the same frame
+    detector = ScriptedDetector([])
+    assert verified(detector).find("laptop") is None
+    assert len(detector.phrase_calls) == 1
+
+
+def test_a_wrong_name_alone_never_gives_an_answer() -> None:
+    # The name fits exactly, so the classic mode answers. The detector finds nothing, so the verified mode does not.
+    add_box(store_frame(8), "laptop")
+    assert make_service().find("laptop") is not None
+    assert verified(ScriptedDetector([])).find("laptop") is None
+
+
+def test_the_best_pictures_are_candidates() -> None:
+    far, near = store_frame(5), store_frame(50)
+    add_box(far, "stuff", shows="piano")  # Newer, but its picture does not fit
+    add_box(near, "stuff", shows="umbrella")
+    detector = ScriptedDetector([HIT])
+    found = verified(detector, verify_top_boxes=1).find("umbrella")
+    assert found is not None and found.answer.image_id == near.id
+    assert len(detector.phrase_calls) == 1  # The newer frame was no candidate
+
+
+def test_a_name_that_fits_adds_a_candidate_beyond_the_best_pictures() -> None:
+    picture, named = store_frame(5), store_frame(50)
+    add_box(picture, "stuff", shows="umbrella")
+    add_box(named, "umbrella", shows="piano")  # Its picture does not fit, its name does
+    detector = ScriptedDetector([], [HIT])
+    found = verified(detector, verify_top_boxes=1).find("umbrella")
+    assert found is not None and found.answer.image_id == named.id
+    assert found.label == "umbrella" and len(detector.phrase_calls) == 2
+
+
+def test_a_name_that_does_not_fit_adds_nothing() -> None:
+    picture, other = store_frame(5), store_frame(50)
+    add_box(picture, "stuff", shows="umbrella")
+    add_box(other, "piano", shows="piano")
+    detector = ScriptedDetector([HIT])
+    found = verified(detector, verify_top_boxes=1).find("umbrella")
+    assert found is not None and found.answer.image_id == picture.id
+    assert len(detector.phrase_calls) == 1
+
+
+def test_an_unreadable_frame_is_skipped() -> None:
+    old, new = store_frame(50), store_frame(5)
+    add_box(old, "laptop")
+    add_box(new, "laptop")
+    storage.delete_images([new.file_path])
+    detector = ScriptedDetector([HIT])
+    found = verified(detector).find("laptop")
+    assert found is not None and found.answer.image_id == old.id
+    assert len(detector.phrase_calls) == 1  # The lost frame never reached the detector
+
+
+def test_an_error_of_the_detector_skips_the_frame() -> None:
+    old, new = store_frame(50), store_frame(5)
+    add_box(old, "laptop")
+    add_box(new, "laptop")
+    detector = ScriptedDetector([HIT], [HIT])
+    detector.error = InferenceError("test")  # The first call fails, the second works
+    found = verified(detector).find("laptop")
+    assert found is not None and found.answer.image_id == old.id
+
+
+def test_errors_on_every_frame_give_none() -> None:
+    add_box(store_frame(5), "laptop")
+    detector = ScriptedDetector([HIT])
+    detector.error = InferenceError("test")
+    assert verified(detector).find("laptop") is None
+
+
+def test_an_error_of_the_scene_model_gives_none() -> None:
+    add_box(store_frame(5), "laptop")
+    service = verified(ScriptedDetector([HIT]))
+    SCENE.error = InferenceError("test")
+    try:
+        assert service.find("laptop") is None
+    finally:
+        SCENE.error = None
+
+
+def test_a_description_adds_the_names_of_the_language_model_to_the_prompts() -> None:
+    add_box(store_frame(8), "laptop")
+    language = FakeLanguageModel({PHRASE: ["computer", "laptop"]})
+    detector = ScriptedDetector([HIT])
+    found = verified(detector, language).find(DESCRIPTION)
+    assert found is not None and found.via == "verified"
+    assert detector.phrase_calls == [[PHRASE, "computer", "laptop"]]
+
+
+def test_a_name_is_not_rewritten_in_the_verified_mode() -> None:
+    add_box(store_frame(8), "laptop")
+    language = FakeLanguageModel({"laptop": ["computer"]})
+    detector = ScriptedDetector([HIT])
+    assert verified(detector, language).find("laptop") is not None
+    assert language.calls == [] and detector.phrase_calls == [["laptop"]]
+
+
+def test_a_failed_language_model_leaves_the_phrase_alone() -> None:
+    add_box(store_frame(8), "laptop")
+    language = FakeLanguageModel({PHRASE: ["laptop"]})
+    language.error = InferenceError("test")
+    detector = ScriptedDetector([HIT])
+    found = verified(detector, language).find(DESCRIPTION)
+    assert found is not None and detector.phrase_calls == [[PHRASE]]
+
+
+def test_no_stored_box_gives_none_without_a_detector_run() -> None:
+    detector = ScriptedDetector([HIT])
+    assert verified(detector).find("laptop") is None
+    assert detector.phrase_calls == []
+
+
+def test_the_log_of_the_verified_mode_never_shows_the_words(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    import logging
+
+    add_box(store_frame(8), "laptop")
+    language = FakeLanguageModel({PHRASE: ["laptop"]})
+    with caplog.at_level(logging.DEBUG):
+        verified(ScriptedDetector([HIT]), language).find(DESCRIPTION)
     assert "mails" not in caplog.text
 
 

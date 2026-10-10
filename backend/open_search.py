@@ -26,8 +26,9 @@ import db.api as db
 import storage.api as storage
 from ai.api import AiEngine
 from ai.errors import AiError
+from ai.types import Box
 from backend.search import Answer, AnswerSource
-from backend.settings import BackendConfig, OpenSearchConfig
+from backend.settings import OPEN_SEARCH_MODES, BackendConfig, OpenSearchConfig
 from db.schema import Image, OpenRegion, utc_now
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -67,14 +68,24 @@ def phrase_from_words(words: str) -> str | None:
     return text or None
 
 
+def _iou(first: Box, second: Box) -> float:
+    """The overlap of two boxes: the area of the common part over the area of both together."""
+    width: int = min(first.x1, second.x1) - max(first.x0, second.x0)
+    height: int = min(first.y1, second.y1) - max(first.y0, second.y0)
+    if width <= 0 or height <= 0:
+        return 0.0
+    common: int = width * height
+    return common / (first.area + second.area - common)
+
+
 @dataclass(frozen=True)
 class OpenAnswer:
     """The newest box that fits the words."""
 
     label: str  # The name that the detector gave the box, for example "laptop"
     phrase: str  # What was searched for
-    via: str  # "label" (step 1), "visual" (step 2) or "rewrite" (step 3)
-    score: float  # The label score (cosine), or the SigLIP probability
+    via: str  # "label" (step 1), "visual" (step 2), "rewrite" (step 3) or "verified" (mode "verified")
+    score: float  # The label score (cosine), the SigLIP probability, or the Grounding DINO score
     answer: Answer  # For the description: `source` is `open`, `strong` is False
 
 
@@ -84,6 +95,7 @@ class OpenSearchService:
     def __init__(self, config: BackendConfig, engine: AiEngine) -> None:
         assert isinstance(config, BackendConfig), "config must be a BackendConfig"
         assert isinstance(engine, AiEngine), "engine must be an AiEngine"
+        assert config.open_search.mode in OPEN_SEARCH_MODES, "unknown open search mode"
         self._config: OpenSearchConfig = config.open_search
         self._crop_padding: float = config.search.crop_padding
         self._engine: AiEngine = engine
@@ -116,11 +128,15 @@ class OpenSearchService:
             logger.info("Open search: no stored box")
             return None
         try:
-            hit: tuple[OpenRegion, str, float] | None = self._by_label(phrase, rows)
-            if hit is None:
-                hit = self._by_picture(phrase, rows)
-            if hit is None:
-                hit = self._by_rewrite(phrase, rows)
+            hit: tuple[OpenRegion, str, float] | None
+            if self._config.mode == "verified":
+                hit = self._find_verified(phrase, rows)
+            else:
+                hit = self._by_label(phrase, rows)
+                if hit is None:
+                    hit = self._by_picture(phrase, rows)
+                if hit is None:
+                    hit = self._by_rewrite(phrase, rows)
         except AiError:
             logger.exception("Open search failed in a model")
             return None
@@ -245,6 +261,103 @@ class OpenSearchService:
             return None
         best: int = int(np.argmax(np.where(fits, probability, -1.0)))
         return rows[best], "visual", float(probability[best])
+
+    # ---- The mode "verified" ----
+
+    def _find_verified(
+        self, phrase: str, rows: list[OpenRegion]
+    ) -> tuple[OpenRegion, str, float] | None:
+        """Choose candidate boxes, then let Grounding DINO check their frames with the words of the user.
+
+        The pictures and the names only choose the candidates. A box is an answer only when the detector
+        finds the prompts at the place of the box. No frame that passes means no answer.
+        """
+        prompts: list[str] = self._prompts(phrase)
+        candidates: list[tuple[OpenRegion, float]] = self._candidates(prompts, rows)
+        best_of_frame: dict[int, tuple[OpenRegion, float]] = {}
+        for row, score in candidates:
+            current = best_of_frame.get(row.image_id)
+            if current is None or score > current[1]:
+                best_of_frame[row.image_id] = (row, score)
+        frames: list[OpenRegion] = sorted(
+            (row for row, _ in best_of_frame.values()),
+            key=lambda row: (row.image.captured_at, row.image_id),
+            reverse=True,
+        )[: self._config.verify_max_frames]
+        logger.info(
+            "Open search: %d candidate box(es) in %d frame(s), %d frame(s) to check",
+            len(candidates),
+            len(best_of_frame),
+            len(frames),
+        )
+        for row in frames:
+            score: float | None = self._check_frame(row, prompts)
+            if score is not None:
+                return row, "verified", score
+        return None
+
+    def _prompts(self, phrase: str) -> list[str]:
+        """The phrase, and the names of the language model for a description. A failed model gives the phrase only."""
+        prompts: list[str] = [phrase]
+        if (
+            self._engine.language_enabled
+            and len(phrase.split()) >= self._config.rewrite_min_words
+        ):
+            try:
+                names: list[str] = self._engine.rewrite_query(phrase)
+            except AiError:
+                logger.exception("Open search: the language model failed, no names")
+                names = []
+            prompts += [name for name in names if name not in prompts]
+        return prompts
+
+    def _candidates(
+        self, prompts: list[str], rows: list[OpenRegion]
+    ) -> list[tuple[OpenRegion, float]]:
+        """The best boxes by SigLIP score, and the boxes with a name that fits a prompt.
+
+        Return (box, SigLIP score). The name is a hint only: it adds a candidate and never gives an answer.
+        """
+        crops: np.ndarray = db.open_regions.get_vectors([row.id for row in rows])
+        asked: np.ndarray = self._engine.embed_open_phrases(prompts)
+        scores: np.ndarray = self._engine.open_pair_scores(crops, asked).max(axis=1)
+        chosen: set[int] = {
+            int(i)
+            for i in np.argsort(-scores, kind="stable")[: self._config.verify_top_boxes]
+        }
+        labels: list[str] = sorted({row.label for row in rows})
+        label_scores: np.ndarray = (
+            self._vectors_of_labels(labels) @ self._engine.encode_texts(prompts).T
+        ).max(axis=1)
+        hinted: set[str] = {
+            label
+            for label, score in zip(labels, label_scores, strict=True)
+            if score >= self._config.label_min_score
+        }
+        chosen.update(i for i, row in enumerate(rows) if row.label in hinted)
+        return [(rows[i], float(scores[i])) for i in sorted(chosen)]
+
+    def _check_frame(self, row: OpenRegion, prompts: list[str]) -> float | None:
+        """Run Grounding DINO on the frame of the box. Return its best score at the box, or None if it fails."""
+        try:
+            picture = self._engine.open_image(storage.read_image(row.image.file_path))
+            detections = self._engine.detect_phrases(picture, prompts)
+        except (AiError, storage.StorageError):
+            logger.warning("Open search: a frame cannot be checked, it is skipped")
+            return None
+        candidate: Box = Box(row.x0, row.y0, row.x1, row.y1)
+        fits: list[float] = [
+            d.score
+            for d in detections
+            if d.score >= self._config.verify_min_score
+            and _iou(d.box, candidate) >= self._config.verify_min_iou
+        ]
+        logger.info(
+            "Open search: the detector gave %d box(es), %d fit the candidate",
+            len(detections),
+            len(fits),
+        )
+        return max(fits) if fits else None
 
     def _answer(self, row: OpenRegion, score: float, moment: datetime) -> Answer:
         seen_at: datetime = row.image.captured_at
