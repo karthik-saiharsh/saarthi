@@ -33,7 +33,7 @@ For the full design, see `docs/backend/Upload Endpoint.md`, `docs/backend/Enroll
 | `verification.py` | `ReferenceVerifier`: the check of a sighting against the reference photos of an object (stage I5). The memory and the search use it |
 | `search.py` | `SearchService`: answers "where is my object?" from the last-seen record, then from the archive of frames |
 | `query.py` | `QueryResolver`: turns the words of a user into an enrolled object, or a short list to choose from |
-| `open_search.py` | `OpenSearchService`: finds objects that nobody registered. It compares the words with the names and the SigLIP vectors of the stored boxes of the broad detector |
+| `open_search.py` | `OpenSearchService`: finds objects that nobody registered. It compares the words with the names and the SigLIP vectors of the stored boxes of the broad detector. The mode `verified` also checks the candidate frames with Grounding DINO |
 | `scene_writer.py` | `SceneWriter`: writes the sentence about the place of a last-seen frame with the language model, checks every word, and stores it. The worker runs it when no frame waits |
 | `browser.py` | `MemoryBrowser`: the frames that the worker took, and what the pipeline stored for each (for the memory page). It only reads |
 | `describe.py` | `DescribeService`: makes the sentence for the voice (stage Q2). It chooses the room from neighbouring frames, the surface from the box, and builds the text |
@@ -186,6 +186,11 @@ A variable that is set but empty stops the start, so the route cannot open by mi
 | `open_search.rewrite_min_score` | A name from the model must fit the name of a stored box at least this well |
 | `open_search.neutral_phrases` | Phrases for the comparison of the SigLIP step ("a wall", "an object") |
 | `open_search.max_scan_hours`, `open_search.max_boxes` | How far back the search looks, and how many boxes it reads |
+| `open_search.mode` | `classic` (default) or `verified`. Any other value stops the start |
+| `open_search.verify_top_boxes` | Mode `verified` (start value): the number of boxes with the best SigLIP score that become candidates |
+| `open_search.verify_max_frames` | Mode `verified` (start value): the number of frames that Grounding DINO checks, newest first |
+| `open_search.verify_min_score` | Mode `verified` (start value): a frame passes if a detector box has at least this score... |
+| `open_search.verify_min_iou` | ...and at least this IoU with the candidate box |
 
 The largest upload is `limits.max_bytes` in `storage/config.toml`.
 

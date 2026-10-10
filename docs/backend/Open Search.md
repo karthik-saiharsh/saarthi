@@ -53,7 +53,39 @@ The search of phase 5, in this order:
    The surface and the room come from the description (`docs/backend/Voice.md`). The words of the user are never logged.
 
 The search reads the boxes of `done` frames of the last `max_scan_hours` (72), at most `max_boxes` (5000), and compares them in memory.
-The route gives `status: "open"` with the answer, its `label` and `via` (`label` or `visual`).
+The route gives `status: "open"` with the answer, its `label` and `via` (`label`, `visual` or `rewrite`; `verified` in the mode `verified`).
+
+## The two modes
+
+`[open_search].mode` in `backend/config.toml` chooses the version of the search. Any other value stops the start.
+
+| Mode | Behaviour |
+|------|-----------|
+| `classic` (default) | The steps above: the names, the pictures, the rewrite. The search trusts them |
+| `verified` | The pictures and the names only choose candidates. Grounding DINO checks each candidate frame with the words of the user |
+
+The mode `classic` does not change. The mode `verified` exists because the detector (YOLOE) often gives a box a wrong name,
+and the SigLIP step answers only at a probability of 0.8, which a real object seldom reaches (a real laptop got 0.08).
+An older pipeline worked better: SigLIP only ranked the boxes, and Grounding DINO checked the frame with the words at question time.
+
+### The steps of the mode `verified`
+
+`OpenSearchService._find_verified`. `find` calls it when the mode is `verified`. It reuses `phrase_from_words`, `list_open_regions` and the answer builder.
+
+1. **Prompts.** The phrase. If the phrase has at least `rewrite_min_words` words and the language model is on, the names from `rewrite_query` are added.
+   If the model fails, the phrase alone stays.
+2. **Candidates.** Each stored box gets the highest SigLIP score over the prompts. The best `verify_top_boxes` boxes (20) are candidates.
+   A box whose name scores at least `label_min_score` against a prompt (MiniLM) is also a candidate. The name is a hint only. It never gives an answer.
+3. **Frames.** The best candidate box of each frame stays. The frames are in order, newest first. At most `verify_max_frames` (3) frames are checked.
+4. **Check.** The service reads the frame and calls `AiEngine.detect_phrases(image, prompts)`.
+   The frame passes if a detector box has a score of at least `verify_min_score` (0.35) and an IoU of at least `verify_min_iou` (0.3) with the candidate box.
+   The search stops at the first frame that passes. A frame that cannot be read, or a model error, is logged and skipped.
+5. **Answer.** The answer is the candidate box, with `via = "verified"` and the detector score as `score`. It is always weak (`strong` is false).
+   If no frame passes, the result is "not found". The search never gives an unchecked answer in this mode.
+
+The four `verify_*` keys are start values. Only the mode `verified` uses them. The calibration (phase 7) must set them on real frames.
+A check costs one detector run for each frame (about 10 s on the development CPU), so a question can take up to `verify_max_frames` times that.
+The words of the user are never logged. The log shows counts only.
 
 ### Test on 18 frames (7 of the owner, 11 of the dataset; 158 boxes)
 
