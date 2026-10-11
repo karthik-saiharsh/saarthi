@@ -32,6 +32,7 @@ The text of the error is safe to show.
 | `list_choices()` | The objects that a search can find: `FindChoice` (`object_id`, `name`) |
 | `ask(text)` | A `FindResult` for the words of the user |
 | `find(object_id)` | A `FindResult` for an object that the user chose |
+| `ask_open(text)` | A `FindResult` from the open search only (objects that nobody registered): `found` (always weak, with a picture) or `no_match`. The button "Something else" calls it |
 
 The real implementation is `Backend.find_service` (`UiFindService` in `backend/ui_adapter.py`).
 It runs the blocking work in a thread and turns every error into a fixed text.
@@ -43,7 +44,7 @@ A `FindResult` has a `status`:
 |--------|---------|---------------------|
 | `found` | The system saw the object | The name, the time and the picture |
 | `not_seen` | The object is known, but the system did not see it | "The computer has not seen it lately." |
-| `choose` | The words fit several objects | "Which one do you mean?" and a button for each object |
+| `choose` | The words fit several objects | "Which one do you mean?", a button for each object, and the button "Something else" |
 | `no_match` | The words fit no object | "The computer does not know which object you mean. Choose an object from the list." |
 
 A `found` result has a `Sighting`: the age in seconds, `in_hand`, `strong`, `stale` and the picture (a JPEG, or none).
@@ -78,6 +79,20 @@ The picture is shown whole, and is never cut.
 
 While a search runs, the card shows a spinner and "Looking...". The buttons are off.
 
+### The button "Something else"
+
+The resolver can give `choose` for an object that nobody registered. For example, "where is my laptop" can score above
+`suggest_min_score` against a registered object. Then the choices are all wrong. The owner decided to add a way out.
+
+- The card of a `choose` result has the button **Something else** under the choices.
+  It is as large as the choice buttons (`up-find-choice`), with the secondary style (`up-btn--secondary`). The style uses the existing tokens only.
+- A tap runs the open search with the same words that the user asked (`ask_open`). The registered objects are not used for this search.
+- The open search uses the mode of `[open_search].mode` in `backend/config.toml` (`classic` or `verified`, see `docs/backend/Open Search.md`).
+- The answer is `found` (always weak: "Maybe", and the sentence says "I am not sure") or `no_match`.
+  The card, the sentence and the voice work as for any open answer.
+- If the open search is off, the result is `no_match`.
+- The resolver, its thresholds and the route `POST /api/search` do not change.
+
 ## The session
 
 `ui/find_session.py` has `FindSession`. It has no NiceGUI code. Each browser tab has its own session.
@@ -87,6 +102,8 @@ While a search runs, the card shows a spinner and "Looking...". The buttons are 
   The user sees a short notice. The backend checks the words again.
 - It removes the old result when a new search starts.
 - A request while a search runs is ignored. A double tap does not start two searches.
+- It keeps the words of the last `choose` result (`choose_words`). A tap on "Something else" (`ask_something_else`) sends these words to `ask_open`.
+  Each new search removes the words. A tap without a `choose` result does nothing. The busy flag and the error rules are the same as for the other searches.
 - A `FindError` shows its text as a notice. Any other error shows "The search did not work. Please try again."
   After an error the page still works.
 - It calls `on_changed` when the state changes, and `on_notice(text, is_error)` for a short message.
@@ -125,8 +142,10 @@ The CSS file is `components/find.css`. It uses the tokens of `tokens.css` only. 
 
 | File | What it checks |
 |------|----------------|
-| `tests/test_ui_find_session.py` | Load, clean words, limits, the busy flag, the old result, double taps, errors, listener errors |
-| `tests/test_ui_stub_find.py` | The stub: the four results, the fixed objects, an unknown object |
+| `tests/test_ui_find_session.py` | Load, clean words, limits, the busy flag, the old result, double taps, errors, listener errors, "Something else" (the kept words, a tap, double taps, errors) |
+| `tests/test_ui_stub_find.py` | The stub: the four results, the fixed objects, an unknown object, `ask_open` ("laptop" finds a weak answer) |
+| `tests/test_backend_open_search.py` | `ask_open` in the real adapter: found, no match, the open search off, the mode, fixed error texts, no logging of the words |
+| `tests/test_ui_pages.py` | The pages build. A `choose` result has the button "Something else" |
 | `tests/test_ui_components.py` | `age_text`, the lines of a result, the data URI, the navigation, short texts |
 | `tests/test_backend_ui_find.py` | The real adapter: the results, fixed error texts, no logging of the words |
 | `tests/test_ui_voice_route.py` | The route of the Talk button: the text, the size limit, an empty body, a fixed error text, no caching |

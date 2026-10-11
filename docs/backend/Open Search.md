@@ -52,6 +52,10 @@ The search of phase 5, in this order:
 4. The answer is weak (`strong` is false, `source` is `open`). The sentence says "I am not sure, but I may have seen a laptop 12 minutes ago. Please look at the picture."
    The surface and the room come from the description (`docs/backend/Voice.md`). The words of the user are never logged.
 
+The open search has a second start. When the resolver says `ambiguous`, the find page shows "Which one do you mean?" and the button **Something else**.
+A tap calls `UiFindService.ask_open`. It runs `OpenSearchService.find` with the same words, in the mode of the config, and skips the registered objects.
+The answer is weak, or "no match" (see `docs/ui/Find Page.md`). The route `POST /api/search` does not change.
+
 The search reads the boxes of `done` frames of the last `max_scan_hours` (72), at most `max_boxes` (5000), and compares them in memory.
 The route gives `status: "open"` with the answer, its `label` and `via` (`label`, `visual` or `rewrite`; `verified` in the mode `verified`).
 
