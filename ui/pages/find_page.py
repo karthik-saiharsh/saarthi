@@ -47,7 +47,13 @@ def build_find_page(service: FindService, voice: VoiceService | None = None) -> 
     # Python looks it up when they run, not when they are defined.
     @ui.refreshable
     def result_view() -> None:
-        find_result(session.result, session.busy, session.pick, say)
+        find_result(
+            session.result,
+            session.busy,
+            session.pick,
+            say,
+            session.ask_something_else,
+        )
 
     @ui.refreshable
     def choices_view() -> None:

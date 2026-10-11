@@ -10,6 +10,7 @@ from ui.speech import SAY_AGAIN_TEXT
 
 BUSY_TEXT: str = "Looking..."
 CHOOSE_TEXT: str = "Which one do you mean?"
+SOMETHING_ELSE_TEXT: str = "Something else"
 NO_MATCH_TEXT: str = (
     "The computer does not know which object you mean. Choose an object from the list."
 )
@@ -63,8 +64,12 @@ def find_result(
     busy: bool,
     on_pick: Callable[[int], Awaitable[None]],
     on_speak: Callable[[str], None] | None = None,
+    on_something_else: Callable[[], Awaitable[None]] | None = None,
 ) -> None:
-    """Build the result. A screen reader reads a new result (the area is live)."""
+    """Build the result. A screen reader reads a new result (the area is live).
+
+    `on_something_else` adds the button "Something else" under the choices. It runs when the user taps it.
+    """
     assert callable(on_pick), "on_pick must be callable"
     with (
         ui.element("div")
@@ -83,7 +88,7 @@ def find_result(
         elif result.status == FindStatus.NOT_SEEN:
             _not_seen(result)
         elif result.status == FindStatus.CHOOSE:
-            _choose(result, on_pick)
+            _choose(result, on_pick, on_something_else)
         else:
             ui.label(NO_MATCH_TEXT).classes("up-find-text")
 
@@ -122,7 +127,11 @@ def _not_seen(result: FindResult) -> None:
         ui.label(INCOMPLETE_TEXT).classes("up-find-text")
 
 
-def _choose(result: FindResult, on_pick: Callable[[int], Awaitable[None]]) -> None:
+def _choose(
+    result: FindResult,
+    on_pick: Callable[[int], Awaitable[None]],
+    on_something_else: Callable[[], Awaitable[None]] | None,
+) -> None:
     ui.label(CHOOSE_TEXT).classes("up-find-when")
     with ui.element("ul").classes("up-find-choices"):
         for choice in result.choices:
@@ -133,4 +142,14 @@ def _choose(result: FindResult, on_pick: Callable[[int], Awaitable[None]]) -> No
                     on_click=lambda c=choice: on_pick(c.object_id),
                 ).props("unelevated no-caps").classes(
                     "up-btn up-btn--primary up-find-choice"
+                )
+        if on_something_else is not None:
+            # The object may be one that nobody registered. This button looks for it with the same words.
+            with ui.element("li"):
+                ui.button(
+                    SOMETHING_ELSE_TEXT,
+                    color=None,
+                    on_click=lambda: on_something_else(),
+                ).props("unelevated no-caps").classes(
+                    "up-btn up-btn--secondary up-find-choice"
                 )

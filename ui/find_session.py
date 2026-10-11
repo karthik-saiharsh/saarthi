@@ -8,7 +8,7 @@ NiceGUI code. The view reads the state and listens for changes.
 import logging
 from collections.abc import Callable
 
-from ui.ports import FindChoice, FindError, FindResult, FindService
+from ui.ports import FindChoice, FindError, FindResult, FindService, FindStatus
 from ui.settings import MAX_QUERY_CHARS
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -42,6 +42,12 @@ class FindSession:
         self._result: FindResult | None = None
         self._busy: bool = False
         self._heard: str | None = None
+        self._choose_words: str | None = None
+
+    @property
+    def choose_words(self) -> str | None:
+        """The words of the last "choose" result, for "Something else". None when no choice is shown."""
+        return self._choose_words
 
     @property
     def choices(self) -> list[FindChoice]:
@@ -104,7 +110,26 @@ class FindSession:
         if len(words) > MAX_QUERY_CHARS:
             self._notice(MESSAGE_QUERY_TOO_LONG, True)
             return
-        await self._search(lambda: self._service.ask(words))
+        ran: bool = await self._search(lambda: self._service.ask(words))
+        if (
+            ran
+            and self._result is not None
+            and self._result.status == FindStatus.CHOOSE
+        ):
+            # Kept for "Something else": the open search gets the same words.
+            self._choose_words = words
+
+    async def ask_something_else(self) -> None:
+        """Run the open search with the words of the last "choose" result. The user tapped "Something else"."""
+        words: str | None = self._choose_words
+        if (
+            words is None
+            or self._result is None
+            or self._result.status != FindStatus.CHOOSE
+        ):
+            logger.info("No choice is shown. The request is ignored")
+            return
+        await self._search(lambda: self._service.ask_open(words))
 
     async def pick(self, object_id: int) -> None:
         """Search for an object that the user chose."""
@@ -117,13 +142,14 @@ class FindSession:
             self._result = None
             self._notify_changed()
 
-    async def _search(self, call: Callable) -> None:
-        """Run one search. A second request while a search runs is ignored."""
+    async def _search(self, call: Callable) -> bool:
+        """Run one search. A second request while a search runs is ignored. Return False if it was ignored."""
         if self._busy:
             logger.info("A search runs already. The new request is ignored")
-            return
+            return False
         self._busy = True
         self._result = None
+        self._choose_words = None
         self._notify_changed()
         try:
             self._result = await call()
@@ -138,6 +164,7 @@ class FindSession:
         finally:
             self._busy = False
             self._notify_changed()
+        return True
 
     def _notice(self, text: str, is_error: bool) -> None:
         if self._on_notice is None:

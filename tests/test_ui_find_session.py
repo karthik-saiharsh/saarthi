@@ -50,6 +50,10 @@ class FakeFind:
         self.calls.append(f"find {object_id}")
         return await self._answer()
 
+    async def ask_open(self, text: str) -> FindResult:
+        self.calls.append(f"open {text}")
+        return await self._answer()
+
 
 class Recorder:
     """Collects what the session tells the view."""
@@ -239,6 +243,123 @@ def test_a_view_error_does_not_stop_the_session() -> None:
         await session.ask("")  # The notice fails, and nothing breaks
         await session.pick(1)
         assert session.result == FOUND and not session.busy
+
+    run(scenario)
+
+
+# ---- "Something else" ----
+
+CHOOSE: FindResult = FindResult(
+    FindStatus.CHOOSE, choices=(BOTTLE, FindChoice(2, "House keys"))
+)
+OPEN: FindResult = FindResult(FindStatus.FOUND, object_name="Laptop")
+
+
+async def choose_first(session: FindSession, fake: FakeFind) -> None:
+    fake.result = CHOOSE
+    await session.ask("  where is   my laptop ")
+    fake.result = OPEN
+
+
+def test_a_choose_result_keeps_the_words() -> None:
+    async def scenario() -> None:
+        session, fake, _ = make()
+        await choose_first(session, fake)
+        assert session.result == CHOOSE
+        assert session.choose_words == "where is my laptop"
+
+    run(scenario)
+
+
+def test_other_results_keep_no_words() -> None:
+    async def scenario() -> None:
+        session, _, _ = make()
+        await session.ask("my bottle")  # FOUND
+        assert session.choose_words is None
+
+    run(scenario)
+
+
+def test_something_else_runs_the_open_search_with_the_same_words() -> None:
+    async def scenario() -> None:
+        session, fake, recorder = make()
+        await choose_first(session, fake)
+        await session.ask_something_else()
+        assert fake.calls == ["ask where is my laptop", "open where is my laptop"]
+        assert session.result == OPEN and not session.busy
+        assert session.choose_words is None  # The choice is gone
+        assert recorder.states[-2:] == [(True, None), (False, OPEN)]
+
+    run(scenario)
+
+
+def test_something_else_without_a_choice_does_nothing() -> None:
+    async def scenario() -> None:
+        session, fake, _ = make()
+        await session.ask_something_else()  # No search yet
+        await session.ask("my bottle")  # A FOUND result has no choices
+        await session.ask_something_else()
+        assert fake.calls == ["ask my bottle"]
+
+    run(scenario)
+
+
+def test_a_second_tap_on_something_else_is_ignored() -> None:
+    async def scenario() -> None:
+        session, fake, _ = make()
+        await choose_first(session, fake)
+        fake.gate = asyncio.Event()
+        first = asyncio.create_task(session.ask_something_else())
+        await asyncio.sleep(0)
+        assert session.busy
+        await session.ask_something_else()  # A double tap
+        await session.pick(1)
+        fake.gate.set()
+        await first
+        assert fake.calls == ["ask where is my laptop", "open where is my laptop"]
+        await session.ask_something_else()  # The choice is gone now
+        assert len(fake.calls) == 2
+
+    run(scenario)
+
+
+def test_an_ignored_ask_does_not_change_the_kept_words() -> None:
+    async def scenario() -> None:
+        session, fake, _ = make()
+        await choose_first(session, fake)
+        fake.result = CHOOSE
+        fake.gate = asyncio.Event()
+        running = asyncio.create_task(session.ask("my cup"))
+        await asyncio.sleep(0)
+        await session.ask("other words")  # Ignored: a search runs
+        fake.gate.set()
+        await running
+        assert session.choose_words == "my cup"
+
+    run(scenario)
+
+
+@pytest.mark.parametrize(
+    ("error", "notice"),
+    [
+        (FindError("The search did not work. Please try again."), None),
+        (RuntimeError("secret internal text"), MESSAGE_FAILED),
+    ],
+)
+def test_an_error_of_something_else_gives_a_notice_and_frees_the_page(
+    error: Exception, notice: str | None
+) -> None:
+    async def scenario() -> None:
+        session, fake, recorder = make()
+        await choose_first(session, fake)
+        fake.error = error
+        await session.ask_something_else()
+        assert recorder.notices == [(notice or str(error), True)]
+        assert "secret" not in recorder.notices[0][0]
+        assert not session.busy and session.result is None
+        fake.error = None
+        await session.ask("my bottle")  # The page still works
+        assert session.result == OPEN
 
     run(scenario)
 
