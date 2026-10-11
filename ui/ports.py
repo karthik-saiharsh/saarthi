@@ -314,3 +314,11 @@ class FindService(Protocol):
     async def find(self, object_id: int) -> FindResult:
         """Find where an object was seen last."""
         ...
+
+    async def ask_open(self, text: str) -> FindResult:
+        """Look for an object that nobody registered, with the words of the user.
+
+        The page calls it when the user taps "Something else" under the choices.
+        The result is `found` (a weak answer, with its picture) or `no_match`.
+        """
+        ...

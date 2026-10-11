@@ -23,7 +23,7 @@ from backend.open_search import OpenSearchService, phrase_from_words
 from backend.query import QueryResolver
 from backend.search import AnswerSource, SearchService
 from backend.settings import BackendConfig, load_config
-from backend.ui_adapter import UiFindService
+from backend.ui_adapter import MESSAGE_FIND_FAILED, UiFindService
 from db.open_regions import NewOpenRegion
 from db.schema import EnrolledObject, Image
 from tests.ai_support import (
@@ -33,8 +33,8 @@ from tests.ai_support import (
     make_engine,
 )
 from tests.db_support import skip_if_actual_data_has_problems
-from tests.search_support import PREFIX, store_frame
-from ui.ports import FindStatus
+from tests.search_support import PREFIX, make_object, store_frame
+from ui.ports import FindError, FindResult, FindStatus
 
 SCENE = FakeSceneClassifier()
 
@@ -561,6 +561,85 @@ def test_the_find_page_says_no_match_when_nothing_fits() -> None:
     add_box(store_frame(12), "laptop")
     result = asyncio.run(make_ui(make_service()).ask("where is my umbrella"))
     assert result.status == FindStatus.NO_MATCH
+
+
+# ---- "Something else" (UiFindService.ask_open) ----
+
+
+def ask_open(service: UiFindService, words: str) -> FindResult:
+    return asyncio.run(service.ask_open(words))
+
+
+def test_something_else_gives_a_weak_open_answer_with_its_picture() -> None:
+    frame = store_frame(12)
+    add_box(frame, "laptop")
+    result = ask_open(make_ui(make_service()), "where is my laptop")
+    assert result.status == FindStatus.FOUND and result.object_name == "Laptop"
+    assert result.sighting is not None and result.sighting.strong is False
+    assert result.sighting.picture is not None
+    assert result.sighting.picture.startswith(b"\xff\xd8")
+    assert result.description is not None and "I am not sure" in result.description
+
+
+def test_something_else_does_not_use_the_registered_objects() -> None:
+    make_object(
+        name="laptop", phrase="a laptop"
+    )  # A registered object with the same name
+    add_box(store_frame(12), "laptop")
+    result = ask_open(make_ui(make_service()), "laptop")
+    assert result.status == FindStatus.FOUND and result.object_name == "Laptop"
+
+
+def test_something_else_uses_the_mode_of_the_config() -> None:
+    add_box(store_frame(12), "laptop")
+    service = make_ui(verified(ScriptedDetector([])))  # The detector finds nothing
+    assert ask_open(service, "laptop").status == FindStatus.NO_MATCH
+    service = make_ui(verified(ScriptedDetector([HIT])))
+    assert ask_open(service, "laptop").status == FindStatus.FOUND
+
+
+def test_something_else_says_no_match_when_nothing_fits() -> None:
+    add_box(store_frame(12), "laptop")
+    result = ask_open(make_ui(make_service()), "where is my umbrella")
+    assert result.status == FindStatus.NO_MATCH and result.sighting is None
+
+
+def test_something_else_without_the_open_search_says_no_match() -> None:
+    add_box(store_frame(12), "laptop")
+    assert ask_open(make_ui(None), "laptop").status == FindStatus.NO_MATCH
+
+
+@pytest.mark.parametrize("words", ["", "   ", "a" * 301, "bad\x00words"])
+def test_something_else_refuses_words_that_are_not_usable(words: str) -> None:
+    with pytest.raises(FindError) as error:
+        ask_open(make_ui(make_service()), words)
+    assert str(error.value) == "Write what you are looking for, in a few words."
+
+
+def test_something_else_turns_an_unexpected_error_into_a_plain_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    open_search = make_service()
+
+    def broken(*_: object) -> None:
+        raise RuntimeError("secret internal text /home/x")
+
+    monkeypatch.setattr(open_search, "find_with_picture", broken)
+    with pytest.raises(FindError) as error:
+        ask_open(make_ui(open_search), "laptop")
+    assert str(error.value) == MESSAGE_FIND_FAILED
+
+
+def test_something_else_never_logs_the_words(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    import logging
+
+    add_box(store_frame(12), "laptop")
+    with caplog.at_level(logging.DEBUG):
+        ask_open(make_ui(make_service()), "my private laptop")
+        ask_open(make_ui(make_service()), "my private umbrella")
+    assert "private" not in caplog.text and "umbrella" not in caplog.text
 
 
 def test_without_the_open_search_the_old_answer_stays() -> None:

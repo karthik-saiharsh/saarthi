@@ -71,6 +71,20 @@ def test_each_fixed_object_shows_one_case_of_the_page() -> None:
     run(scenario)
 
 
+def test_something_else_finds_a_weak_laptop_or_nothing() -> None:
+    async def scenario() -> None:
+        service: StubFindService = StubFindService()
+        found: FindResult = await service.ask_open("where is my LAPTOP")
+        assert found.status == FindStatus.FOUND and found.object_name == "Laptop"
+        assert found.sighting is not None and found.sighting.strong is False
+        assert found.sighting.picture is not None
+        assert found.description is not None and "not sure" in found.description
+        nothing: FindResult = await service.ask_open("my cup")
+        assert nothing.status == FindStatus.NO_MATCH and nothing.sighting is None
+
+    run(scenario)
+
+
 def test_a_choice_has_two_objects_and_an_unknown_object_is_refused() -> None:
     async def scenario() -> None:
         service: StubFindService = StubFindService()

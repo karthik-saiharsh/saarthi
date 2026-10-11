@@ -44,8 +44,15 @@ from backend.errors import (
 )
 from backend.ingest import IngestResult, IngestService, IngestStatus
 from backend.open_search import OpenAnswer, OpenSearchService
-from backend.query import QueryCandidate, QueryResolver, QueryResult, QueryStatus
+from backend.query import (
+    QueryCandidate,
+    QueryResolver,
+    QueryResult,
+    QueryStatus,
+    clean_query,
+)
 from backend.search import Answer, SearchService
+from backend.settings import load_config
 from backend.voice import VoiceService
 from db.schema import ObjectStatus
 from ui.ports import (
@@ -292,7 +299,9 @@ class UiFindService:
         enrollment: EnrollmentService,
         describer: DescribeService,
         open_search: OpenSearchService | None = None,
+        max_query_chars: int | None = None,
     ) -> None:
+        """`max_query_chars` limits the words of `ask_open`. None takes `query.max_chars` from the config."""
         assert isinstance(resolver, QueryResolver), "resolver must be a QueryResolver"
         assert isinstance(search, SearchService), "search must be a SearchService"
         assert isinstance(
@@ -306,6 +315,12 @@ class UiFindService:
         self._enrollment: EnrollmentService = enrollment
         self._describer: DescribeService = describer
         self._open_search: OpenSearchService | None = open_search
+        self._max_query_chars: int = (
+            max_query_chars
+            if max_query_chars is not None
+            else load_config().query.max_chars
+        )
+        assert self._max_query_chars > 0, "max_query_chars must be positive"
 
     async def _call(
         self, function: Callable[..., _Result], *arguments: object
@@ -330,6 +345,15 @@ class UiFindService:
     async def find(self, object_id: int) -> FindResult:
         assert isinstance(object_id, int), "object_id must be an int"
         return await self._call(self._find, object_id, None)
+
+    async def ask_open(self, text: str) -> FindResult:
+        assert isinstance(text, str), "text must be a string"
+        return await self._call(self._ask_open, text)
+
+    def _ask_open(self, text: str) -> FindResult:
+        """The user tapped "Something else": skip the registered objects and run the open search."""
+        words: str = clean_query(text, self._max_query_chars)
+        return self._open_result(words) or FindResult(FindStatus.NO_MATCH)
 
     def _ask(self, text: str) -> FindResult:
         result: QueryResult = self._resolver.resolve(text)

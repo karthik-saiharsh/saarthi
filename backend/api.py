@@ -185,6 +185,7 @@ class Backend:
             self._enrollment,
             self._describe,
             self._open_search,
+            max_query_chars=self._config.query.max_chars,
         )
 
     @property

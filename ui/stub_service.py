@@ -4,7 +4,7 @@
 `duplicate` -> DUPLICATE, `reject` -> REJECTED, `fail` -> FAILED.
 Any other name -> STORED.
 
-`StubFindService`: four fixed objects. The words select the result: "bottle" or "drink"\nfinds the bottle, "key" is not seen, "cup" or "mug" asks which one, anything else fits no object.\n\n`StubEnrollmentService`: keeps the gallery in memory. A new photo is
+`StubFindService`: four fixed objects. The words select the result: "bottle" or "drink"\nfinds the bottle, "key" is not seen, "cup" or "mug" asks which one, anything else fits no object.\n"Something else" (`ask_open`) finds a weak laptop for words with "laptop", and nothing for other words.\n\n`StubEnrollmentService`: keeps the gallery in memory. A new photo is
 `pending` for 1 s, `processing` for 1.5 s, and then `located`. Every fourth
 photo of an object fails with "object not found".
 """
@@ -257,6 +257,29 @@ class StubFindService:
                 ),
             )
         return FindResult(FindStatus.NO_MATCH)
+
+    async def ask_open(self, text: str) -> FindResult:
+        """An object that nobody registered: "laptop" finds a weak answer, anything else fits nothing."""
+        assert isinstance(text, str) and text, "text must be a non-empty string"
+        await asyncio.sleep(0.6)
+        if "laptop" not in text.lower():
+            return FindResult(FindStatus.NO_MATCH)
+        image: Image.Image = Image.new("RGB", (640, 480))
+        image.paste((90, 90, 120), (0, 0, *image.size))
+        buffer: io.BytesIO = io.BytesIO()
+        image.save(buffer, format="JPEG", quality=70)
+        return FindResult(
+            FindStatus.FOUND,
+            object_name="Laptop",
+            sighting=Sighting(
+                age_seconds=25 * 60,
+                in_hand=False,
+                strong=False,  # An open answer is always weak
+                stale=False,
+                picture=buffer.getvalue(),
+            ),
+            description="I am not sure, but I may have seen a laptop 25 minutes ago. Please look at the picture.",
+        )
 
     async def find(self, object_id: int) -> FindResult:
         assert isinstance(object_id, int), "object_id must be an int"
