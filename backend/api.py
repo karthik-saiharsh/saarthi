@@ -24,6 +24,7 @@ from backend.ingest import IngestService
 from backend.maintenance import Maintenance
 from backend.open_search import OpenSearchService
 from backend.query import QueryResolver
+from backend.references import ReferenceVectors
 from backend.scene_writer import SceneWriter
 from backend.search import SearchService
 from backend.settings import (
@@ -78,8 +79,13 @@ class Backend:
         self._scene_writer: SceneWriter = SceneWriter(
             self._config, engine, self._describe
         )
+        # The SigLIP vectors of the reference crops (mode `evidence`). The worker and the search share them.
+        self._references: ReferenceVectors = ReferenceVectors(engine)
         self._worker: Worker = Worker(
-            self._config, engine, idle_task=self._scene_writer.write_next
+            self._config,
+            engine,
+            idle_task=self._scene_writer.write_next,
+            references=self._references,
         )
         # An upload wakes the worker, so a new image starts at once.
         self._ingest: IngestService = IngestService(
@@ -89,7 +95,9 @@ class Backend:
         self._enrollment: EnrollmentService = EnrollmentService(
             self._config, engine, on_photo_added=self._worker.wake
         )
-        self._search: SearchService = SearchService(self._config, engine)
+        self._search: SearchService = SearchService(
+            self._config, engine, self._references
+        )
         self._query: QueryResolver = QueryResolver(self._config, engine)
         self._voice: VoiceService = VoiceService(self._config, engine)
         self._open_search: OpenSearchService = OpenSearchService(self._config, engine)

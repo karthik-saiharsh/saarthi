@@ -227,8 +227,12 @@ def test_bad_data_raises_a_matching_error() -> None:
 
 
 def test_the_engine_uses_evidence_only_with_the_scene_model() -> None:
-    engine = make_engine()
-    assert engine.matching_mode == load_config().matching.mode
+    assert load_config().matching.mode == "evidence"  # The shipped default
+    assert (
+        make_engine().matching_mode == "tau"
+    )  # The test helper asks for tau unless told
+    engine = make_engine(matching_mode="evidence")
+    assert engine.matching_mode == "evidence"
     engine._scene = None  # The scene model is switched off
     assert engine.matching_mode == "tau"
 

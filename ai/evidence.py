@@ -57,6 +57,8 @@ def _check_object(obj: MatchObject, dimension: int) -> None:
         raise MatchingError(f"Object {obj.object_id} has no usable views")
     if obj.view_photos is None or len(obj.view_photos) != obj.views.shape[0]:
         raise MatchingError(f"Object {obj.object_id} needs a photo id for each view")
+    if not obj.tracked:
+        return  # A look-alike is only a rival in the margin. It needs no SigLIP references
     if obj.references is None or obj.reference_photos is None:
         raise MatchingError(f"Object {obj.object_id} has no reference vectors")
     _check_unit(obj.references, f"references of object {obj.object_id}")

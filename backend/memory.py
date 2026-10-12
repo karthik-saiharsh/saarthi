@@ -4,7 +4,9 @@ For each frame, the worker gives this service the regions and their vectors.
 The service does these steps:
 
 1. It loads the `ready` objects of the gallery with their views.
-2. It matches the regions with the objects (`AiEngine.match_regions`).
+2. It matches the regions with the objects. The mode comes from `[matching]` of `ai/config.toml`:
+   `tau` uses one threshold (`AiEngine.match_regions`), and `evidence` combines several signals into one score
+   (`AiEngine.score_evidence`, see `ai/evidence.py`). The mode `evidence` needs the decoded frame.
 3. It checks each weak match against the reference photos of the object (stage I5).
 4. It writes each accepted match to the sighting log.
 5. It changes the last-seen record of an object only by the rule below.
@@ -40,6 +42,7 @@ from ai.types import (
     Sighting,
     VerifyResult,
 )
+from backend.references import References, ReferenceVectors
 from backend.settings import MemoryConfig
 from backend.verification import ReferenceVerifier
 from db.schema import EnrolledObject, Image, ObjectStatus, Region
@@ -47,7 +50,12 @@ from db.schema import EnrolledObject, Image, ObjectStatus, Region
 logger: logging.Logger = logging.getLogger(__name__)
 
 
-def _to_match_object(obj: EnrolledObject, views: np.ndarray) -> MatchObject:
+def _to_match_object(
+    obj: EnrolledObject,
+    views: np.ndarray,
+    photo_ids: list[int],
+    references: References | None,
+) -> MatchObject:
     return MatchObject(
         object_id=obj.id,
         tracked=obj.tracked,
@@ -56,15 +64,22 @@ def _to_match_object(obj: EnrolledObject, views: np.ndarray) -> MatchObject:
         tau=float(obj.tau),
         tau_strong=float(obj.tau_strong),
         margin_min=float(obj.margin_min),
+        view_photos=np.array(photo_ids),
+        references=references.vectors if references is not None else None,
+        reference_photos=references.photo_ids if references is not None else None,
     )
 
 
-def load_match_objects(engine: AiEngine) -> list[MatchObject]:
+def load_match_objects(
+    engine: AiEngine, references: ReferenceVectors | None = None
+) -> list[MatchObject]:
     """Return the `ready` objects with the views of the current model.
 
     The memory and the search use it. An object with no view of the current
     model is left out. Its calibration is from another model, so its
     thresholds do not fit.
+    With `references` (the mode `evidence`), each tracked object also gets the SigLIP vectors of its reference
+    crops. A tracked object without them is left out. A look-alike stays: it is a rival in the margin.
     """
     assert isinstance(engine, AiEngine), "engine must be an AiEngine"
     model: str = engine.embedding_model
@@ -77,22 +92,34 @@ def load_match_objects(engine: AiEngine) -> list[MatchObject]:
             or obj.margin_min is None
         ):
             continue
-        views, _ = db.gallery.load_views(obj.id, model)
+        views, photo_ids = db.gallery.load_views(obj.id, model)
         if views.shape[0] == 0:
             logger.debug("Object %d has no views of the current model", obj.id)
             continue
-        objects.append(_to_match_object(obj, views))
+        refs: References | None = None
+        if references is not None and obj.tracked:
+            refs = references.get(obj.id)
+            if refs is None:
+                logger.warning("Object %d has no readable reference photo", obj.id)
+                continue
+        objects.append(_to_match_object(obj, views, photo_ids, refs))
     return objects
 
 
 class MemoryService:
     """Matches the regions of a frame and keeps the last-seen records."""
 
-    def __init__(self, config: MemoryConfig, engine: AiEngine) -> None:
+    def __init__(
+        self,
+        config: MemoryConfig,
+        engine: AiEngine,
+        references: ReferenceVectors | None = None,
+    ) -> None:
         assert isinstance(config, MemoryConfig), "config must be a MemoryConfig"
         assert isinstance(engine, AiEngine), "engine must be an AiEngine"
         self._config: MemoryConfig = config
         self._engine: AiEngine = engine
+        self._references: ReferenceVectors = references or ReferenceVectors(engine)
         self._verifier: ReferenceVerifier = ReferenceVerifier(
             engine, config.verify_max_references
         )
@@ -109,20 +136,34 @@ class MemoryService:
 
         `candidates`, `regions` and `vectors` have the same order. The regions
         must be stored, with their vectors, before this call. `picture` is the
-        decoded frame. Without it, no weak sighting is checked.
+        decoded frame. Without it, no weak sighting is checked, and the mode `tau` is used.
         Raise `AiError` or `DbError` for a problem of the data. The worker marks the image `failed`.
         """
         assert len(candidates) == len(regions) == len(vectors), "one row per region"
         if not regions:
             return 0
-        objects: list[MatchObject] = self.load_objects()
-        if not objects:
-            return 0
-        found: list[Sighting] = self._engine.match_regions(
-            vectors,
-            [MatchRegion(tuple(c.phrases), c.quality_ok) for c in candidates],
-            objects,
-        )
+        match_regions: list[MatchRegion] = [
+            MatchRegion(tuple(c.phrases), c.quality_ok) for c in candidates
+        ]
+        found: list[Sighting]
+        if self._engine.matching_mode == "evidence" and picture is not None:
+            objects: list[MatchObject] = load_match_objects(
+                self._engine, self._references
+            )
+            if not objects:
+                return 0
+            chosen: list[int] = self._engine.evidence_regions(
+                vectors, match_regions, objects
+            )
+            crops: np.ndarray = self._engine.embed_evidence_crops(
+                picture, [candidates[i].box for i in chosen]
+            )
+            found = self._engine.score_evidence(chosen, vectors, crops, objects)
+        else:
+            objects = self.load_objects()
+            if not objects:
+                return 0
+            found = self._engine.match_regions(vectors, match_regions, objects)
         recorded: int = 0
         for sighting in found:
             sighting = self._verified(sighting, candidates, vectors, picture)
@@ -211,10 +252,11 @@ class MemoryService:
             )
             return False
         logger.info(
-            "Sighting of object %d in image %d (%s). Last-seen record %s",
+            "Sighting of object %d in image %d (%s%s). Last-seen record %s",
             sighting.object_id,
             image.id,
             "strong" if sighting.strong else "weak",
+            f", score {sighting.score:.2f}" if sighting.score is not None else "",
             "changed" if changed else "kept",
         )
         return True

@@ -269,12 +269,18 @@ def make_engine(
     speech_recognizer: FakeSpeechRecognizer | None = None,
     open_detector: FakeOpenDetector | None = None,
     language_model: FakeLanguageModel | None = None,
+    matching_mode: str = "tau",
 ) -> AiEngine:
     """An `AiEngine` with fake models. The quality gate and post-processing are real.
 
     `blur_min` replaces the limit of the config (the shipped config has the gate off).
+    `matching_mode` replaces `[matching].mode`. The default is `tau`, because most tests check the threshold rule
+    with fake vectors. The tests of the mode `evidence` pass "evidence".
     """
     config = load_config()
+    config = dataclasses.replace(
+        config, matching=dataclasses.replace(config.matching, mode=matching_mode)
+    )
     if blur_min is not None:
         config = dataclasses.replace(
             config, quality=dataclasses.replace(config.quality, blur_min=blur_min)

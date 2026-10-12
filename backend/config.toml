@@ -90,6 +90,10 @@ crop_padding = 0.25
 verify_weak = true
 # The check compares with at most this many reference photos, the most similar first.
 verify_max_references = 3
+# The mode "evidence" of [matching] in ai/config.toml reads a frame and runs SigLIP on it before it can score it.
+# A search scores at most this many frames (only frames with a candidate region count). A longer search stops,
+# and the answer says so. About 0.5 s for each frame on the development CPU.
+evidence_max_frames = 30
 
 [query]
 # The words of a user are turned into vectors and compared with a description of each object

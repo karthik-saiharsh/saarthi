@@ -8,7 +8,7 @@ The backend has these jobs:
 1. The upload step. It accepts one image, checks it, stores it, and puts it in the queue.
 2. The worker. It takes the photos and the images from the queue and runs the ai stages on them.
 3. Enrollment. A carer adds the objects that the owner wants to find, with photos. The backend calibrates each object.
-4. The memory. It matches the regions of a frame with the objects, and keeps the sightings and the last-seen records (see `docs/backend/Memory.md`).
+4. The memory. It matches the regions of a frame with the objects (mode `evidence` or `tau`, see `[matching]` in `ai/config.toml`), and keeps the sightings and the last-seen records (see `docs/backend/Memory.md`).
 5. The search. It turns the words of a user into an object, and answers where the object was seen last (see `docs/backend/Search.md`).
 6. The maintenance jobs. They delete old images and orphan files, report missing files, and save the vector index.
 7. The open search. It finds objects that nobody registered (see `docs/backend/Open Search.md`).
@@ -32,6 +32,7 @@ For the full design, see `docs/backend/Upload Endpoint.md`, `docs/backend/Enroll
 | `enrollment.py` | `EnrollmentService`: objects, reference photos, the carer's confirmation, the calibration |
 | `ui_adapter.py` | Connects the UI to the upload step, to enrollment and to the search (`ui.ports.UploadService`, `EnrollmentService`, `FindService`) |
 | `memory.py` | `MemoryService`: matches the regions of a frame, writes the sightings, keeps the last-seen records |
+| `references.py` | `ReferenceVectors`: the SigLIP vectors of the reference crops of each object, for the evidence-based matching. Made from the stored photos and kept in memory. The memory and the search share one |
 | `verification.py` | `ReferenceVerifier`: the check of a sighting against the reference photos of an object (stage I5). The memory and the search use it |
 | `search.py` | `SearchService`: answers "where is my object?" from the last-seen record, then from the archive of frames |
 | `query.py` | `QueryResolver`: turns the words of a user into an enrolled object, or a short list to choose from |

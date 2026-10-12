@@ -234,7 +234,9 @@ def test_no_check_is_made_when_it_is_off_or_cannot_be_made(
     else:
         base = load_config()
         config = dataclasses.replace(
-            base, verification=dataclasses.replace(base.verification, enabled=False)
+            base,
+            verification=dataclasses.replace(base.verification, enabled=False),
+            matching=dataclasses.replace(base.matching, mode="tau"),
         )
         engine = AiEngine(
             config,

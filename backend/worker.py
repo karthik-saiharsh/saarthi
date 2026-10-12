@@ -34,6 +34,7 @@ from ai.api import AiEngine
 from ai.errors import AiError
 from ai.types import Box, Candidate
 from backend.memory import MemoryService
+from backend.references import ReferenceVectors
 from backend.settings import BackendConfig, WorkerConfig
 from db.schema import EnrolledObject, Image, ReferencePhoto, RegionSource, utc_now
 
@@ -78,6 +79,7 @@ class Worker:
         config: BackendConfig,
         engine: AiEngine,
         idle_task: Callable[[], bool] | None = None,
+        references: ReferenceVectors | None = None,
     ) -> None:
         assert isinstance(config, BackendConfig), "config must be a BackendConfig"
         assert isinstance(engine, AiEngine), "engine must be an AiEngine"
@@ -86,7 +88,7 @@ class Worker:
         # Work for the time when no frame waits (for example, writing the description of a frame).
         # It returns True if it did something. An error inside it must not stop the worker.
         self._idle_task: Callable[[], bool] | None = idle_task
-        self._memory: MemoryService = MemoryService(config.memory, engine)
+        self._memory: MemoryService = MemoryService(config.memory, engine, references)
         self._analysed: int = (
             0  # Images that reached the detector. Used for the generic pass
         )
