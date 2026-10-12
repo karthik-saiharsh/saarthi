@@ -3,8 +3,8 @@
 ## Purpose
 
 This guide shows how to run Saarthi on a Raspberry Pi 5 with 8 GB of memory, and how to open it on a phone on the same Wi-Fi.
-The Pi is the target device of the project. The application ran only on a development computer so far (x86, no GPU).
-**The speed and the memory on the Pi are not measured yet.** The list "To measure on the Pi" at the end says what to check first.
+The Pi is the target device of the project. The application ran on a Pi 5 one time, without an active cooler (see "Measured on a Pi 5").
+**Measure again with a cooler.** The list "To measure again, with a cooler" at the end says what to check.
 
 ## What you need
 

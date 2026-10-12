@@ -171,6 +171,8 @@ A frame that was sent more than 2 minutes before or after the answer frame does 
 |------|-----------------|
 | Tap **Say it again** | The browser repeats the sentence. If the device has no local English voice, it stays silent. The text stays on the page |
 | Ask for an object that was never seen | "The computer has not seen it lately." |
+| Write `where is my laptop` (nobody registered a laptop) | The open search answers from photo 14: "Maybe", and the sentence starts with "I am not sure, but I may have seen a laptop". See `docs/backend/Open Search.md` |
+| A "Which one do you mean?" result | The button **Something else** runs the open search with the same words |
 | Wait more than 6 hours, then ask | The sentence says a part of the day ("this morning", "yesterday evening") instead of "N hours ago". See `describe.time_zone` in `backend/config.toml` |
 
 The time zone: the setting `describe.time_zone` is empty, so the application uses the time zone of the computer. Set an IANA name (for example `Asia/Kolkata`) if the computer runs on UTC.
@@ -202,14 +204,6 @@ curl -o answer.jpg "http://localhost:8080/api/objects/1/last-seen/picture?view=f
 
 What happened inside: `backend.query` turned your words into a vector (`ai.query`) and compared it with the description of each ready object.
 `backend.search` read the last-seen record. If the record is older than 24 hours, it looks through the stored frames, newest first.
-
-### The Talk button
-
-Open `http://localhost:8080/find` on this computer (`localhost` allows the microphone without HTTPS).
-Tap **Talk**, allow the microphone, say "where is my speckled bottle", and tap **Stop**.
-The page shows "I heard: ..." and then the answer, with the sentence and the voice.
-On a phone, you need HTTPS first (`docs/backend/HTTPS.md`).
-Try also a silent recording: the page says that the computer did not hear you.
 
 ## 6. More things to try
 

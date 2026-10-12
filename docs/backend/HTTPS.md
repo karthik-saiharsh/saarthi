@@ -80,7 +80,7 @@ Then open `https://<address>:8080/find` on the phone. The page must show no warn
 ## Test the microphone
 
 Open the browser console on the phone page, or use a test page. The check `window.isSecureContext` must be `true`.
-The microphone itself comes in a later phase (stage Q0).
+Then tap **Talk** on `/find`. The browser asks for the microphone (stage Q0, see `docs/backend/Voice.md`).
 
 ## Risks
 

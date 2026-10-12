@@ -7,8 +7,10 @@ It also gives the stages of enrollment: find one object in a photo, make its vie
 It matches the boxes of a frame with the enrolled objects.
 It turns the words of a user into a vector, to find the object that the user means.
 
-For the full design, see `ai/docs/AI Ingestion Module.md`.
-The source of the design is `docs/ai/DINO-Based Object Recall Pipeline.md`.
+It also scores the room and the surface of a place, turns speech into text, finds objects that nobody registered, and runs a small language model.
+
+For the full design, see `docs/ai/AI Ingestion Module.md`.
+The source of the design is `docs/guide/DINO-Based Object Recall Pipeline.md`.
 
 ## Files
 
@@ -34,7 +36,6 @@ The source of the design is `docs/ai/DINO-Based Object Recall Pipeline.md`.
 | `types.py` | `Box`, `QualityReport`, `Candidate`, `RawDetection` |
 | `errors.py` | The error classes |
 | `config.toml` | Every setting: models, thresholds, phrases, switches |
-| `docs/` | The design documents of this module |
 
 ## Rules
 
@@ -66,7 +67,7 @@ The source of the design is `docs/ai/DINO-Based Object Recall Pipeline.md`.
 ```python
 from ai.api import AiEngine
 
-engine = AiEngine()  # Loads the three models. Do this one time.
+engine = AiEngine()  # Loads the models (up to eight). Do this one time.
 image = engine.open_image(data)
 report = engine.assess_quality(image)
 candidates = engine.detect_candidates(image)
@@ -86,12 +87,15 @@ Edit `config.toml`. The file explains each key.
 | Embed regions | `facebook/dinov2-small` | About 90 MB |
 | Understand the words of a user | `sentence-transformers/all-MiniLM-L6-v2` (Apache-2.0) | About 91 MB |
 | Check a borderline sighting (I5) | `ETH-CVG/lightglue_superpoint` (**non-commercial research use only**) | About 55 MB |
-| Describe the place (Q2) | `google/siglip-base-patch16-224` (Apache-2.0) | About 813 MB |
+| Describe the place (Q2), vectors of the open search | `google/siglip-base-patch16-224` (Apache-2.0) | About 813 MB |
+| Turn speech into text (Q0) | `openai/whisper-base` (Apache-2.0) | About 290 MB |
+| Find objects that nobody registered | YOLOE `yoloe-11s-seg-pf.pt` (**AGPL-3.0**, accepted for this academic project). Downloaded into `ai/models/`, SHA-256 checked | About 28 MB |
+| Rewrite a description, describe a place | `Qwen/Qwen3.5-0.8B` (Apache-2.0) | About 1.75 GB |
 
 - The weights of the verifier are for academic or non-profit non-commercial research use only.
   The owner confirmed that this project is for academic research. Change the verifier if the use changes.
   Set `verification.enabled = false` to not load it.
-- Each model is fixed to one revision in `config.toml`. Only safetensors files are loaded.
+- Each Hugging Face model is fixed to one revision in `config.toml`. Only safetensors files are loaded. The YOLOE file is checked with its SHA-256.
   No code from the model repository is run.
 - The first start downloads the models to the Hugging Face cache, `~/.cache/huggingface/hub/`.
   On a slow network the download can take about 15 minutes. If the download does not start (the partial file stays at 0 bytes),

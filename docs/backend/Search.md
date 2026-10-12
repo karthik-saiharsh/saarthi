@@ -5,8 +5,8 @@
 The search answers one question: where did the system last see my object?
 It is stage Q1 of `docs/guide/DINO-Based Object Recall Pipeline.md`.
 
-A later change adds speech to this flow: a recognizer before the resolver, and a description and a voice after the answer.
-It is planned and not built (see `docs/backend/Voice.md`).
+Speech is part of this flow: a recognizer before the resolver, and a description and a voice after the answer (see `docs/backend/Voice.md`).
+When no enrolled object fits the words, the open search looks for objects that nobody registered (see `docs/backend/Open Search.md`).
 
 The user can say which object in two ways. The user can choose it from a list.
 The user can also write it in any words, for example "the blue thing I use to drink stuff".
@@ -38,7 +38,7 @@ words ──▶ QueryResolver ──▶ object ──▶ SearchService.find ─�
 2. It takes the objects that a search can find: `ready` objects that are not look-alikes.
 3. It writes a description of each object: `name: category phrase, synonyms`.
    Example: `Blue bottle: a bottle, a water bottle`.
-4. The query encoder turns the words and each description into a vector (see `ai/docs/AI Ingestion Module.md`).
+4. The query encoder turns the words and each description into a vector (see `docs/ai/AI Ingestion Module.md`).
    The resolver encodes a description one time and keeps the vector.
 5. The score of an object is the cosine between the vector of the words and the vector of its description.
 
@@ -46,7 +46,7 @@ words ──▶ QueryResolver ──▶ object ──▶ SearchService.find ─�
 |--------|------|----------------------|
 | `matched` | The best score is at least `matched_min_score`, and at least `matched_min_gap` above the second best | Use this object |
 | `ambiguous` | No object is sure, but the best score is at least `suggest_min_score` | Show up to `max_candidates` objects. The user chooses |
-| `none` | The best score is below `suggest_min_score`, or no object can be found | Tell the user that no object fits |
+| `none` | The best score is below `suggest_min_score`, or no object can be found | Run the open search. If it finds nothing, tell the user that no object fits |
 
 The user always has the list of objects. A wrong guess costs one tap.
 The resolver never returns an object that is not in the gallery.
@@ -125,7 +125,7 @@ The token is checked first. A wrong id or a wrong option does not skip the check
 
 | Route | Action |
 |-------|--------|
-| `POST /api/search` | The body is JSON: `{"query": "..."}`. The body has at most 16 KiB. The answer has `status`, `candidates` and, for `matched`, the `answer` |
+| `POST /api/search` | The body is JSON: `{"query": "..."}`. The body has at most 16 KiB. The answer has `status` (`matched`, `ambiguous`, `open` or `none`), `candidates` and, for `matched` and `open`, the `answer`. `open` is a weak answer of the open search, with `label` and `via` |
 | `GET /api/objects/{id}/last-seen` | The answer for one object |
 | `GET /api/objects/{id}/last-seen/picture` | A JPEG. `?view=crop` or `frame`. `?max_side=` from 32 to 1024 |
 

@@ -1,4 +1,4 @@
-# Voice and Description (planned)
+# Voice and Description
 
 ## Status
 
@@ -7,8 +7,9 @@ the cache of the room scores and the lookup of neighbouring frames in the `db` c
 and the room rule, the sentence and the service in `backend/describe.py` (phase 1c).
 The sentence is on the `/find` page (phase 1d), the browser says it with a local voice (phase 2), the server can serve HTTPS (phase 3), and the Talk button listens (phase 4).
 Not built: the dialogue by voice (phase 5).
+A checked sentence of the language model about the place is also built (see "The description of the place by the language model").
 This document records the flow that the owner described and the stages that it adds to the pipeline.
-It also lists the decisions that are still open.
+It also lists the decisions that are still open. The sections "The planned parts" and "The candidates" keep the first plan for the record.
 
 ## Purpose
 
@@ -29,7 +30,7 @@ The flow:
 |-------|------|------|--------|
 | Q0 | Listen | Turn the speech of the patient into text | Built (phase 4) |
 | Q1 | Answer | Find the object, and where and when it was seen | Built (`docs/backend/Search.md`) |
-| Q2 | Describe | Describe the place in the frame of the answer: the surface, its colour and the kind of room | Planned |
+| Q2 | Describe | Describe the place in the frame of the answer: the surface and the kind of room, from fixed lists. No colour | Built (phase 1) |
 | Q3 | Speak | Say the answer with a voice. The page also shows the picture | Built (phase 2) |
 
 ```
@@ -37,7 +38,7 @@ patient speaks ─▶ Q0 Listen ─▶ words ─▶ resolver (built) ─▶ obje
                                                                           │
               the picture on the page ◀───────────────────────────────────┤
                                                                           ▼
-                              Q2 Describe: surface, colour, room ─▶ sentence ─▶ Q3 Speak ─▶ voice
+                                     Q2 Describe: surface, room ─▶ sentence ─▶ Q3 Speak ─▶ voice
 ```
 
 The resolver already accepts any words, for example "I can't find my water bottle". Q0 only has to give it the text.
@@ -51,22 +52,14 @@ The resolver already accepts any words, for example "I can't find my water bottl
 - **The voice says only what the system knows.** If the match is weak, the sentence says so.
   If the scene is not clear, the sentence leaves that part out.
 - **A wrong description can mislead the patient.** The description must be careful. A fixed template and fixed word lists are safer than free text.
-  The choice is open (see "Open decisions").
+  The owner chose fixed word lists (see "Decisions").
 - **The picture stays on the page.** The voice adds to the picture. It does not replace it.
 
 ## The spoken sentence
 
-The application builds the sentence from a template with slots. The slots are the object, the time, the surface, its colour and the kind of room.
-
-| Case | Example |
-|------|---------|
-| Found | "Your bottle was last seen about 20 minutes ago. It was on a table. The room looks like a bedroom." |
-| In hand | "You were holding your bottle about 20 minutes ago. You were in a room that looks like a bedroom." |
-| Weak match | "Your bottle may have been on a table. I am not sure. Please look at the picture." |
-| Old sighting | "The last time that I saw your bottle was a long time ago, yesterday evening." |
-| Not seen | "I have not seen your bottle lately." |
-| Not sure which object | "Which one do you mean? The blue bottle, or the green cup?" |
-| Unknown object | "I do not know that object." |
+The application builds the sentence from a template with slots. The slots are the object, the time, the surface and the kind of room.
+There is no colour slot (see "Decisions"). The sentences that the code builds are in "The room rule".
+A choice between objects and an unknown object are shown as text on the page. They have no spoken sentence yet (phase 5).
 
 **The time.** The sentence uses a relative time ("20 minutes ago").
 For a sighting that is at least `describe.day_part_min_hours` old (6), it uses a part of the day instead: "this morning", "this afternoon", "this evening",
@@ -101,12 +94,16 @@ The sentences that the code builds:
 | Case | Sentence |
 |------|----------|
 | Sure | "Your bottle was last seen about 20 minutes ago. It was on a table. The room looks like a bedroom." |
+| Sure, with a checked sentence of the language model | "Your bottle was last seen 2 minutes ago. The bottle is on the desk." (the sentence replaces the surface and the room) |
 | In hand | "You were holding your bottle about 20 minutes ago." |
-| Weak | "I am not sure, but I may have seen your bottle about 20 minutes ago. It may have been on a table. Please look at the picture." |
+| In hand, weak | "I am not sure, but you may have been holding your bottle about 20 minutes ago. Please look at the picture." |
+| Weak | "I am not sure, but I may have seen your bottle about 20 minutes ago. It may have been on a table. The room may look like a bedroom. Please look at the picture." |
 | Old | "The last time that I saw your bottle was 2 days ago. That was a long time ago." |
-| Not seen | "I have not seen your bottle lately." |
+| Not seen | "I have not seen your bottle lately." With an incomplete search: "I could not look at all the pictures." is added |
+| Open search | "I am not sure, but I may have seen a laptop 12 minutes ago. ... Please look at the picture." ("a laptop", not "your laptop") |
 
 An error of the scene model, of a file or of the database gives a sentence with the time only.
+The code is `build_sentence` in `backend/describe.py`.
 
 ## The listening (built, phase 4)
 
@@ -122,21 +119,21 @@ An error of the scene model, of a file or of the database gives a sentence with 
 
 ## The planned parts
 
-| Part | Task |
-|------|------|
-| `ai/speech.py` (built) | The speech recognizer (Q0): audio in, text out |
-| `ai/scene.py` (new) | The scene describer (Q2): a frame and a box in, the slots out (surface, colour, room) |
-| A speech synthesizer (Q3) | Text in, audio out. The place is open: in the `ai` component, or in the browser |
-| `backend/voice.py` (new) | `VoiceService`: audio in, the words and the result of the search out |
-| `backend/describe.py` (new) | Builds the sentence from the answer and the slots. The result is cached for each frame |
-| A route for the audio | A new HTTP route with a size limit, the optional token and fixed messages, as the other routes |
-| The UI (`/find`) | A large "Talk" button, the words that the system heard, the picture, the text of the sentence and a "Say it again" button |
-| `[voice]` and `[scene]` in the config | The models, the time zone and the limits |
+| Part | Task | Status |
+|------|------|--------|
+| `ai/speech.py` | The speech recognizer (Q0): audio in, text out | Built |
+| `ai/scene.py` | The scene classifier (Q2): a frame and a box in, the room and the surface out | Built. No colour |
+| The speech synthesizer (Q3) | Text in, audio out | Built in the browser (`ui/speech.py`). No model on the server |
+| `backend/voice.py` | `VoiceService`: checks the WAV recording and turns it into text | Built |
+| `backend/describe.py` | Builds the sentence from the answer, the surface and the room | Built |
+| The route for the audio | `POST /ui/voice` (`ui/voice_route.py`), with a size limit and fixed messages. It has no token, as the pages have none | Built |
+| The UI (`/find`) | A large "Talk" button, the words that the system heard, the picture, the text of the sentence and a "Say it again" button | Built |
+| The config | `[speech]` and `[scene]` in `ai/config.toml`. `[describe]` and `[voice]` in `backend/config.toml` | Built |
 
 **When to describe a frame.** A description is only needed for the frame of an answer. Describing every frame would cost too much.
-There are two ways. The first: describe the frame when the last-seen record changes, and store the text with the record.
-The second: describe it when the patient asks, and keep the text.
-Both need a place to store the text. This is open.
+- The room scores are made when an answer needs them, and kept for each frame in the table `frame_scene` (`db/scenes.py`).
+- The sentence of the language model is made in the background, when the last-seen record changes and no frame waits.
+  It is kept in the table `frame_description` (see `docs/backend/Open Search.md`).
 
 ## Limits of the browser
 
@@ -207,7 +204,7 @@ These decisions are still open:
 
 | # | Question | Why it matters |
 |---|----------|----------------|
-| 7 | How much memory and which CPU does the target device have? | Every new model adds memory and time. The application already loads four models |
+| 7 | How much memory and which CPU does the target device have? | Every new model adds memory and time. The application loads eight models. A Pi 5 with 8 GB used up to 5.8 GB (see `docs/Raspberry Pi.md`) |
 | 8 | How does a patient who cannot tap answer "Which one do you mean?" | A yes or no by voice needs a dialogue of more than one turn |
 
 ## HTTPS
@@ -226,8 +223,8 @@ A phone that opens `http://<address>:8080` cannot use the microphone. So the app
 Each phase is one commit.
 
 0. **The test of the description.** Fixed lists against free text, on the 14 photos. The owner chooses. (No application code.)
-1. **Describe (Q2).** The scene describer, the sentence, the cache, and the sentence as text on the page.
-2. **Speak (Q3).** The voice and a "Say it again" button.
+1. **Describe (Q2, built).** The scene classifier, the sentence, the cache, and the sentence as text on the page.
+2. **Speak (Q3, built).** The voice and a "Say it again" button.
 3. **HTTPS (built).** The certificate settings, and the guide to make and to install a certificate. The test on a real phone is still to do.
 4. **Listen (Q0, built).** The audio route, the recognizer, and the "Talk" button. The test with real speech on a real phone is still to do.
 5. **The dialogue.** The spoken answers for the cases without an object, and for the choice between objects.
@@ -237,6 +234,6 @@ Each phase is one commit.
 
 - **A wrong description.** The system could say "bedroom" for a bathroom, or name a wrong colour. A patient may believe it.
   The sentence must be careful, and the picture must stay on the page.
-- **Time and memory.** The recognizer, the describer and the voice add three models to four. The speed on the Raspberry Pi is not measured.
+- **Time and memory.** The application loads eight models. On the Pi 5, the recognition of 2 s of speech took 2 to 5 s, and a sentence of the language model took 33 s (see `docs/Raspberry Pi.md`).
 - **Speech of an older patient.** A recognizer can make more mistakes with a quiet or slow voice. This is not tested.
 - **Noise.** A home has a TV and other voices. The recognizer can hear the wrong person.

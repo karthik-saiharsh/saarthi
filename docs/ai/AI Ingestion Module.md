@@ -11,8 +11,13 @@ It does these things:
 4. It matches the boxes with the enrolled objects (stage I4).
 5. It checks a borderline sighting against the reference pictures of an object (stage I5).
 6. It turns the words of a user into a vector, to find the object that the user means (stage Q1).
+7. It scores the room and the surface of a place from fixed word lists (stage Q2).
+8. It turns speech into text (stage Q0).
+9. It finds and names objects that nobody registered (the broad detector), and makes SigLIP vectors for them.
+10. It rewrites a description into object names, and writes a sentence about a place (the language model).
 
-The design follows `docs/ai/DINO-Based Object Recall Pipeline.md`.
+The design follows `docs/guide/DINO-Based Object Recall Pipeline.md`.
+Items 8 to 10 are described in `docs/backend/Voice.md` and `docs/backend/Open Search.md`.
 The enrollment stages E2 to E4 are in the section "Enrollment stages E2 to E4".
 The stages that use the results are in `docs/backend/Memory.md` and `docs/backend/Search.md`.
 
@@ -47,7 +52,7 @@ The ai module does not import the db module.
 
 | Helper | Task | Result |
 |--------|------|--------|
-| `AiEngine(config=None)` | Load the five models (the verifier only if `verification.enabled`, the scene model only if `scene.enabled`) | The engine. Call it one time at start-up |
+| `AiEngine(config=None)` | Load up to eight models. The detector, the embedder and the query encoder always load. The verifier, the scene model, the speech model, the broad detector and the language model load only if their `enabled` key is true | The engine. Call it one time at start-up |
 | `open_image(data, max_pixels)` | Decode image bytes. Apply the EXIF orientation. Convert to RGB | A PIL image. Raises `ImageError` |
 | `engine.open_image(data)` | The same, with `image.max_pixels` of the config | A PIL image |
 | `engine.assess_quality(image)` | Blur score and perceptual hash | `QualityReport` |
@@ -66,6 +71,15 @@ The ai module does not import the db module.
 | `engine.query_model` | Name of the query encoder, for example `all-MiniLM-L6-v2@1110a243` | `str` |
 | `engine.embedding_model` | Name for the database, for example `dinov2-small@ed25f3a3` | `str` |
 | `engine.embedding_dimension` | Length of one vector | `int` |
+| `engine.detect_phrases(image, phrases)` | One detector pass with the words of a user (the open search, mode `verified`) | List of `RawDetection` |
+| `engine.transcribe(samples)` | Speech to text with Whisper base (stage Q0). `speech_enabled`, `speech_max_seconds`, `speech_sample_rate` describe the input | `str` |
+| `engine.detect_open(image)` | The broad detector (YOLOE, prompt-free) | List of `OpenDetection`, the most confident first |
+| `engine.embed_open_crops(image, boxes)`, `engine.embed_open_phrases(phrases)` | SigLIP vectors of crops and of phrases, for the open search | `float32` array, 768 numbers each, unit length |
+| `engine.open_pair_scores(crops, phrases)` | The SigLIP probability of each pair | Array of shape (crops, phrases) |
+| `engine.open_detection_enabled`, `open_vector_dimension`, `open_vector_model` | The broad detector is loaded. The size and the name of the open vectors | `bool`, `int`, `str` |
+| `engine.rewrite_query(words)` | The language model turns a description into up to 3 object names | List of `str` |
+| `engine.describe_scene(picture, facts)` | The language model writes one sentence about the place. The backend checks it | `str` |
+| `engine.language_enabled`, `description_model` | The language model is loaded. The name for the stored sentences | `bool`, `str` |
 
 `detect_candidates` uses `detection.default_phrases` when you give no phrases.
 `include_generic` adds the generic pass. `tiling` switches the tiled pass for this call. The value `None` uses the config.
@@ -227,7 +241,7 @@ The cosine between two vectors is the score of a pair.
 - The model is `sentence-transformers/all-MiniLM-L6-v2` (Apache-2.0, about 22 million parameters, about 91 MB). The vector has 384 numbers.
 - The module cuts a text after `query.max_tokens` tokens (128, the length that the model learned with).
 - The vector is the mean of the token vectors. The padding does not count. The module scales it to unit length.
-- The module loads the model one time, with the other two. One lock protects it.
+- The module loads the model one time, with the other models. One lock protects it.
 - These vectors are not comparable with the vectors of the regions. Compare them with each other only.
 - The encoder reads text only. It never sees an image. It runs on the device, so the words stay on the device.
 
@@ -266,14 +280,17 @@ All settings are in `ai/config.toml`. The start values come from the pipeline do
 
 | Table | Keys |
 |-------|------|
-| `[models]` | `detector_id`, `detector_revision`, `embedder_id`, `embedder_revision`, `query_encoder_id`, `query_encoder_revision`, `verifier_id`, `verifier_revision`, `scene_id`, `scene_revision`, `device` (`auto`, `cpu` or `cuda`), `cpu_threads`, `local_files_only` |
+| `[models]` | `detector_id`, `detector_revision`, `embedder_id`, `embedder_revision`, `query_encoder_id`, `query_encoder_revision`, `verifier_id`, `verifier_revision`, `scene_id`, `scene_revision`, `speech_id`, `speech_revision`, `language_id`, `language_revision`, `open_detector_file`, `open_detector_url`, `open_detector_sha256`, `device` (`auto`, `cpu` or `cuda`), `cpu_threads`, `local_files_only` |
 | `[image]` | `max_pixels` |
 | `[quality]` | `blur_min`, `analysis_max_side`, `phash_max_distance`, `min_crop_side`, `crop_blur_min` |
-| `[detection]` | `box_threshold`, `text_threshold`, `input_short_edge`, `max_per_phrase`, `chunk_size`, `nms_iou`, `max_frame_fraction`, `min_box_side`, `hand_overlap`, `depiction_inside`, `default_phrases`, `small_phrases`, `hand_phrase`, `depiction_phrases`, `generic_phrase`, `tiling_enabled`, `tile_overlap` |
+| `[detection]` | `box_threshold`, `text_threshold`, `input_short_edge`, `max_per_phrase`, `chunk_size`, `phrase_max_chars`, `nms_iou`, `max_frame_fraction`, `min_box_side`, `hand_overlap`, `depiction_inside`, `default_phrases`, `small_phrases`, `hand_phrase`, `depiction_phrases`, `generic_phrase`, `tiling_enabled`, `tile_overlap` |
 | `[embedding]` | `frame_short_edge`, `frame_long_edge_max`, `crop_size`, `small_box_min_side`, `crop_padding` |
 | `[query]` | `max_tokens` |
 | `[verification]` | `enabled`, `min_matches`, `match_threshold`, `crop_padding` |
 | `[scene]` | `enabled`, `prompt`, `rooms`, `surfaces`, `surface_context` |
+| `[speech]` | `enabled`, `max_seconds`, `max_new_tokens` |
+| `[open_detection]` | `enabled`, `confidence`, `max_boxes`, `input_size`, `min_box_side`, `crop_padding` |
+| `[language]` | `enabled`, `max_input_chars`, `max_new_tokens`, `max_names`, `rewrite_system`, `rewrite_examples`, `describe_system`, `describe_max_new_tokens`, `describe_image_side` |
 
 - `embedding.frame_short_edge`, `embedding.frame_long_edge_max` and `embedding.crop_size` must be multiples of 14.
 - Each phrase in `detection.small_phrases` must also be in `detection.default_phrases`.
@@ -290,7 +307,12 @@ All settings are in `ai/config.toml`. The start values come from the pipeline do
 | Embed | `facebook/dinov2-small` | About 90 MB |
 | Understand the words of a user | `sentence-transformers/all-MiniLM-L6-v2` | About 91 MB |
 | Check a borderline sighting | `ETH-CVG/lightglue_superpoint` (non-commercial research use only) | About 55 MB |
-| Describe the place | `google/siglip-base-patch16-224` | About 813 MB |
+| Describe the place, and the vectors of the open search | `google/siglip-base-patch16-224` | About 813 MB |
+| Turn speech into text | `openai/whisper-base` (Apache-2.0) | About 290 MB |
+| Find objects that nobody registered | YOLOE `yoloe-11s-seg-pf.pt` (AGPL-3.0). Downloaded into `ai/models/`, SHA-256 checked | About 28 MB |
+| Rewrite a description, write a sentence about a place | `Qwen/Qwen3.5-0.8B` (Apache-2.0) | About 1.75 GB |
+
+All eight models together are about 3.8 GB.
 
 - The first start downloads the models to the Hugging Face cache, `~/.cache/huggingface/hub/`.
   Set the variable `HF_HOME` (or `HF_HUB_CACHE`) to use another folder.
@@ -399,6 +421,10 @@ These parts are not built yet:
 | `tests/test_ai_verifier_model.py` (slow) | The real verifier on real photos: the bottle passes, other parts of the photos do not |
 | `tests/test_ai_query_model.py` (slow) | The real query encoder: the vectors, the padding, four vague questions |
 | `tests/test_ai_models.py` (slow) | The real models: vector shape and length, the three passes, the engine |
+| `tests/test_ai_speech_model.py` (slow) | The real speech model |
+| `tests/test_ai_open_detector.py`, `tests/test_ai_open_detector_model.py` (slow) | The broad detector: the settings, the weights check, the offline switches, the real model |
+| `tests/test_ai_open_vectors.py`, `tests/test_ai_open_vectors_model.py` (slow) | The SigLIP vectors of crops and phrases |
+| `tests/test_ai_language.py`, `tests/test_ai_language_model.py` (slow) | The query rewriter and the description, with a fake and with the real model |
 | `tests/test_ingestion_chain.py` (slow) | One photo from the upload to the retention, with all modules |
 
 Run the slow tests with `uv run pytest -m slow`.

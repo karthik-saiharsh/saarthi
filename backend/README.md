@@ -3,7 +3,7 @@
 This is the backend module.
 It controls the flow of the application. It connects the other modules in the right order.
 
-The backend has four jobs:
+The backend has these jobs:
 
 1. The upload step. It accepts one image, checks it, stores it, and puts it in the queue.
 2. The worker. It takes the photos and the images from the queue and runs the ai stages on them.
@@ -11,6 +11,8 @@ The backend has four jobs:
 4. The memory. It matches the regions of a frame with the objects, and keeps the sightings and the last-seen records (see `docs/backend/Memory.md`).
 5. The search. It turns the words of a user into an object, and answers where the object was seen last (see `docs/backend/Search.md`).
 6. The maintenance jobs. They delete old images and orphan files, report missing files, and save the vector index.
+7. The open search. It finds objects that nobody registered (see `docs/backend/Open Search.md`).
+8. The description and the voice. It builds the sentence about the place, and turns a recording into text (see `docs/backend/Voice.md`).
 
 `main.py` starts the application and stops it. It calls the backend after all other modules are ready.
 

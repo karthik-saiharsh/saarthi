@@ -19,7 +19,7 @@ It works on phones and on desktop screens, in light and in dark mode.
 |-------|------|
 | `/find` | Find my things |
 
-A navigation links `/find`, `/upload` and `/enroll` on all pages. `/find` is the first link.
+A navigation links `/find`, `/upload`, `/enroll` and `/memory` on all pages. `/find` is the first link.
 The address `/` still leads to `/upload`.
 
 ## Interface to the backend
@@ -134,7 +134,9 @@ The CSS file is `components/find.css`. It uses the tokens of `tokens.css` only. 
 
 - The page shows an age, not a time of day. The server stores UTC and does not know the time zone of the browser.
 - The page does not show the whole frame. The route `GET /api/objects/{id}/last-seen/picture?view=frame` gives it. No button uses it yet.
-- The page does not speak. Speech input and speech output are not built.
+- The voice and the Talk button are not tested on a real phone or tablet (see "The voice" and "The Talk button").
+- A choice between objects ("Which one do you mean?") needs a tap. An answer by voice is not built.
+- An answer of the open search shows the name that the broad detector gave (for example "Laptop"). It is always weak.
 - The page cannot ask the wearable to take a new picture.
 - A weak match is shown as "maybe". If the check (I5) passes, the match counts as strong and the page does not say "maybe".
 

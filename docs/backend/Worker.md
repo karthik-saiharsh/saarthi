@@ -141,7 +141,7 @@ The log does not show image content or file names.
   The score also depends on the JPEG compression: the same photo saved again at another quality scored 117.1.
 - The worker does not retry a failed image. A helper to retry failed images does not exist.
 - The worker gives no progress report. The number of `pending` images is the only sign of the load.
-- The vocabulary of the detector is a placeholder only while the gallery has no `ready` object (see `ai/docs/AI Ingestion Module.md`).
+- The vocabulary of the detector is a placeholder only while the gallery has no `ready` object (see `docs/ai/AI Ingestion Module.md`).
 - An object that lies on a book, a screen or a poster gets `quality_ok = False` (see "Known limits" in `docs/backend/Enrollment.md`).
   The worker still stores its region and its vector.
 

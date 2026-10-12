@@ -1,5 +1,5 @@
 # Settings for the ai component.
-# The start values come from docs/ai/DINO-Based Object Recall Pipeline.md.
+# The start values come from docs/guide/DINO-Based Object Recall Pipeline.md.
 # Tune them with the benchmark in benchmarks/ingestion.
 
 [models]

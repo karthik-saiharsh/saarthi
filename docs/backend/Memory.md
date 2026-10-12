@@ -11,7 +11,7 @@ The search (stage Q1) reads the memory. See `docs/backend/Search.md`.
 ```
 Worker: frame ──▶ regions and vectors stored ──▶ MemoryService.remember ──▶ db: sighting log, last_seen
                                                      │
-                                                     └─▶ AiEngine.match_regions (see ai/docs/AI Ingestion Module.md)
+                                                     └─▶ AiEngine.match_regions (see docs/ai/AI Ingestion Module.md)
 ```
 
 - `backend/memory.py` has `MemoryService`. The worker owns one.

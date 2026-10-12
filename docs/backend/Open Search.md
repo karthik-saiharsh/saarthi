@@ -3,7 +3,10 @@
 ## Status
 
 This feature is **partly built**. Built (phase 1): the broad detector in the `ai` component (`ai/open_detector.py`, `AiEngine.detect_open`).
-Built (phases 2 and 3): the SigLIP vectors, and the table and the vector index for the boxes (`db/open_regions.py`). The worker step (phase 4) and the search (phase 5) are built. The sentence for an open result is the sentence of the registered path with "a laptop" in place of "your laptop". The query rewriter (phase 6) and the scene description by the language model (phase 7) are built. Not built: the description for an open result, the page text for an open result, and the calibration.
+Built (phases 2 and 3): the SigLIP vectors, and the table and the vector index for the boxes (`db/open_regions.py`). The worker step (phase 4), the search (phase 5) and the sentence and the page (phase 6) are built.
+The sentence for an open result is the template sentence of the registered path, with "a laptop" in place of "your laptop". It is always weak, and it has the surface and the room when the rules allow them.
+The page `/find` shows an open result as a weak `found` result with the name of the detector. The button "Something else" starts the open search from a `choose` result.
+The query rewriter and the scene description by the language model are also built (see below). Not built: the calibration on real frames (phase 7).
 The owner decided this on 2026-11-10: the main pipeline stays on the registered objects. The broad detection is for objects that nobody registered.
 
 ## Purpose
@@ -28,14 +31,15 @@ The result is always weak: the sentence says "I am not sure". The picture stays 
 | 3 | The tables for the boxes and a second vector index (`db/`) | Built |
 | 4 | The worker step: detect, link to registered boxes, embed, store | Built |
 | 5 | The search: the phrase of the user, the match with the stored names, then the SigLIP retrieval | Built |
-| 6 | The sentence and the page | Planned |
+| 6 | The sentence and the page, the query rewriter, the button "Something else", the mode `verified` | Built |
 | 7 | The calibration on real frames | Planned |
 
 The search of phase 5, in this order:
 1. Make a phrase from the words ("where is my laptop" gives "laptop").
 2. Compare the phrase with the stored names with the sentence encoder (MiniLM). A score above a cutoff gives a hit.
 3. If there is no hit, compare the SigLIP text vector of the phrase with the stored crop vectors.
-4. Show the best hit as a weak result.
+4. If there is still no hit and the words are a description (3 words or more), the language model rewrites them into names. Step 2 runs again with each name.
+5. Show the best hit as a weak result.
 
 ## The search (phase 5)
 
@@ -164,7 +168,7 @@ with the same confident tone. The patient may believe the voice. So the plan is 
    (a sentence takes 8 to 17 s here, so it must not delay an answer). The sentence is stored for the frame and the object (`frame_description`).
 2. **The facts.** The object, "A hand holds the object" (if it is in a hand), the surface and the room (the checked rules of `docs/backend/Voice.md`),
    and the names of the broad detector with a confidence of at least `describe.name_min_confidence` (0.7).
-3. **The model.** `AiEngine.describe_scene(picture, facts)` gives one sentence of at most 25 words, with no colour and no time.
+3. **The model.** `AiEngine.describe_scene(picture, facts)` gives one sentence, with no colour and no time. The instruction asks for at most 25 words. The check refuses more than `describe.max_words` (30).
 4. **The check.** `check_sentence` checks every word. A word must be a function word ("on", "next", "is"), a word of the facts, or a safe word (`describe.safe_words`).
    A digit, a long sentence or any other word refuses the sentence. A refused sentence is stored as an empty text, so it is not made again, and the answer uses the template sentence.
 5. **The answer.** `DescribeService` uses the stored sentence in place of the surface and the room, for a **sure** answer of a registered object only:
@@ -173,7 +177,7 @@ with the same confident tone. The patient may believe the voice. So the plan is 
 6. A change of the instruction, of `max_words`, of `name_min_confidence` or of `safe_words` changes the name of the stored sentences, so new sentences are made.
 
 Test on the dataset with the real models (one object): the sentence "The speckled bottle is on the desk." passed the check (8.7 s).
-The earlier test without the check had shown wrong names and invented details, so the check stays strict. Phase 8 (the calibration) will count how many sentences it refuses on your new images.
+The earlier test without the check had shown wrong names and invented details, so the check stays strict. Phase 7 (the calibration) will count how many sentences it refuses on your new images.
 
 ### Result of the test of Qwen3.5-0.8B (2026-11-10)
 

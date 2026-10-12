@@ -15,7 +15,7 @@ It works on phones and on desktop screens, in light and in dark mode.
 |-------|------|
 | `/enroll` | My objects |
 
-A small navigation links `/find`, `/upload` and `/enroll` on all pages.
+A small navigation links `/find`, `/upload`, `/enroll` and `/memory` on all pages.
 
 ## Interface to the backend
 

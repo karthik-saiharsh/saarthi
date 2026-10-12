@@ -19,6 +19,8 @@ The server listens on `server.host` and `server.port` of `backend/config.toml` (
 | `/upload` | The upload page for people |
 | `/find` | The page where a person asks where an object is (see `docs/ui/Find Page.md`) |
 | `/enroll` | The page where a carer adds the objects (see `docs/ui/Enrollment Page.md`) |
+| `/memory` | The page that shows every frame and what the pipeline stored for it (see `docs/ui/Memory Page.md`) |
+| `POST /ui/voice` | The recording of the Talk button (see `docs/backend/Voice.md`) |
 | `POST /api/images` | The upload route for the wearable and for scripts (see `docs/backend/Upload Endpoint.md`) |
 | `/api/objects` | The routes of the gallery (see `docs/backend/Enrollment.md`) |
 | `POST /api/search` and `GET /api/objects/{id}/last-seen` | The routes of the search (see `docs/backend/Search.md`) |
@@ -36,7 +38,7 @@ The server never starts.
 | 4. Recovery | `db.startup_recovery()`: repair what a stop or a crash left behind | It changes data, so the lock comes first |
 | 5. Ai models | `AiEngine()`: load the detector, the embedder, the query encoder, the verifier, the scene model, the speech model, the broad detector and the language model | The first start downloads about 3.8 GB (the detector 690 MB, the embedder 90 MB, the query encoder 91 MB, the verifier 55 MB, the scene model 813 MB, the speech model 290 MB, the broad detector 28 MB, the language model 1.75 GB). Later starts take about 7 seconds |
 | 6. Backend | `Backend(engine)`: the upload step, the worker and the maintenance jobs | It checks that the size of the model vectors equals `vectors.dimension` |
-| 7. Web server | The upload page and the upload route start | The worker and the maintenance thread start with the server |
+| 7. Web server | The pages and the routes start, with HTTP or with HTTPS (see `docs/backend/HTTPS.md`) | The worker and the maintenance thread start with the server |
 
 The threads (worker and maintenance) start when the web server starts, not before.
 In this way, nothing processes an image before the server can answer.
@@ -127,9 +129,10 @@ The application ran with the real models, on the development machine (a CPU, no 
 
 ## Known limits
 
-- The speed on the Raspberry Pi is not measured. The application was run only on the development machine.
+- The speed on the Raspberry Pi 5 was measured one time, without a cooler (see `docs/Raspberry Pi.md`).
 - The web server shows no health or status page. The number of `pending` images is the only sign of the load.
-- The application does not start itself at boot. Use a service manager (for example `systemd`) for this.
+- The application does not start itself at boot. Start it by hand with `./start`.
+  The owner decided this on 2026-11-10: the Pi is shared, so do not install `deploy/saarthi.service` on it.
 - The upload route is open on the local network unless you set the token.
 - The shutdown can take up to `server.worker_stop_seconds`, because the worker finishes its image.
 

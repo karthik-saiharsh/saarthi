@@ -17,8 +17,9 @@ The real `UploadService` is `Backend.upload_service` (see `docs/backend/Upload E
 |-------|------|
 | `/upload` | Upload pictures |
 
-`register_pages(upload_service, enrollment_service, find_service)` registers the routes and serves the CSS files.
-A navigation links this page to `/find` and `/enroll` (see `docs/ui/Find Page.md` and `docs/ui/Enrollment Page.md`).
+`register_pages(upload_service, enrollment_service, find_service, voice_service, browse_service)` registers the routes and serves the CSS files.
+`voice_service` adds the route of the Talk button. `browse_service` adds the page `/memory`. Both are optional.
+A navigation links this page to `/find`, `/enroll` and `/memory` (see `docs/ui/Find Page.md`, `docs/ui/Enrollment Page.md` and `docs/ui/Memory Page.md`).
 The caller starts the server.
 
 ## Interface to the backend
