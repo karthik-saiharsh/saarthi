@@ -71,6 +71,11 @@ def test_default_config_loads_and_is_consistent() -> None:
         ),
         ("default_phrases = [", "default_phrases = []\nold_phrases = ["),
         ('detector_id = "IDEA-Research/grounding-dino-tiny"', "detector_id = 5"),
+        ('mode = "evidence"', 'mode = "magic"'),
+        ("score_sure = 6.0", "score_sure = 1.0"),
+        ("visual_scale = 0.05", "visual_scale = 0.0"),
+        ("max_regions = 8", "max_regions = 0"),
+        ("contrast_phrases = [", "contrast_phrases = []\nold_contrast = ["),
     ],
 )
 def test_bad_values_are_refused(tmp_path: Path, old: str, new: str) -> None:
@@ -92,6 +97,7 @@ def test_bad_values_are_refused(tmp_path: Path, old: str, new: str) -> None:
         "speech",
         "open_detection",
         "language",
+        "matching",
     ],
 )
 def test_missing_table_is_refused(tmp_path: Path, table: str) -> None:

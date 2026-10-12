@@ -6,6 +6,7 @@ the order that it chooses. The engine never reads the database or the disk.
 
 import hashlib
 import logging
+import threading
 from io import BytesIO
 
 import numpy as np
@@ -24,6 +25,7 @@ from ai.errors import (
     MatchingError,
     ModelLoadError,
 )
+from ai.evidence import score_regions, select_regions
 from ai.language import LanguageModel
 from ai.matching import match_regions
 from ai.open_detector import OpenDetector
@@ -137,6 +139,8 @@ class AiEngine:
             if self._config.verification.enabled
             else None
         )
+        self._phrase_lock: threading.Lock = threading.Lock()
+        self._phrase_cache: tuple[tuple[str, ...], np.ndarray] | None = None
         logger.info(
             "AI engine ready: detector %s, embedder %s, query encoder %s, verifier %s, scene %s, speech %s, broad detector %s, language %s",
             self._detector.name,
@@ -340,6 +344,105 @@ class AiEngine:
             self._config.detection.generic_phrase,
             self._config.enrollment.margin_strong,
         )
+
+    # ---- Evidence-based matching (stage I4, mode `evidence`) ----
+
+    @property
+    def matching_mode(self) -> str:
+        """`evidence` or `tau`. The mode `evidence` needs the scene model, so without it the mode is `tau`."""
+        if self._config.matching.mode == "evidence" and self._scene is not None:
+            return "evidence"
+        return "tau"
+
+    def evidence_regions(
+        self,
+        vectors: np.ndarray,
+        regions: list[MatchRegion],
+        objects: list[MatchObject],
+    ) -> list[int]:
+        """Return the indices of the regions of one frame that `score_evidence` must score, the most similar first."""
+        return select_regions(vectors, regions, objects, self._config.matching)
+
+    def embed_evidence_crops(self, image: Image.Image, boxes: list[Box]) -> np.ndarray:
+        """Return a unit-length SigLIP vector for each box, cut with `matching.crop_padding`.
+
+        Use it for the regions of a frame and for the boxes of the reference photos, so both are cut in the same way.
+        """
+        assert self._scene is not None, "the scene classifier is switched off"
+        assert isinstance(image, Image.Image), "image must be a PIL image"
+        assert isinstance(boxes, list), "boxes must be a list"
+        pad: float = self._config.matching.crop_padding
+        crops: list[Image.Image] = []
+        for box in boxes:
+            pad_x: int = round(box.width * pad)
+            pad_y: int = round(box.height * pad)
+            crops.append(
+                image.crop(
+                    (
+                        max(0, box.x0 - pad_x),
+                        max(0, box.y0 - pad_y),
+                        min(image.width, box.x1 + pad_x),
+                        min(image.height, box.y1 + pad_y),
+                    )
+                )
+            )
+        return self._scene.embed_crops(crops)
+
+    def score_evidence(
+        self,
+        region_indices: list[int],
+        vectors: np.ndarray,
+        crop_vectors: np.ndarray,
+        objects: list[MatchObject],
+    ) -> list[Sighting]:
+        """Score the chosen regions of one frame (see `ai/evidence.py`). Return at most one sighting for each object.
+
+        `crop_vectors` come from `embed_evidence_crops`, one for each index. Each object needs `view_photos`,
+        `references` and `reference_photos`.
+        """
+        assert self._scene is not None, "the scene classifier is switched off"
+        if not region_indices or not objects:
+            return []
+        phrases, owners = self._evidence_classes(objects)
+        phrase_vectors: np.ndarray = self._phrase_vectors(phrases)
+        logits: np.ndarray = self._scene.pair_logits(crop_vectors, phrase_vectors)
+        n_classes: int = int(owners.max()) + 1
+        class_logits: np.ndarray = np.stack(
+            [logits[:, owners == c].max(axis=1) for c in range(n_classes)], axis=1
+        )
+        return score_regions(
+            region_indices,
+            vectors,
+            crop_vectors,
+            class_logits,
+            objects,
+            self._config.matching,
+        )
+
+    def _evidence_classes(
+        self, objects: list[MatchObject]
+    ) -> tuple[tuple[str, ...], np.ndarray]:
+        """Return the phrases and the class of each phrase: one class for each object, then one for each contrast phrase."""
+        phrases: list[str] = []
+        owners: list[int] = []
+        for index, obj in enumerate(objects):
+            phrases.extend(obj.phrases)
+            owners.extend([index] * len(obj.phrases))
+        for offset, phrase in enumerate(self._config.matching.contrast_phrases):
+            phrases.append(phrase)
+            owners.append(len(objects) + offset)
+        return tuple(phrases), np.array(owners)
+
+    def _phrase_vectors(self, phrases: tuple[str, ...]) -> np.ndarray:
+        """Return the SigLIP vectors of the phrases. The last list is kept, because the gallery seldom changes."""
+        assert self._scene is not None, "the scene classifier is switched off"
+        with self._phrase_lock:
+            if self._phrase_cache is not None and self._phrase_cache[0] == phrases:
+                return self._phrase_cache[1]
+        vectors: np.ndarray = self._scene.embed_phrases(list(phrases))
+        with self._phrase_lock:
+            self._phrase_cache = (phrases, vectors)
+        return vectors
 
     # ---- Questions of the user (stage Q1) ----
 

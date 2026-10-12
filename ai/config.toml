@@ -230,3 +230,61 @@ describe_system = "You describe a photo for a person with memory loss. You get F
 describe_max_new_tokens = 60
 # The longest side of the picture that the model gets, in pixels. A larger picture costs more time.
 describe_image_side = 640
+
+[matching]
+# How a region becomes a sighting of an enrolled object (stage I4). See ai/evidence.py and docs/backend/Memory.md.
+# "tau": the DINOv2 similarity must reach the threshold of the object (one test).
+# "evidence": several independent signals give one score. It needs the scene model (SigLIP, [scene] enabled = true).
+# The evidence values come from benchmarks/matching (15 frames with a watch, a headset and a book, and the
+# 14 photos of the speckled bottle as a hold-out set). They are start values. Measure again with more objects.
+mode = "evidence"
+# A region is scored only if its DINOv2 similarity to a tracked object is at least this value. It is low on purpose:
+# the watch on a wrist scored 0.26 and was right. The other signals decide.
+candidate_min = 0.20
+# The most regions of one frame that are scored. Each one costs a SigLIP run (about 0.1 s on the development CPU).
+max_regions = 8
+# A match must agree with this many reference photos. A match with one view only is often a lucky match.
+top_photos = 2
+# The SigLIP crop is the box with this much space around it (a part of the box, on each side).
+crop_padding = 0.05
+# Common things that a region can show instead of an enrolled object. The meaning signal compares with them.
+contrast_phrases = [
+  "a hand",
+  "an arm",
+  "a person",
+  "a face",
+  "a table",
+  "a wall",
+  "a floor",
+  "a chair",
+  "a bed",
+  "a phone",
+  "a bottle",
+  "a cup",
+  "a bag",
+  "a cable",
+  "a laptop",
+  "a paper",
+  "a bracelet",
+  "an object",
+]
+# The score: bias + weight_meaning * min(logit(meaning), meaning_cap) + weight_visual * (visual - visual_centre) / visual_scale
+#            + weight_dino * (dino_agree - dino_centre) / dino_scale + weight_margin * min(margin, margin_cap) / margin_scale
+bias = 0.0
+# The meaning tells the kind of thing, not which one. Its positive part is capped, so "a book" cannot make "my book".
+weight_meaning = 1.0
+meaning_cap = 1.0
+weight_visual = 1.5
+visual_centre = 0.70
+visual_scale = 0.05
+weight_dino = 0.4
+dino_centre = 0.40
+dino_scale = 0.05
+weight_margin = 0.5
+margin_cap = 0.20
+margin_scale = 0.10
+# A region with a score of at least score_maybe is a weak sighting ("maybe"). At least score_sure: a strong sighting.
+# In the benchmark, the true matches scored 4.1 to 8.1, and the best false match 2.6 (another book).
+# A weak sighting still needs the check of stage I5 or a second frame (see [memory] in backend/config.toml).
+score_maybe = 3.0
+score_sure = 6.0

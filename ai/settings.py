@@ -156,6 +156,33 @@ class OpenDetectionConfig:
     crop_padding: float
 
 
+MATCHING_MODES: tuple[str, ...] = ("tau", "evidence")
+
+
+@dataclass(frozen=True)
+class MatchingConfig:
+    mode: str
+    candidate_min: float
+    max_regions: int
+    top_photos: int
+    crop_padding: float
+    contrast_phrases: tuple[str, ...]
+    bias: float
+    weight_meaning: float
+    meaning_cap: float
+    weight_visual: float
+    visual_centre: float
+    visual_scale: float
+    weight_dino: float
+    dino_centre: float
+    dino_scale: float
+    weight_margin: float
+    margin_cap: float
+    margin_scale: float
+    score_maybe: float
+    score_sure: float
+
+
 @dataclass(frozen=True)
 class AiConfig:
     models: ModelsConfig
@@ -170,6 +197,7 @@ class AiConfig:
     speech: SpeechConfig
     open_detection: OpenDetectionConfig
     language: LanguageConfig
+    matching: MatchingConfig
 
 
 class _Table:
@@ -282,6 +310,37 @@ def _examples(table: _Table) -> tuple[tuple[str, str], ...]:
     return tuple((pair[0], pair[1]) for pair in value)
 
 
+def _matching(table: _Table) -> MatchingConfig:
+    """Read `[matching]`. The scales must be positive, and the sure bar must not be below the maybe bar."""
+    config: MatchingConfig = MatchingConfig(
+        mode=table.choice("mode", MATCHING_MODES),
+        candidate_min=table.number("candidate_min", -1.0, 1.0),
+        max_regions=table.integer("max_regions", minimum=1, maximum=100),
+        top_photos=table.integer("top_photos", minimum=1, maximum=20),
+        crop_padding=table.number("crop_padding", 0.0, 1.0),
+        contrast_phrases=table.texts("contrast_phrases"),
+        bias=table.number("bias", -100.0, 100.0),
+        weight_meaning=table.number("weight_meaning", 0.0, 100.0),
+        meaning_cap=table.number("meaning_cap", 0.0, 5.0),
+        weight_visual=table.number("weight_visual", 0.0, 100.0),
+        visual_centre=table.number("visual_centre", -1.0, 1.0),
+        visual_scale=table.number("visual_scale", 0.001, 1.0),
+        weight_dino=table.number("weight_dino", 0.0, 100.0),
+        dino_centre=table.number("dino_centre", -1.0, 1.0),
+        dino_scale=table.number("dino_scale", 0.001, 1.0),
+        weight_margin=table.number("weight_margin", 0.0, 100.0),
+        margin_cap=table.number("margin_cap", 0.0, 2.0),
+        margin_scale=table.number("margin_scale", 0.001, 1.0),
+        score_maybe=table.number("score_maybe", -100.0, 100.0),
+        score_sure=table.number("score_sure", -100.0, 100.0),
+    )
+    if config.score_sure < config.score_maybe:
+        raise AiConfigError(
+            "matching.score_sure must not be below matching.score_maybe"
+        )
+    return config
+
+
 def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> AiConfig:
     """Read and check the config file. Raise `AiConfigError` if it is not correct."""
     assert isinstance(config_path, Path), "config_path must be a Path"
@@ -305,6 +364,7 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> AiConfig:
     speech: _Table = _Table(raw, "speech")
     open_detection: _Table = _Table(raw, "open_detection")
     language: _Table = _Table(raw, "language")
+    matching: _Table = _Table(raw, "matching")
 
     default_phrases: tuple[str, ...] = detection.texts("default_phrases")
     small_phrases: tuple[str, ...] = detection.texts("small_phrases", allow_empty=True)
@@ -460,6 +520,7 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> AiConfig:
                 "describe_image_side", minimum=64, maximum=2048
             ),
         ),
+        matching=_matching(matching),
     )
     logger.info("Loaded ai config from %s", config_path)
     return config

@@ -189,9 +189,13 @@ class FakeSceneClassifier:
         self.phrase_calls.append(list(phrases))
         return np.stack([self._vector(p) for p in phrases])
 
+    def pair_logits(self, crops, phrases):
+        return ((crops @ phrases.T) * 20.0 - 10.0).astype(np.float32)
+
     def pair_probabilities(self, crops, phrases):
-        cosine = crops @ phrases.T
-        return (1.0 / (1.0 + np.exp(-(cosine * 20.0 - 10.0)))).astype(np.float32)
+        return (1.0 / (1.0 + np.exp(-self.pair_logits(crops, phrases)))).astype(
+            np.float32
+        )
 
 
 class FakeSpeechRecognizer:

@@ -204,17 +204,21 @@ class SceneClassifier:
             logger.error("Phrase embedding failed: %s: %s", type(error).__name__, error)
             raise InferenceError("Phrase embedding failed") from error
 
+    def pair_logits(self, crops: np.ndarray, phrases: np.ndarray) -> np.ndarray:
+        """Return the logit of the model for each crop and each phrase, shape (crops, phrases): a scaled cosine and a bias."""
+        assert crops.ndim == 2 and phrases.ndim == 2, "need 2-D arrays"
+        assert crops.shape[1] == phrases.shape[1] == self.dimension, "wrong vector size"
+        scale: float = float(self._model.logit_scale.exp().item())
+        bias: float = float(self._model.logit_bias.item())
+        return ((crops @ phrases.T) * scale + bias).astype(np.float32)
+
     def pair_probabilities(self, crops: np.ndarray, phrases: np.ndarray) -> np.ndarray:
         """Return the probability that each crop shows each phrase, shape (crops, phrases).
 
         This is the score of the model: a scaled cosine and a bias, through a sigmoid. Each pair
         is judged alone, so the values of one row do not add up to 1.
         """
-        assert crops.ndim == 2 and phrases.ndim == 2, "need 2-D arrays"
-        assert crops.shape[1] == phrases.shape[1] == self.dimension, "wrong vector size"
-        scale: float = float(self._model.logit_scale.exp().item())
-        bias: float = float(self._model.logit_bias.item())
-        logits: np.ndarray = (crops @ phrases.T) * scale + bias
+        logits: np.ndarray = self.pair_logits(crops, phrases)
         return (1.0 / (1.0 + np.exp(-logits))).astype(np.float32)
 
     def room_scores(self, image: Image.Image) -> dict[str, float]:

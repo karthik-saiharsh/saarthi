@@ -118,6 +118,16 @@ class MatchObject:
     tau: float
     tau_strong: float
     margin_min: float
+    # The fields below are for the mode `evidence` only (`ai/evidence.py`). The mode `tau` does not use them.
+    view_photos: np.ndarray | None = (
+        None  # The reference photo id of each row of `views`
+    )
+    references: np.ndarray | None = (
+        None  # Unit-length SigLIP vectors of the reference crops
+    )
+    reference_photos: np.ndarray | None = (
+        None  # The reference photo id of each row of `references`
+    )
 
 
 @dataclass(frozen=True)
@@ -128,7 +138,10 @@ class Sighting:
     region_index: int  # The position of the region in the call
     similarity: float  # The highest cosine to a view of the object
     margin: float  # The similarity minus the highest similarity to any other object
-    strong: bool  # True: above `tau_strong` with the strong margin
+    strong: bool  # True: above `tau_strong` with the strong margin (mode `tau`), or above `score_sure` (mode `evidence`)
+    score: float | None = (
+        None  # The evidence score (mode `evidence`). None in the mode `tau`
+    )
 
 
 @dataclass(frozen=True)
