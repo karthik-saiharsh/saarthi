@@ -94,6 +94,14 @@ def open_image(data: bytes, max_pixels: int) -> Image.Image:
         raise ImageError("The file is not a usable image") from error
 
 
+def _bare_phrase(phrase: str) -> str:
+    """Return a phrase in lower case without its article, so "A bottle" and "bottle" are the same."""
+    words: list[str] = phrase.lower().split()
+    if words and words[0] in ("a", "an", "the"):
+        words = words[1:]
+    return " ".join(words)
+
+
 class AiEngine:
     """The stage functions of the ingestion pipeline."""
 
@@ -422,13 +430,23 @@ class AiEngine:
     def _evidence_classes(
         self, objects: list[MatchObject]
     ) -> tuple[tuple[str, ...], np.ndarray]:
-        """Return the phrases and the class of each phrase: one class for each object, then one for each contrast phrase."""
+        """Return the phrases and the class of each phrase: one class for each object, then one for each contrast phrase.
+
+        A contrast phrase that is also a phrase of an object is left out. Else "a bottle" of a registered bottle and the
+        contrast "a bottle" would share the same score, and the meaning of the object would look unsure.
+        """
         phrases: list[str] = []
         owners: list[int] = []
         for index, obj in enumerate(objects):
             phrases.extend(obj.phrases)
             owners.extend([index] * len(obj.phrases))
-        for offset, phrase in enumerate(self._config.matching.contrast_phrases):
+        own: set[str] = {_bare_phrase(p) for p in phrases}
+        contrast: list[str] = [
+            p
+            for p in self._config.matching.contrast_phrases
+            if _bare_phrase(p) not in own
+        ]
+        for offset, phrase in enumerate(contrast):
             phrases.append(phrase)
             owners.append(len(objects) + offset)
         return tuple(phrases), np.array(owners)

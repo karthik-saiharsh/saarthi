@@ -91,7 +91,8 @@ curl -i -X POST --data-binary @"/home/ks/Desktop/Project Saarthi/Dataset/10.jpeg
 ```
 
 Watch the log. For each picture you see these steps: stored, claimed, candidates found, vectors made, matching, and done.
-The matching line says how many sightings were found. A line from `backend.memory` tells you what happened to the last-seen record.
+The line `Evidence matching: N region(s) scored, ...` says how many regions were scored and how many sightings were found.
+A line `Sighting of object ... (strong, score 8.10)` shows the score of a sighting (see `docs/backend/Memory.md`). A line from `backend.memory` tells you what happened to the last-seen record.
 
 What you should see (the photo numbers are the file names):
 
@@ -102,13 +103,13 @@ What you should see (the photo numbers are the file names):
 | 5 | A backpack on a chair | 3 regions. No sighting |
 | 6, 7, 12 | A corridor, a black bag | No region |
 | 8 | The bottle, partly out of the picture and blurred | One region, marked not good (the crop is blurred). No sighting. This is a known miss |
-| 10 | The bottle in a hand | **Strong sighting**, similarity about 0.63, "in hand" |
-| 11 | A soap dispenser | One region. **No sighting** (its similarity of 0.43 is below `tau`) |
+| 10 | The bottle in a hand | **Strong sighting**, score about 8.1 (similarity about 0.63), "in hand" |
+| 11 | A soap dispenser | One region. **No sighting** (its score is below `score_maybe`) |
 | 13 | A shelf with shampoo and other bottles | 7 regions. No sighting |
-| 14 | The bottle, small, on a desk | A **weak** sighting (similarity about 0.45). The check passes (`Verification: passed (best 153 of 30 needed ...)`). It counts as strong |
+| 14 | The bottle, small, on a desk | A **weak** sighting (score about 5.9, below `score_sure` of 6). The check passes (`Verification: passed (best 153 of 30 needed ...)`). It counts as strong |
 
 Photo 14 shows stage I5: the sighting is weak, the verifier compares it with a reference photo, and it passes.
-The similarity of photo 14 is only 0.001 above `tau`. A small change can make it disappear.
+These results are for the mode `evidence` (the default). With `[matching].mode = "tau"` the result is the same, but photo 14 is only 0.001 above `tau`.
 
 Two more tests:
 - Send `1.jpeg` again. The answer is `duplicate`. Nothing is stored twice.
@@ -213,6 +214,7 @@ What happened inside: `backend.query` turned your words into a vector (`ai.query
 | Press Ctrl+C while a picture is processed | The worker finishes the picture. Shutdown ends with `Shutdown is complete` |
 | Start again after that | `Start-up recovery` finds nothing to repair. The vectors load again |
 | Stop with `kill -9` (use the process id), then start | The recovery repairs the data. The log says what it repaired |
+| Set `[matching].mode = "tau"` in `ai/config.toml` | The old rule with one threshold. The log shows `Matching: ...` in place of `Evidence matching: ...` |
 | Set `verification.enabled = false` in `ai/config.toml` | The verifier is not loaded. The log says `verifier off` |
 | Set only `server.tls_certfile` in `backend/config.toml` | The start stops: both keys must be set, or both empty |
 | Set `server.tls_certfile` and `server.tls_keyfile` to missing files | The start stops with `server.tls_certfile is not a file` |

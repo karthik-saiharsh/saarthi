@@ -15,7 +15,8 @@ A weak sighting that passes the check counts as a **strong** sighting.
 
 - The check **only promotes**. It never rejects a sighting. A sighting that fails stays weak, as it was without the check.
   This is the decision of the owner. A plain object (for example keys) has few keypoints, so a rejection would hide true sightings.
-- It runs on **weak** sightings only. A strong sighting needs no check.
+- It runs on **weak** sightings only. A strong sighting needs no check. This is the same in both matching modes:
+  in the mode `evidence`, a sighting with `score_maybe <= score < score_sure` is weak (see `docs/backend/Memory.md`).
 - An error of the check changes nothing. If the verifier fails, or a reference file cannot be read, the sighting stays as it is.
   The image does not fail, and the search does not fail.
 - A switched-off check does nothing. With `verification.enabled = false`, the verifier is not loaded.

@@ -21,17 +21,66 @@ Worker: frame ──▶ regions and vectors stored ──▶ MemoryService.remem
 ## The steps for one frame
 
 1. Load the `ready` objects of the gallery with their views. An object with no view of the current model is left out.
-2. Match the regions with the objects (`AiEngine.match_regions`). A region with `quality_ok = False` is never matched.
+2. Match the regions with the objects. A region with `quality_ok = False` is never matched.
+   The mode is `[matching].mode` in `ai/config.toml` (see "The two matching modes"). The default is `evidence`.
 3. Check each weak match against the reference photos of the object (stage I5, see `docs/backend/Verification.md`).
    A match that passes the check counts as strong.
 4. Write each accepted match to the table `sighting`. The time is the time at which the server received the frame (`Image.captured_at`).
 5. Apply the rule below. It decides if the match changes the record `last_seen` of the object.
 
+## The two matching modes
+
+| Mode | How a region becomes a sighting |
+|------|---------------------------------|
+| `tau` | One test: the DINOv2 similarity must reach the `tau` of the object, with the margin `margin_min`. The detector phrase of the region must fit the object (`AiEngine.match_regions`) |
+| `evidence` (default) | Several independent signals give one score (`AiEngine.score_evidence`, `ai/evidence.py`). The detector phrase is not a gate |
+
+**Why the mode `evidence` exists.** One threshold is a single point of failure. In a real test with a watch, a headset and a book,
+all reference photos were taken on the same table. The crops of the watch and the headset were mostly table, so DINOv2 found them similar (0.64).
+The calibration then raised `tau` of both objects to 0.674. No frame reached it, and the search never found them.
+The detector also called the watch on a wrist "a headset", so the phrase rule blocked the true box.
+
+**The steps of the mode `evidence`** (`MemoryService.remember`):
+
+1. **Candidates.** A region is a candidate if its DINOv2 similarity to a tracked object is at least `matching.candidate_min` (0.20).
+   This bar is low on purpose: the watch on a wrist scored 0.26 and was correct. At most `matching.max_regions` (8) regions are scored.
+2. **SigLIP crops.** The worker cuts each candidate from the decoded frame (`matching.crop_padding`) and makes a SigLIP vector.
+3. **The score.** For each candidate and each tracked object (see `docs/ai/AI Ingestion Module.md`, "Stage I4"):
+
+   `score = bias + w_meaning * min(logit(meaning), meaning_cap) + w_visual * (visual - visual_centre) / visual_scale + w_dino * (dino_agree - dino_centre) / dino_scale + w_margin * min(margin, margin_cap) / margin_scale`
+
+   | Signal | Meaning |
+   |--------|---------|
+   | `dino_agree` | The mean of the best DINOv2 cosine of the 2 best reference photos. One lucky view is not enough |
+   | `margin` | The best DINOv2 cosine to this object minus the best to any other enrolled object |
+   | `visual` | The same agreement with SigLIP vectors of the reference crops. SigLIP is a second model with other errors |
+   | `meaning` | The SigLIP share of the words of the object against the words of the other objects and of common things (`matching.contrast_phrases`) |
+
+4. **The decision.** `score >= score_sure` (6.0): strong. `score >= score_maybe` (3.0): weak. Else: no sighting.
+5. **Two rules that only refuse.** A region with `quality_ok = False` is not scored. A region with `margin < margin_min` of the object is refused,
+   so a look-alike that is as close as the object still blocks the match.
+
+The positive part of `meaning` is capped (`meaning_cap`). The meaning tells the kind of thing, not which one.
+In the test, another book scored 0.98 for "book". It must not make a match, and the cap keeps it below `score_maybe`.
+
+**The reference vectors.** `backend/references.py` (`ReferenceVectors`) makes the SigLIP vectors of the confirmed reference crops from the stored photos.
+They stay in memory, and they are made again only when the set of confirmed photos of an object changes. The worker and the search share one instance.
+A photo that cannot be read is left out. A tracked object without a readable photo is not matched in this mode. A look-alike needs no reference vectors:
+it takes part only in the margin.
+
+**Fallback.** Without the decoded frame, or with the scene model off (`scene.enabled = false`), the memory uses the mode `tau`.
+The keypoint check (stage I5) and the rule below do not change with the mode.
+
+**Measured** (`benchmarks/matching/README.md`): on 15 real frames, the mode `tau` found 0 of 4 frames with the watch and 1 of 2 with the book.
+The mode `evidence` found 4 of 4 and 2 of 2, with no false sighting. On the 14 photos of the speckled bottle (not used to set the values), both modes found the 2 good frames.
+The headset was not found in either mode: its reference photos do not look like the frames (see "Known limits").
+The step costs about 1.8 s for a frame with 7 candidates on the development CPU.
+
 ## The rule (hysteresis)
 
 | Sighting | What happens |
 |----------|--------------|
-| Strong (`similarity >= tau_strong` and `margin >= margin_strong`), or weak and verified | The record changes at once |
+| Strong (mode `tau`: `similarity >= tau_strong` and `margin >= margin_strong`; mode `evidence`: `score >= score_sure`), or weak and verified | The record changes at once |
 | Weak (accepted, not strong, and not verified) | The record changes only if the object has enough **weak** sightings in different frames inside the time window. The new sighting counts. A strong sighting does not count, so a weak false match after a true strong sighting cannot replace the record alone |
 
 The settings are in `[memory]` of `backend/config.toml`:
@@ -91,7 +140,11 @@ Both tables are in `db/schema.py`. The helpers are in `db/sightings.py` (`db.sig
   With `retention.days = 0` the log grows without a limit. The rows are small.
 - The rule counts the weak sightings of the same object only. A weak sighting does not show if a look-alike was nearby.
 - The views come from one embedding model. If the model changes, an object is ignored until the carer adds its photos again.
-- The thresholds are not tested with real photos. The tests use fake models with identical vectors.
+- The values of `[matching]` come from 3 objects in 15 frames and one hold-out object. They are start values. Measure again with more objects.
+- The score is not stored. The `similarity` of a sighting is the DINOv2 similarity in both modes. The log line of a sighting shows the score.
+- Reference photos that all show the same table make two small objects look alike to DINOv2. Photos of each object in the places where it is used help most.
+  In the test, the headset was never found: all its photos were close-ups on one table, and the frames showed it from the side or in a hand.
+- A single weak sighting does not change the record. In the test, the book in frame 10 was weak and alone, so the record stayed on the older strong sighting.
 
 ## Tests
 
@@ -101,3 +154,4 @@ Both tables are in `db/schema.py`. The helpers are in `db/sightings.py` (`db.sig
 | `tests/test_backend_memory.py` | The rule: strong, weak, the window, other objects, one frame twice, the limit 1, a deleted object, `load_objects` |
 | `tests/test_backend_worker.py` | The whole step with a fake detector: a record is set, a look-alike blocks, a look-alike alone is not reported, a region that is not good, a matching error, retention keeps the frame |
 | `tests/test_backend_settings.py` | The keys of `[memory]` |
+| `tests/test_backend_evidence.py` | The mode `evidence`: the reference vectors (only confirmed photos, kept, made again after a change, a missing file), the memory (strong, weak and the window, no picture, no readable reference), the archive search |

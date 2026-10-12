@@ -264,3 +264,15 @@ def test_the_engine_scores_a_frame_and_keeps_the_phrase_vectors() -> None:
     phrase_runs = [call for call in scene.phrase_calls if "a watch" in call]
     assert len(phrase_runs) == 1  # The second frame used the kept vectors
     assert engine.evidence_regions(vectors, [MatchRegion((), True)], [watch]) == [0]
+
+
+def test_a_contrast_phrase_that_names_an_object_is_left_out() -> None:
+    engine = make_engine(matching_mode="evidence")
+    bottle = make_object(1, [axis(0)], [axis(0, SIGLIP)], phrases=("a bottle", "flask"))
+    cup = make_object(2, [axis(1)], [axis(1, SIGLIP)], phrases=("Cup",))
+    phrases, owners = engine._evidence_classes([bottle, cup])
+    contrast = [p for p, o in zip(phrases, owners) if o >= 2]
+    assert "a bottle" not in contrast and "a cup" not in contrast
+    assert "a hand" in contrast
+    assert list(owners[:3]) == [0, 0, 1]
+    assert len(set(owners.tolist())) == 2 + len(contrast)

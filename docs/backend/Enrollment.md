@@ -110,6 +110,9 @@ The functions are in `ai/calibration.py`. They use numpy only. The service calls
 The values are in `[enrollment]` of `ai/config.toml`: `tau_std_factor`, `tau_min`, `tau_strong_offset`, `margin_min` (0.03),
 `margin_strong` (0.08) and `min_photos` (3). The reasons for `tau_min` and `tau_strong_offset` are in `benchmarks/calibration/README.md`.
 
+In the mode `evidence` of the matching (the default, see `docs/backend/Memory.md`), `tau` and `tau_strong` do not decide a match.
+The mode `tau` and the archive search in that mode use them. The note for the carer stays: it shows reference photos that look alike.
+
 Every change of a photo or an object calibrates all objects again. The negatives of an object change when another object changes.
 
 ## Look-alikes

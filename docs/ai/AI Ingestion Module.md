@@ -60,7 +60,9 @@ The ai module does not import the db module.
 | `engine.is_near_duplicate(phash, recent_phashes)` | A recent hash is `quality.phash_max_distance` bits away or closer | `bool` |
 | `engine.detect_candidates(image, phrases=None, small_phrases=None, include_generic=False, tiling=None)` | Find candidate boxes | List of `Candidate`, best score first |
 | `engine.embed_regions(image, boxes)` | One vector for each box | `float32` array, shape `(n, 384)`, unit length |
-| `engine.match_regions(vectors, regions, objects)` | Match the regions of a frame with the `ready` objects (stage I4) | List of `Sighting` |
+| `engine.match_regions(vectors, regions, objects)` | Match the regions of a frame with the `ready` objects (stage I4, mode `tau`) | List of `Sighting` |
+| `engine.matching_mode` | `evidence` or `tau` (see "Stage I4") | `str` |
+| `engine.evidence_regions(...)`, `engine.embed_evidence_crops(image, boxes)`, `engine.score_evidence(...)` | Stage I4, mode `evidence` | Region indices, SigLIP vectors, list of `Sighting` with a `score` |
 | `engine.verify_match(references, candidate)` | Compare a candidate picture with reference pictures (stage I5) | `VerifyResult` |
 | `engine.verification_crop(image, box)` | Cut the picture that the verifier compares: the box with `verification.crop_padding` around it | A PIL image |
 | `engine.verification_enabled` | The verifier is loaded | `bool` |
@@ -174,6 +176,39 @@ The vectors are not compared with a model change. A threshold is not portable be
 The name in `Region.embedding_model` tells which model made a vector.
 
 ## Stage I4: match
+
+The stage has two modes. `[matching].mode` in `config.toml` chooses one. `engine.matching_mode` gives the mode in use:
+`evidence` needs the scene model, so without it the mode is `tau`.
+
+### Mode `evidence` (default)
+
+`ai/evidence.py`, pure numpy. The backend calls three methods for each frame:
+
+1. `engine.evidence_regions(vectors, regions, objects)` chooses the regions to score: good quality, and a DINOv2 similarity of at least
+   `candidate_min` to a tracked object. At most `max_regions`, the most similar first.
+2. `engine.embed_evidence_crops(image, boxes)` makes a SigLIP vector for each region, cut with `crop_padding`. The backend uses the same
+   method for the reference crops, so both are cut in the same way.
+3. `engine.score_evidence(region_indices, vectors, crop_vectors, objects)` gives at most one sighting for each tracked object.
+   Each object needs `view_photos` (the photo of each view), `references` (the SigLIP vectors of its reference crops) and `reference_photos`.
+   A look-alike needs only its views.
+
+The score of a region for an object:
+
+`score = bias + w_meaning * min(logit(meaning), meaning_cap) + w_visual * (visual - visual_centre) / visual_scale + w_dino * (dino_agree - dino_centre) / dino_scale + w_margin * min(margin, margin_cap) / margin_scale`
+
+- `dino_agree`: the mean of the best DINOv2 cosine of the `top_photos` best reference photos.
+- `margin`: the best DINOv2 cosine to the object minus the best to any other enrolled object.
+- `visual`: the mean of the best SigLIP cosine of the `top_photos` best reference crops.
+- `meaning`: a softmax over classes. A class is an object (it scores with its best phrase: the category phrase or a synonym) or a phrase of `contrast_phrases`.
+  The SigLIP logit of each pair is `cosine * scale + bias` of the model (`SceneClassifier.pair_logits`). The logit of the share is cut to ±5.
+- A region with `score >= score_sure` is strong. With `score >= score_maybe` it is weak. A region with `margin < margin_min` of the object is refused.
+- The phrase of the detector is not used. The meaning replaces it: in a real frame the detector called a watch "a headset".
+- The phrase vectors are kept by the engine. They are made again only when the list of phrases changes.
+
+The result is a list of `Sighting` with the `score`. `similarity` is the DINOv2 similarity, as in the mode `tau`.
+A bad vector, a missing reference or a wrong shape raises `MatchingError`. The benchmark is `benchmarks/matching/` (see its README).
+
+### Mode `tau`
 
 `engine.match_regions(vectors, regions, objects)` compares the region vectors of one frame with the enrolled objects.
 It is pure numpy (`ai/matching.py`). It does not read the database. The backend gives it the vectors, a `MatchRegion` for each region
@@ -290,6 +325,7 @@ All settings are in `ai/config.toml`. The start values come from the pipeline do
 | `[scene]` | `enabled`, `prompt`, `rooms`, `surfaces`, `surface_context` |
 | `[speech]` | `enabled`, `max_seconds`, `max_new_tokens` |
 | `[open_detection]` | `enabled`, `confidence`, `max_boxes`, `input_size`, `min_box_side`, `crop_padding` |
+| `[matching]` | `mode` (`evidence` or `tau`), `candidate_min`, `max_regions`, `top_photos`, `crop_padding`, `contrast_phrases`, `bias`, `weight_meaning`, `meaning_cap`, `weight_visual`, `visual_centre`, `visual_scale`, `weight_dino`, `dino_centre`, `dino_scale`, `weight_margin`, `margin_cap`, `margin_scale`, `score_maybe`, `score_sure`. `score_sure` must not be below `score_maybe` |
 | `[language]` | `enabled`, `max_input_chars`, `max_new_tokens`, `max_names`, `rewrite_system`, `rewrite_examples`, `describe_system`, `describe_max_new_tokens`, `describe_image_side` |
 
 - `embedding.frame_short_edge`, `embedding.frame_long_edge_max` and `embedding.crop_size` must be multiples of 14.
@@ -414,6 +450,7 @@ These parts are not built yet:
 | `tests/test_ai_embedder_math.py` | Frame size, patch pooling, padded crops |
 | `tests/test_ai_api.py` | `AiEngine` with fake models, and `open_image` |
 | `tests/test_ai_calibration.py`, `tests/test_ai_enrollment.py` | The calibration, the box scaling and the brightness |
+| `tests/test_ai_evidence.py` | The mode `evidence`: the photo agreement, the meaning cap, the margin cap and refusal, look-alikes, the region choice, bad data, the engine methods |
 | `tests/test_ai_matching.py` | The matching: threshold, margin, look-alikes, phrases, skipped regions, bad data |
 | `tests/test_ai_scene.py` | The context box, the rooms and the surfaces in the engine (a fake model), errors, the switch-off |
 | `tests/test_ai_scene_model.py` (slow) | The real scene model on real photos: probabilities, equality with the full model, rooms and surfaces |

@@ -42,7 +42,7 @@ The db connection is per thread. The worker closes its connection when the threa
 | 6. Detect | `engine.detect_candidates` | A list of candidates |
 | 7. Embed | `engine.embed_regions` | One vector for each candidate |
 | 8. Store | `db.add_regions`, `db.store_region_vectors` | The regions and the vectors |
-| 9. Remember | `MemoryService.remember` | The regions are matched with the `ready` objects. A weak sighting is checked against the reference photos (see `docs/backend/Verification.md`). The sightings and the last-seen records are written (see `docs/backend/Memory.md`). The worker gives the decoded frame, so the check can cut the object from it |
+| 9. Remember | `MemoryService.remember` | The regions are matched with the `ready` objects, in the mode of `[matching]` (`evidence` by default: the candidate regions are cut from the decoded frame and scored with SigLIP, see `docs/backend/Memory.md`). A weak sighting is checked against the reference photos (see `docs/backend/Verification.md`). The sightings and the last-seen records are written (see `docs/backend/Memory.md`). The worker gives the decoded frame, so the check can cut the object from it |
 | 10. Broad detection | `engine.detect_open`, `engine.embed_open_crops`, `db.open_regions.add_open_regions` | The objects that nobody registered: boxes with a name, and a SigLIP vector for each box (see `docs/backend/Open Search.md`). A box that overlaps a candidate of step 6 by `open_link_iou` or more is linked to its region. An error is logged and the image goes on |
 | 11. Finish | `db.mark_image_done` | The image is `done` |
 

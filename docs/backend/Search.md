@@ -21,12 +21,12 @@ The search has two parts:
 words ──▶ QueryResolver ──▶ object ──▶ SearchService.find ──▶ Answer
                 │                            │
          ai: query encoder            db: last_seen, then the archive
-                                      ai: match_regions
+                                      ai: the matching of [matching].mode
 ```
 
 - The HTTP routes (`backend/http_search.py`) and the UI adapter (`UiFindService`) call both parts.
 - The search reads data only. It never writes to the database, the index or the storage.
-- The search uses the same matching rule as the ingestion (`AiEngine.match_regions`).
+- The search uses the same matching rule as the ingestion: the mode `evidence` (`AiEngine.score_evidence`) or `tau` (`AiEngine.match_regions`).
   A look-alike, a margin or a phrase works in the same way in both places.
 
 ## The resolver
@@ -80,7 +80,10 @@ So the resolver uses the gap, and it asks the user when it is not sure.
 2. **A fresh record.** If the `last_seen` record is younger than `search.stale_after_hours`, it is the answer. The archive is not searched.
 3. **The archive.** Otherwise the search goes back in time, one window of `search.window_minutes` at a time, newest window first.
    - A window holds the good regions of `done` frames that have a vector of the present model.
-   - Each frame is matched with `AiEngine.match_regions`. The first frame with an accepted match for the object is the answer.
+   - Each frame is matched with the same mode as the memory (`[matching].mode`, see `docs/backend/Memory.md`). The first frame with an accepted match for the object is the answer.
+   - In the mode `evidence`, a frame is read from the storage and scored only if one of its regions is a candidate for the object
+     (DINOv2 similarity of at least `matching.candidate_min`). At most `search.evidence_max_frames` frames are scored.
+     A frame that cannot be read is skipped.
    - A weak match is checked against the reference photos of the object (stage I5, see `docs/backend/Verification.md`).
      If it passes, it counts as strong, and the answer has no "maybe". If it fails, the answer stays a "maybe".
    - With an old record, the search looks only for a frame that is newer than the record.
@@ -88,8 +91,8 @@ So the resolver uses the gap, and it asks the user when it is not sure.
 4. **An old record.** If the archive has nothing newer, the old record is the answer. It is marked `stale`.
 5. **Not seen.** Without a record and without a match, the answer has `found = False`.
 
-The frame limit protects a slow device. A search compares at most `search.max_frames` frames.
-If it stops there, the answer has `complete = False`. "Not seen" may then be wrong, and the page says so.
+The frame limit protects a slow device. A search compares at most `search.max_frames` frames, and scores at most `search.evidence_max_frames` frames in the mode `evidence`.
+If it stops at a limit, the answer has `complete = False`. "Not seen" may then be wrong, and the page says so.
 
 ### The answer
 
@@ -159,6 +162,7 @@ curl -o answer.jpg "http://<server>:8080/api/objects/1/last-seen/picture?view=fr
 | `crop_padding` | 0.25 | Space around the object in the picture, as a part of the size of its box |
 | `verify_weak` | true | Check a weak hit of the archive against the reference photos (stage I5) |
 | `verify_max_references` | 3 | The check compares with at most this number of reference photos |
+| `evidence_max_frames` | 30 | The mode `evidence` scores at most this number of frames in one search. Each costs a read of the frame and a SigLIP run (about 0.5 s on the development CPU) |
 
 | Key (table `[query]`) | Default | Meaning |
 |-----------------------|---------|---------|
@@ -231,6 +235,7 @@ The test found one picture problem, which is fixed (see `docs/ui/Find Page.md`).
   In the first run, this check hid a correct sighting (photo 8). The first report of this limit named the edge of the picture. That was wrong: the edge was not the reason.
 - **A held object.** If the person held the object, the place is the person. The answer says so with `in_hand`.
 - **Cost.** The search matches each frame alone, because the newest match must win. It is exact and not fast.
+  The mode `evidence` also reads each frame with a candidate and runs SigLIP on it. `search.evidence_max_frames` bounds this cost.
   The frame limit and the time limit bound it. The speed on the Raspberry Pi is not measured.
 - **A long window.** If a window has more than `max_regions_per_window` regions, the oldest regions of it are left out.
 - **One model.** The search compares only the vectors of the present embedding model. After a model change, an object needs new photos.
@@ -242,6 +247,7 @@ The test found one picture problem, which is fixed (see `docs/ui/Find Page.md`).
 |------|---------------|
 | `tests/test_db_search.py` | The window listing and the vector reading of the db |
 | `tests/test_backend_search.py` | The record, the stale record, the archive, the windows, weak matches, the limits, look-alikes, draft objects, one search for the picture |
+| `tests/test_backend_evidence.py` | The archive search in the mode `evidence`: a hit, only frames with a candidate are read, the limit `evidence_max_frames` |
 | `tests/test_backend_search_verification.py` | The check of weak hits: a firm answer after a pass, a "maybe" after a fail, the cases without a check |
 | `tests/test_backend_query.py` | The three results, the choice, the cache, bad words, no logging of the words |
 | `tests/test_backend_http_search.py` | Every route, the picture sizes, bad options, the token, fixed messages |
