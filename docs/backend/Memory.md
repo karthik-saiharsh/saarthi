@@ -22,18 +22,40 @@ Worker: frame ──▶ regions and vectors stored ──▶ MemoryService.remem
 
 1. Load the `ready` objects of the gallery with their views. An object with no view of the current model is left out.
 2. Match the regions with the objects. A region with `quality_ok = False` is never matched.
-   The mode is `[matching].mode` in `ai/config.toml` (see "The two matching modes"). The default is `evidence`.
+   The mode is `[matching].mode` in `ai/config.toml` (see "The matching modes"). The default is `evidence`.
+   The mode `keys` matches before the regions are stored (see below).
 3. Check each weak match against the reference photos of the object (stage I5, see `docs/backend/Verification.md`).
    A match that passes the check counts as strong.
 4. Write each accepted match to the table `sighting`. The time is the time at which the server received the frame (`Image.captured_at`).
 5. Apply the rule below. It decides if the match changes the record `last_seen` of the object.
 
-## The two matching modes
+## The matching modes
 
 | Mode | How a region becomes a sighting |
 |------|---------------------------------|
 | `tau` | One test: the DINOv2 similarity must reach the `tau` of the object, with the margin `margin_min`. The detector phrase of the region must fit the object (`AiEngine.match_regions`) |
 | `evidence` (default) | Several independent signals give one score (`AiEngine.score_evidence`, `ai/evidence.py`). The detector phrase is not a gate |
+| `keys` | Two picture keys of the crop (SigLIP and the DINOv2 CLS token) with fixed bars, and a word vote (`AiEngine.match_keys`, `ai/keys.py`). It also scores the boxes of the broad detector |
+
+**The steps of the mode `keys`** (`Worker._process_keys`, `MemoryService.match_keys`, `MemoryService.record`):
+
+1. **The boxes.** The worker runs the broad detector (YOLOE) before the matching. Its boxes join the candidates of the detector
+   (`AiEngine.broad_candidates`). They have no phrase, and the crop gate applies to them. All boxes are kept: a YOLOE box that
+   overlaps a candidate is not dropped, because it can be sharp where the candidate is blurred (`benchmarks/recall/README.md`).
+2. **The keys.** Each box gets a SigLIP vector (`AiEngine.embed_evidence_crops`) and a DINOv2 key (`AiEngine.embed_key_crops`).
+   The reference photos get the same two vectors (`ReferenceVectors`).
+3. **The decision** (`docs/ai/AI Ingestion Module.md`, "Mode `keys`"). Strong: SigLIP 0.77 and DINOv2 0.42. Weak: SigLIP 0.72 and
+   one more vote (DINOv2 0.40, or a detector score of 0.30 for a word of the object). A box with a bad crop (small, blurred, cut by the edge)
+   is weak at most. A box inside a screen, frame or mirror is never a sighting. One box is one object, and a look-alike can take a box.
+4. **The regions.** The worker stores the candidates of the detector as regions, as in the other modes. A box of the broad detector
+   becomes a region only if it gives a sighting, with the source `full` and no phrase. So the region table does not grow with every YOLOE box.
+5. **The record.** Stages I5 and I6 as in the other modes (`MemoryService.record`).
+6. **The open search** stores all boxes of the broad detector. It takes the SigLIP vectors of step 2, so no box gets a second SigLIP run
+   (only if `open_detection.crop_padding` equals `matching.crop_padding`; else it makes its own).
+
+`Sighting.similarity` is the SigLIP key and `Sighting.margin` the SigLIP key minus the best SigLIP key of another object.
+The bars are the same for all objects. They come from the replay of `benchmarks/recall` (phase R1a). They are start values.
+Without the scene model the mode is `tau`.
 
 **Why the mode `evidence` exists.** One threshold is a single point of failure. In a real test with a watch, a headset and a book,
 all reference photos were taken on the same table. The crops of the watch and the headset were mostly table, so DINOv2 found them similar (0.64).
@@ -154,4 +176,5 @@ Both tables are in `db/schema.py`. The helpers are in `db/sightings.py` (`db.sig
 | `tests/test_backend_memory.py` | The rule: strong, weak, the window, other objects, one frame twice, the limit 1, a deleted object, `load_objects` |
 | `tests/test_backend_worker.py` | The whole step with a fake detector: a record is set, a look-alike blocks, a look-alike alone is not reported, a region that is not good, a matching error, retention keeps the frame |
 | `tests/test_backend_settings.py` | The keys of `[memory]` |
+| `tests/test_backend_keys.py` | The mode `keys`: the DINOv2 keys of the references, all boxes matched, only a broad box with a sighting becomes a region, the shared SigLIP vectors of the open search, the hysteresis, an error of the broad detector, the archive search |
 | `tests/test_backend_evidence.py` | The mode `evidence`: the reference vectors (only confirmed photos, kept, made again after a change, a missing file), the memory (strong, weak and the window, no picture, no readable reference), the archive search |

@@ -439,6 +439,14 @@ class AiEngine:
             image, boxes, self._config.matching.key_crop_size
         )
 
+    @property
+    def open_crops_share_key_crops(self) -> bool:
+        """True if `embed_open_crops` and `embed_evidence_crops` cut a box in the same way, so one vector serves both."""
+        return (
+            self._config.open_detection.crop_padding
+            == self._config.matching.crop_padding
+        )
+
     def broad_candidates(
         self, image: Image.Image, detections: list[OpenDetection]
     ) -> list[Candidate]:

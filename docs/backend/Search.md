@@ -26,7 +26,7 @@ words ──▶ QueryResolver ──▶ object ──▶ SearchService.find ─�
 
 - The HTTP routes (`backend/http_search.py`) and the UI adapter (`UiFindService`) call both parts.
 - The search reads data only. It never writes to the database, the index or the storage.
-- The search uses the same matching rule as the ingestion: the mode `evidence` (`AiEngine.score_evidence`) or `tau` (`AiEngine.match_regions`).
+- The search uses the same matching rule as the ingestion: the mode `evidence` (`AiEngine.score_evidence`), `keys` (`AiEngine.match_keys`) or `tau` (`AiEngine.match_regions`).
   A look-alike, a margin or a phrase works in the same way in both places.
 
 ## The resolver
@@ -81,8 +81,10 @@ So the resolver uses the gap, and it asks the user when it is not sure.
 3. **The archive.** Otherwise the search goes back in time, one window of `search.window_minutes` at a time, newest window first.
    - A window holds the good regions of `done` frames that have a vector of the present model.
    - Each frame is matched with the same mode as the memory (`[matching].mode`, see `docs/backend/Memory.md`). The first frame with an accepted match for the object is the answer.
-   - In the mode `evidence`, a frame is read from the storage and scored only if one of its regions is a candidate for the object
+   - In the modes `evidence` and `keys`, a frame is read from the storage and scored only if one of its regions is a candidate for the object
      (DINOv2 similarity of at least `matching.candidate_min`). At most `search.evidence_max_frames` frames are scored.
+     The mode `keys` scores the chosen regions with its two keys. A region with `quality_ok = False` (a bad crop, or inside a depiction: the db does not keep the reason) is weak at most.
+     The archive has only the boxes that the worker stored as regions: in the mode `keys`, the boxes of the broad detector without a sighting are not in it.
      A frame that cannot be read is skipped.
    - A weak match is checked against the reference photos of the object (stage I5, see `docs/backend/Verification.md`).
      If it passes, it counts as strong, and the answer has no "maybe". If it fails, the answer stays a "maybe".

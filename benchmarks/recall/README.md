@@ -51,6 +51,8 @@ uv run python benchmarks/recall/collect.py SET_JSON OUT_DIR
 uv run python benchmarks/recall/collect.py SET_JSON OUT_DIR --limit 3
 # 2. Optional: the negatives of the reference photos (a few minutes). They go into the same OUT_DIR
 uv run python benchmarks/recall/negatives.py SET_JSON OUT_DIR
+# Optional: the mode `keys` of the runtime on the same set, to compare with the replay (about 10 s for each frame)
+uv run python benchmarks/recall/runtime_check.py SET_JSON OUT_DIR
 # 3. The report (a few seconds). The options set the rule of the replay (section 5)
 uv run python benchmarks/recall/report.py SET_JSON OUT_DIR
 uv run python benchmarks/recall/report.py SET_JSON OUT_DIR --boxes gdino --dino pool_mask --sig-strong 0.78
@@ -100,6 +102,12 @@ The script uses the same two detectors. It leaves out a box that covers a half o
 A negative belongs only to the object of its photo.
 
 The agreement of a box with an object is the mean of its 2 best reference photos.
+
+### The runtime check (`runtime_check.py`)
+
+It runs the mode `keys` with the `AiEngine` calls of the worker and the memory, in the same order, and needs no database.
+The objects are enrolled from the reference photos of the set. It does not run the keypoint check or the memory rule.
+It prints the result in the form of section 5 of the report. A difference from the replay is a fault of the runtime or of the replay.
 
 ### The report (`report.py`)
 
@@ -165,6 +173,20 @@ A lower SigLIP weak bar, fixed DINOv2 bar 0.40:
 - At the start bars the negatives remove 1 false sighting. At lower bars they remove about a half of the false sightings.
   A lower bar finds no more true objects (except 1 headset at 0.62), so the start bars stay.
 - The new rule keeps every true instance that the mode `evidence` finds (the exit test of phase R1), and it gives no false strong sighting in the home frames.
+
+### The runtime against the replay (phase R1c)
+
+`runtime_check.py` ran the mode `keys` of the runtime on all 340 frames (7.3 s for each frame on the development CPU).
+
+| | True found (22) | False, home / cohort | False strong |
+|-|-----------------|----------------------|--------------|
+| Replay (fixed DINOv2 weak bar 0.40) | 14 + 6 = 20 | 0 / 15 | 1 (a watch of another home) |
+| Runtime, mode `keys` | 14 + 6 = 20 | 0 / 13 | 1 (the same watch) |
+
+- Each truth instance has the same result in both.
+- The runtime has 2 fewer weak false sightings (a book and a headset). The replay gives a YOLOE box the word score of a candidate
+  that overlaps it. The runtime gives a box of the broad detector no word vote, because it has no phrase.
+- So the exit test of phase R1 passes: no true sighting of the mode `evidence` is lost, and there is no false strong sighting in the home frames.
 
 ### Check against Revision 3 of the plan (the exit test of phase R0)
 

@@ -16,10 +16,17 @@ For each frame the worker does these steps:
    This step is an extra. Its errors are logged and never fail the image.
 9. Mark the image `done`.
 
+In the matching mode `keys` (`[matching]` of `ai/config.toml`), steps 4 to 8 change:
+the broad detector runs first, and its boxes join the candidates. Each box gets a SigLIP vector and a DINOv2 key,
+and the memory matches them all (`MemoryService.match_keys`). Then the worker stores the candidates of the detector and
+only those boxes of the broad detector that give a sighting, as regions with the source `full` and no phrase.
+The other boxes of the broad detector are not regions. The open search stores all of them, with the same SigLIP vectors.
+
 Any error marks the image `failed`. The image is not tried again. The worker
 goes on with the next image.
 """
 
+import dataclasses
 import logging
 import threading
 from collections.abc import Callable
@@ -32,7 +39,7 @@ import db.api as db
 import storage.api as storage
 from ai.api import AiEngine
 from ai.errors import AiError
-from ai.types import Box, Candidate
+from ai.types import Box, Candidate, OpenDetection, Sighting
 from backend.memory import MemoryService
 from backend.references import ReferenceVectors
 from backend.settings import BackendConfig, WorkerConfig
@@ -276,6 +283,9 @@ class Worker:
             phrases=db.gallery.gallery_phrases() or None,
             include_generic=every > 0 and self._analysed % every == 0,
         )
+        if self._engine.matching_mode == "keys":
+            self._process_keys(image, picture, candidates)
+            return
         # The model work comes first. An error here leaves no regions behind.
         vectors: np.ndarray = self._engine.embed_regions(
             picture, [c.box for c in candidates]
@@ -296,6 +306,71 @@ class Worker:
             open_boxes,
         )
 
+    def _process_keys(
+        self, image: Image, picture: PilImage.Image, candidates: list[Candidate]
+    ) -> None:
+        """Steps 4 to 9 in the matching mode `keys`. See the module text."""
+        found: list[OpenDetection] = self._detect_open(image.id, picture)
+        merged: list[Candidate] = candidates + self._engine.broad_candidates(
+            picture, found
+        )
+        # The model work comes first. An error here leaves no regions behind.
+        sig_vectors: np.ndarray = self._engine.embed_evidence_crops(
+            picture, [c.box for c in merged]
+        )
+        sightings: list[Sighting] = self._memory.match_keys(
+            picture, merged, sig_vectors
+        )
+        seen: set[int] = {s.region_index for s in sightings}
+        keep: list[int] = list(range(len(candidates))) + [
+            i for i in range(len(candidates), len(merged)) if i in seen
+        ]
+        kept: list[Candidate] = [merged[i] for i in keep]
+        vectors: np.ndarray = self._engine.embed_regions(picture, [c.box for c in kept])
+        regions = db.add_regions(image.id, [_to_new_region(c) for c in kept])
+        if regions:
+            db.store_region_vectors(
+                [r.id for r in regions], vectors, self._engine.embedding_model
+            )
+            position: dict[int, int] = {old: new for new, old in enumerate(keep)}
+            moved: list[Sighting] = [
+                dataclasses.replace(s, region_index=position[s.region_index])
+                for s in sightings
+            ]
+            # Stage I5 and I6. An error here marks the image `failed`. Its regions and vectors stay.
+            self._memory.record(image, moved, kept, regions, vectors, picture)
+        # The SigLIP vectors of the broad boxes serve the open search too, if both cut the crops in the same way.
+        shared: np.ndarray | None = (
+            sig_vectors[len(candidates) :]
+            if self._engine.open_crops_share_key_crops
+            else None
+        )
+        open_boxes: int = self._store_open(image, picture, found, shared, kept, regions)
+        db.mark_image_done(image.id)
+        logger.info(
+            "Image %d is done with %d region(s) (%d from the broad detector) and %d open box(es)",
+            image.id,
+            len(regions),
+            len(kept) - len(candidates),
+            open_boxes,
+        )
+
+    def _detect_open(
+        self, image_id: int, picture: PilImage.Image
+    ) -> list[OpenDetection]:
+        """Run the broad detector. Return no box if it or the scene model is off, or if it fails (it is an extra)."""
+        if not (self._engine.open_detection_enabled and self._engine.scene_enabled):
+            return []
+        try:
+            return self._engine.detect_open(picture)
+        except AiError as error:
+            logger.warning(
+                "The broad detection of image %d failed: %s",
+                image_id,
+                type(error).__name__,
+            )
+            return []
+
     def _store_open_boxes(
         self,
         image: Image,
@@ -308,15 +383,27 @@ class Worker:
         Return the number of boxes stored. The step needs the broad detector and the scene model (SigLIP).
         An error is logged, and the image goes on: the open search is an extra.
         """
-        if not (self._engine.open_detection_enabled and self._engine.scene_enabled):
+        found: list[OpenDetection] = self._detect_open(image.id, picture)
+        return self._store_open(image, picture, found, None, candidates, regions)
+
+    def _store_open(
+        self,
+        image: Image,
+        picture: PilImage.Image,
+        found: list[OpenDetection],
+        vectors: np.ndarray | None,
+        candidates: list[Candidate],
+        regions: list,
+    ) -> int:
+        """Store the boxes of the broad detector for the open search. Return the number of boxes stored.
+
+        `vectors` are their SigLIP vectors, if the caller has them already. An error is logged, and the image goes on.
+        """
+        if not found:
             return 0
         try:
-            found = self._engine.detect_open(picture)
-            if not found:
-                return 0
-            vectors: np.ndarray = self._engine.embed_open_crops(
-                picture, [d.box for d in found]
-            )
+            if vectors is None:
+                vectors = self._engine.embed_open_crops(picture, [d.box for d in found])
             items: list[db.open_regions.NewOpenRegion] = [
                 db.open_regions.NewOpenRegion(
                     d.box.x0,

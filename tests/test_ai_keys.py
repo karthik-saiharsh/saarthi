@@ -118,7 +118,7 @@ def test_match_keys_reports_the_keys() -> None:
     dino = np.stack([with_cosine(0.45, DINO)])
     found = match_keys(sig, dino, [GOOD], [watch], BARS)
     assert len(found) == 1
-    assert found[0].strong
+    assert found[0].strong is True  # A plain bool, so the db and JSON take it
     assert found[0].similarity == pytest.approx(0.80, abs=1e-5)
     assert found[0].score == pytest.approx(0.45, abs=1e-5)
     assert found[0].margin == pytest.approx(0.80, abs=1e-5)  # No other object

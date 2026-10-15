@@ -179,7 +179,7 @@ def match_keys(
                 i,
                 float(s[i, owner]),
                 margin,
-                level[i, owner] == STRONG,
+                bool(level[i, owner] == STRONG),
                 float(d[i, owner]),
             )
             best[obj.object_id] = (*rank, sighting)

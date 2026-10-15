@@ -6,9 +6,10 @@
    `search.stale_after_hours`).
 2. The archive of frames. The search goes back in time, one window at a time,
    newest first. It matches the stored regions of each frame with the same
-   rule as the ingestion (the mode of `[matching]` in `ai/config.toml`). In the mode `evidence`,
+   rule as the ingestion (the mode of `[matching]` in `ai/config.toml`). In the modes `evidence` and `keys`,
    a frame is read and scored only if one of its regions is a candidate for the object, and at most
-   `search.evidence_max_frames` frames are scored. The first frame with an
+   `search.evidence_max_frames` frames are scored. The mode `keys` scores the chosen regions with its two keys.
+   The archive has only the boxes that the worker stored as regions. The first frame with an
    accepted match is the answer. A match that is not strong is checked against
    the reference photos of the object (stage I5). If the check passes, the match counts as
    strong. If not, it stays weak, so the caller can say "maybe".
@@ -220,9 +221,12 @@ class SearchService:
 
         Return the hit (or None) and False if the search stopped at `max_frames` or `evidence_max_frames`.
         """
-        evidence: bool = self._engine.matching_mode == "evidence"
+        mode: str = self._engine.matching_mode
+        evidence: bool = mode in ("evidence", "keys")  # Both read the chosen frames
         objects: list[MatchObject] = load_match_objects(
-            self._engine, self._references if evidence else None
+            self._engine,
+            self._references if evidence else None,
+            look_alikes_need_references=mode == "keys",
         )
         if all(o.object_id != object_id for o in objects):
             return None, True  # No views of the current model: nothing to compare
@@ -315,7 +319,7 @@ class SearchService:
         regions: list[Region],
         chosen: list[int],
     ) -> _Hit | None:
-        """Score the chosen regions of one frame (mode `evidence`). Return the hit for the object, or None.
+        """Score the chosen regions of one frame (mode `evidence` or `keys`). Return the hit for the object, or None.
 
         A frame that cannot be read gives no hit. The search goes on with the next frame.
         """
@@ -324,13 +328,32 @@ class SearchService:
             picture = self._engine.open_image(
                 storage.read_image(regions[0].image.file_path)
             )
-            crops: np.ndarray = self._engine.embed_evidence_crops(
-                picture,
-                [Box(r.x0, r.y0, r.x1, r.y1) for r in (regions[i] for i in chosen)],
-            )
-            sightings: list[Sighting] = self._engine.score_evidence(
-                chosen, vectors, crops, objects
-            )
+            boxes: list[Box] = [
+                Box(r.x0, r.y0, r.x1, r.y1) for r in (regions[i] for i in chosen)
+            ]
+            crops: np.ndarray = self._engine.embed_evidence_crops(picture, boxes)
+            sightings: list[Sighting]
+            if self._engine.matching_mode == "keys":
+                found: list[Sighting] = self._engine.match_keys(
+                    crops,
+                    self._engine.embed_key_crops(picture, boxes),
+                    [
+                        MatchRegion(
+                            tuple(regions[i].phrases),
+                            regions[i].quality_ok,
+                            regions[i].det_score,
+                        )
+                        for i in chosen
+                    ],
+                    objects,
+                )
+                # The index of a sighting is a place in `chosen`. The hit needs a place in `regions`.
+                sightings = [
+                    dataclasses.replace(s, region_index=chosen[s.region_index])
+                    for s in found
+                ]
+            else:
+                sightings = self._engine.score_evidence(chosen, vectors, crops, objects)
         except (AiError, storage.StorageError):
             logger.warning(
                 "Search for object %d: frame %d cannot be scored",
