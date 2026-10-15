@@ -156,7 +156,7 @@ class OpenDetectionConfig:
     crop_padding: float
 
 
-MATCHING_MODES: tuple[str, ...] = ("tau", "evidence")
+MATCHING_MODES: tuple[str, ...] = ("tau", "evidence", "keys")
 
 
 @dataclass(frozen=True)
@@ -181,6 +181,13 @@ class MatchingConfig:
     margin_scale: float
     score_maybe: float
     score_sure: float
+    # The mode `keys` (`ai/keys.py`)
+    key_crop_size: int
+    sig_strong: float
+    dino_strong: float
+    sig_weak: float
+    dino_weak: float
+    word_vote: float
 
 
 @dataclass(frozen=True)
@@ -333,11 +340,23 @@ def _matching(table: _Table) -> MatchingConfig:
         margin_scale=table.number("margin_scale", 0.001, 1.0),
         score_maybe=table.number("score_maybe", -100.0, 100.0),
         score_sure=table.number("score_sure", -100.0, 100.0),
+        key_crop_size=_multiple_of(
+            table.integer("key_crop_size", minimum=PATCH_SIZE, maximum=1024),
+            PATCH_SIZE,
+            "matching.key_crop_size",
+        ),
+        sig_strong=table.number("sig_strong", -1.0, 1.0),
+        dino_strong=table.number("dino_strong", -1.0, 1.0),
+        sig_weak=table.number("sig_weak", -1.0, 1.0),
+        dino_weak=table.number("dino_weak", -1.0, 1.0),
+        word_vote=table.number("word_vote", 0.0, 1.0),
     )
     if config.score_sure < config.score_maybe:
         raise AiConfigError(
             "matching.score_sure must not be below matching.score_maybe"
         )
+    if config.sig_weak > config.sig_strong:
+        raise AiConfigError("matching.sig_weak must not be above matching.sig_strong")
     return config
 
 

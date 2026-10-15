@@ -26,6 +26,7 @@ from ai.errors import (
     ModelLoadError,
 )
 from ai.evidence import score_regions, select_regions
+from ai.keys import KeyBars, match_keys
 from ai.language import LanguageModel
 from ai.matching import match_regions
 from ai.open_detector import OpenDetector
@@ -357,9 +358,12 @@ class AiEngine:
 
     @property
     def matching_mode(self) -> str:
-        """`evidence` or `tau`. The mode `evidence` needs the scene model, so without it the mode is `tau`."""
-        if self._config.matching.mode == "evidence" and self._scene is not None:
-            return "evidence"
+        """`keys`, `evidence` or `tau`. Both `keys` and `evidence` need the scene model. Without it the mode is `tau`."""
+        if (
+            self._config.matching.mode in ("evidence", "keys")
+            and self._scene is not None
+        ):
+            return self._config.matching.mode
         return "tau"
 
     def evidence_regions(
@@ -426,6 +430,54 @@ class AiEngine:
             objects,
             self._config.matching,
         )
+
+    # ---- Matching with two keys (stage I4, mode `keys`) ----
+
+    def embed_key_crops(self, image: Image.Image, boxes: list[Box]) -> np.ndarray:
+        """Return the DINOv2 key of each box: the CLS token of the tight crop. Use it for frames and reference photos."""
+        return self._embedder.embed_crops_cls(
+            image, boxes, self._config.matching.key_crop_size
+        )
+
+    def broad_candidates(
+        self, image: Image.Image, detections: list[OpenDetection]
+    ) -> list[Candidate]:
+        """Turn the boxes of the broad detector into candidates for the mode `keys`, with the crop gate applied.
+
+        They have no phrase, because the names of the broad detector are not the words of the gallery.
+        They are never in a hand and never inside a depiction: only the candidate detector finds hands and screens.
+        """
+        assert isinstance(image, Image.Image), "image must be a PIL image"
+        quality = self._config.quality
+        raw: list[Candidate] = [
+            Candidate(d.box, d.confidence, "full", (), False, True) for d in detections
+        ]
+        return apply_crop_quality(
+            raw, image, quality.min_crop_side, quality.crop_blur_min
+        )
+
+    def match_keys(
+        self,
+        sig_vectors: np.ndarray,
+        dino_vectors: np.ndarray,
+        regions: list[MatchRegion],
+        objects: list[MatchObject],
+    ) -> list[Sighting]:
+        """Match the boxes of one frame with two keys and a word vote (see `ai/keys.py`).
+
+        `sig_vectors` come from `embed_evidence_crops`, `dino_vectors` from `embed_key_crops`, one row for each region.
+        Each object needs `references`, `key_references` and `reference_photos`. A look-alike also needs them.
+        """
+        cfg = self._config.matching
+        bars: KeyBars = KeyBars(
+            cfg.top_photos,
+            cfg.sig_strong,
+            cfg.dino_strong,
+            cfg.sig_weak,
+            cfg.dino_weak,
+            cfg.word_vote,
+        )
+        return match_keys(sig_vectors, dino_vectors, regions, objects, bars)
 
     def _evidence_classes(
         self, objects: list[MatchObject]

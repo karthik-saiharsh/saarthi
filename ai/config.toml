@@ -235,6 +235,8 @@ describe_image_side = 640
 # How a region becomes a sighting of an enrolled object (stage I4). See ai/evidence.py and docs/backend/Memory.md.
 # "tau": the DINOv2 similarity must reach the threshold of the object (one test).
 # "evidence": several independent signals give one score. It needs the scene model (SigLIP, [scene] enabled = true).
+# "keys": two picture keys (SigLIP and the DINOv2 CLS token of the crop) and a word vote. See ai/keys.py.
+#         It needs the scene model. With the broad detector on, the backend also scores the YOLOE boxes.
 # The evidence values come from benchmarks/matching (15 frames with a watch, a headset and a book, and the
 # 14 photos of the speckled bottle as a hold-out set). They are start values. Measure again with more objects.
 mode = "evidence"
@@ -288,3 +290,16 @@ margin_scale = 0.10
 # A weak sighting still needs the check of stage I5 or a second frame (see [memory] in backend/config.toml).
 score_maybe = 3.0
 score_sure = 6.0
+# ---- The mode "keys" (ai/keys.py). The values come from the replay of benchmarks/recall (README, phase R1a):
+# 4 objects, 31 home frames, 309 frames of other homes. Fixed bars, no cohort. They are start values.
+# The DINOv2 key is the CLS token of the tight crop at this size (a multiple of 14).
+key_crop_size = 224
+# Strong: both keys at their strong bars.
+sig_strong = 0.77
+dino_strong = 0.42
+# Weak: the SigLIP key at its weak bar, and one more vote: the DINOv2 key at dino_weak, or a word vote.
+# Any dino_weak from 0.36 to 0.42 gave the same result in the replay.
+sig_weak = 0.72
+dino_weak = 0.40
+# A word vote: the detector score of a word of the object on the box. Words never make a sighting alone.
+word_vote = 0.30

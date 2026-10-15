@@ -230,6 +230,7 @@ def select_candidates(
                 tuple(phrases_out),
                 in_hand,
                 not inside_depiction,
+                inside_depiction,
             )
         )
     return candidates

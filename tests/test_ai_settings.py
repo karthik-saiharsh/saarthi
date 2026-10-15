@@ -75,6 +75,9 @@ def test_default_config_loads_and_is_consistent() -> None:
         ("score_sure = 6.0", "score_sure = 1.0"),
         ("visual_scale = 0.05", "visual_scale = 0.0"),
         ("max_regions = 8", "max_regions = 0"),
+        ("sig_weak = 0.72", "sig_weak = 0.80"),
+        ("key_crop_size = 224", "key_crop_size = 225"),
+        ("word_vote = 0.30", "word_vote = 1.5"),
         ("contrast_phrases = [", "contrast_phrases = []\nold_contrast = ["),
     ],
 )

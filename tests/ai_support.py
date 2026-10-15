@@ -54,11 +54,27 @@ class FakeEmbedder:
         self.calls: list[tuple[float, list]] = (
             []
         )  # The mean brightness of the image, the boxes
+        self.cls_calls: list[tuple[list, int]] = (
+            []
+        )  # The boxes and the size of each CLS call
 
     def embed(self, image, boxes):
         if self.error is not None:
             raise self.error
         self.calls.append((float(np.asarray(image.convert("L")).mean()), list(boxes)))
+        vectors: np.ndarray = np.zeros((len(boxes), self.dimension), dtype=np.float32)
+        for row, box in enumerate(boxes):
+            column: int = (
+                (box.x0 + 7 * box.y0) % self.dimension if self.one_hot_by_box else 0
+            )
+            vectors[row, column] = 1.0
+        return vectors
+
+    def embed_crops_cls(self, image, boxes, size):
+        """The DINOv2 key of the mode `keys`. The same vectors as `embed`, recorded apart."""
+        if self.error is not None:
+            raise self.error
+        self.cls_calls.append((list(boxes), size))
         vectors: np.ndarray = np.zeros((len(boxes), self.dimension), dtype=np.float32)
         for row, box in enumerate(boxes):
             column: int = (

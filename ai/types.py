@@ -51,7 +51,10 @@ class Candidate:
     source: Source
     phrases: tuple[str, ...]  # Labels of all merged boxes
     in_hand: bool
-    quality_ok: bool  # False if the crop is small, blurry or cut by the image edge
+    quality_ok: bool  # False if the crop is small, blurry or cut by the image edge, or inside a depiction
+    depicted: bool = (
+        False  # True: the box lies inside a screen, frame or mirror. Never a real place
+    )
 
 
 @dataclass(frozen=True)
@@ -104,7 +107,13 @@ class MatchRegion:
     """What the matching step needs to know about one region besides its vector."""
 
     phrases: tuple[str, ...]  # The detector phrases of the region
-    quality_ok: bool  # False: the region is never matched
+    quality_ok: bool  # False: the region is never matched (mode `keys`: weak at most)
+    det_score: float = (
+        0.0  # The detector score. The mode `keys` uses it as a word vote only
+    )
+    depicted: bool = (
+        False  # True: inside a screen, frame or mirror. The mode `keys` never matches it
+    )
 
 
 @dataclass(frozen=True)
@@ -128,6 +137,9 @@ class MatchObject:
     reference_photos: np.ndarray | None = (
         None  # The reference photo id of each row of `references`
     )
+    # For the mode `keys` only (`ai/keys.py`): the DINOv2 CLS vectors of the reference crops, one row for each
+    # row of `references`.
+    key_references: np.ndarray | None = None
 
 
 @dataclass(frozen=True)
@@ -140,7 +152,7 @@ class Sighting:
     margin: float  # The similarity minus the highest similarity to any other object
     strong: bool  # True: above `tau_strong` with the strong margin (mode `tau`), or above `score_sure` (mode `evidence`)
     score: float | None = (
-        None  # The evidence score (mode `evidence`). None in the mode `tau`
+        None  # The evidence score (mode `evidence`), the DINOv2 key (mode `keys`). None in the mode `tau`
     )
 
 

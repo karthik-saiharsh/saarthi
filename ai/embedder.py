@@ -207,3 +207,48 @@ class RegionEmbedder:
             time.perf_counter() - started,
         )
         return result.astype(np.float32)
+
+    def embed_crops_cls(
+        self, image: Image.Image, boxes: list[Box], size: int
+    ) -> np.ndarray:
+        """Return the unit-length CLS token of the tight crop of each box, resized to `size` x `size`.
+
+        It is the DINOv2 key of the mode `keys` (`ai/keys.py`). The CLS token sees the whole crop, so it does not
+        depend on the patch grid of the frame. A small object keeps its detail, because the crop is enlarged.
+        """
+        assert isinstance(image, Image.Image), "image must be a PIL image"
+        assert isinstance(boxes, list), "boxes must be a list"
+        assert size > 0 and size % PATCH_SIZE == 0, "size must be a multiple of 14"
+        width, height = image.size
+        assert all(
+            0 <= b.x0 and 0 <= b.y0 and b.x1 <= width and b.y1 <= height for b in boxes
+        ), "every box must lie inside the image"
+        if not boxes:
+            return np.empty((0, self.dimension), dtype=np.float32)
+        started: float = time.perf_counter()
+        try:
+            tokens: list[torch.Tensor] = []
+            for start in range(0, len(boxes), CROP_BATCH_SIZE):
+                pixels: torch.Tensor = torch.cat(
+                    [
+                        self._pixels(image.crop((b.x0, b.y0, b.x1, b.y1)), (size, size))
+                        for b in boxes[start : start + CROP_BATCH_SIZE]
+                    ]
+                )
+                with self._lock, torch.inference_mode():
+                    hidden: torch.Tensor = self._model(
+                        pixel_values=pixels.to(self._device)
+                    ).last_hidden_state
+                tokens.append(hidden[:, 0].float().cpu())
+            result: np.ndarray = torch.nn.functional.normalize(
+                torch.cat(tokens), dim=1
+            ).numpy()
+        except (RuntimeError, ValueError) as error:
+            logger.error("CLS embedding failed: %s: %s", type(error).__name__, error)
+            raise InferenceError("CLS embedding failed") from error
+        logger.info(
+            "Embedded %d crop(s) for the DINOv2 key in %.2f s",
+            len(boxes),
+            time.perf_counter() - started,
+        )
+        return result.astype(np.float32)

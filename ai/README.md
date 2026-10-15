@@ -29,6 +29,7 @@ The source of the design is `docs/guide/DINO-Based Object Recall Pipeline.md`.
 | `verifier.py` | `KeypointVerifier`: LightGlue with SuperPoint. It counts the keypoints that match between two pictures (stage I5) |
 | `query.py` | `QueryEncoder`: a small sentence encoder. It turns the words of a user into vectors, to find the object that the user means |
 | `matching.py` | Match region vectors with the enrolled objects (stage I4, mode `tau`: one threshold). No model |
+| `keys.py` | Match boxes with the enrolled objects (stage I4, mode `keys`): a SigLIP key and a DINOv2 key (the CLS token of the crop) with fixed bars, and a word vote. No model |
 | `evidence.py` | Match regions with the enrolled objects (stage I4, mode `evidence`): DINOv2 agreement, margin, SigLIP agreement with the reference crops, and the SigLIP meaning give one score. No model |
 | `calibration.py` | The thresholds of an object from its views (stage E4). No model |
 | `enrollment.py` | Box scaling and brightness for the views of a photo. No model |
@@ -58,6 +59,7 @@ The source of the design is `docs/guide/DINO-Based Object Recall Pipeline.md`.
 | E2 Locate | `engine.locate_object(image, category_phrase, synonyms)` | A `LocatedObject` (the best box and its score), or `None` |
 | Q Detect phrases | `engine.detect_phrases(image, phrases)` | A list of `RawDetection` (box, score, label), with no merge and no filter. The open search in the mode `verified` uses it |
 | E3 Views | `engine.embed_views(image, box)` | A list of (view name, vector). The views are in `[enrollment]` of `config.toml` |
+| I4 Match, mode `keys` | `engine.broad_candidates(image, detections)`, `engine.embed_evidence_crops(image, boxes)`, `engine.embed_key_crops(image, boxes)`, `engine.match_keys(...)` | A list of `Sighting`. Blurred crops are weak at most |
 | I4 Match, mode `evidence` | `engine.evidence_regions(...)`, `engine.embed_evidence_crops(image, boxes)`, `engine.score_evidence(...)` | A list of `Sighting` with a `score`. `engine.matching_mode` says which mode is on (`[matching]` of `config.toml`) |
 | E4 Calibrate | `engine.calibrate_object(views, photo_ids, others)` | A `Calibration` with `tau`, `tau_strong` and a note. `engine.min_photos` is the number of photos that an object needs |
 

@@ -61,7 +61,8 @@ The ai module does not import the db module.
 | `engine.detect_candidates(image, phrases=None, small_phrases=None, include_generic=False, tiling=None)` | Find candidate boxes | List of `Candidate`, best score first |
 | `engine.embed_regions(image, boxes)` | One vector for each box | `float32` array, shape `(n, 384)`, unit length |
 | `engine.match_regions(vectors, regions, objects)` | Match the regions of a frame with the `ready` objects (stage I4, mode `tau`) | List of `Sighting` |
-| `engine.matching_mode` | `evidence` or `tau` (see "Stage I4") | `str` |
+| `engine.matching_mode` | `evidence`, `keys` or `tau` (see "Stage I4") | `str` |
+| `engine.embed_key_crops(image, boxes)`, `engine.broad_candidates(image, detections)`, `engine.match_keys(...)` | Stage I4, mode `keys` | DINOv2 CLS vectors, candidates from the broad detector, list of `Sighting` |
 | `engine.evidence_regions(...)`, `engine.embed_evidence_crops(image, boxes)`, `engine.score_evidence(...)` | Stage I4, mode `evidence` | Region indices, SigLIP vectors, list of `Sighting` with a `score` |
 | `engine.verify_match(references, candidate)` | Compare a candidate picture with reference pictures (stage I5) | `VerifyResult` |
 | `engine.verification_crop(image, box)` | Cut the picture that the verifier compares: the box with `verification.crop_padding` around it | A PIL image |
@@ -177,8 +178,36 @@ The name in `Region.embedding_model` tells which model made a vector.
 
 ## Stage I4: match
 
-The stage has two modes. `[matching].mode` in `config.toml` chooses one. `engine.matching_mode` gives the mode in use:
-`evidence` needs the scene model, so without it the mode is `tau`.
+The stage has three modes. `[matching].mode` in `config.toml` chooses one. `engine.matching_mode` gives the mode in use:
+`evidence` and `keys` need the scene model, so without it the mode is `tau`.
+
+### Mode `keys`
+
+`ai/keys.py`, pure numpy. It is phase R1 of the plan for the recall of registered objects. The backend does these steps for each frame:
+
+1. It adds the boxes of the broad detector to the candidates: `engine.broad_candidates(image, detections)`. They have no phrase.
+   The crop gate applies to them. Only the candidate detector finds hands and screens, so they are never in a hand or in a depiction.
+2. `engine.embed_evidence_crops(image, boxes)` gives the SigLIP key and `engine.embed_key_crops(image, boxes)` gives the DINOv2 key
+   (the CLS token of the tight crop at `key_crop_size`) for each box. The backend uses the same methods for the reference crops.
+3. `engine.match_keys(sig_vectors, dino_vectors, regions, objects)` gives at most one sighting for each tracked object.
+   Each object needs `references`, `key_references` and `reference_photos`. A look-alike needs them too: it can take a box.
+
+The keys of a box for an object are the mean of the best cosine of the `top_photos` best reference photos.
+
+| Result | Rule |
+|--------|------|
+| Strong | SigLIP key at `sig_strong` or more, and DINOv2 key at `dino_strong` or more |
+| Weak | SigLIP key at `sig_weak` or more, and one more vote: DINOv2 key at `dino_weak` or more, or a word vote |
+| None | All other cases |
+
+- A **word vote** is a detector score of `word_vote` or more on a region with a phrase of the object (`MatchRegion.det_score`).
+  Words never make a sighting alone, and they never refuse a strong sighting.
+- A box inside a depiction (`MatchRegion.depicted`) is never a sighting.
+- A box with a bad crop (`quality_ok = False`) is weak at most. A blurred crop of the true object is evidence, but not sure evidence.
+- One box is one object: the passing object with the highest SigLIP key keeps the box. If it is a look-alike, the box gives no sighting.
+- `Sighting.similarity` is the SigLIP key, `Sighting.margin` the SigLIP key minus the best SigLIP key of another object, `Sighting.score` the DINOv2 key.
+- The mode does not use `tau`, `margin_min`, `candidate_min` or `max_regions`. The bars are fixed for all objects.
+  They come from the replay of `benchmarks/recall` (README, phase R1a). They are start values.
 
 ### Mode `evidence` (default)
 
@@ -325,7 +354,7 @@ All settings are in `ai/config.toml`. The start values come from the pipeline do
 | `[scene]` | `enabled`, `prompt`, `rooms`, `surfaces`, `surface_context` |
 | `[speech]` | `enabled`, `max_seconds`, `max_new_tokens` |
 | `[open_detection]` | `enabled`, `confidence`, `max_boxes`, `input_size`, `min_box_side`, `crop_padding` |
-| `[matching]` | `mode` (`evidence` or `tau`), `candidate_min`, `max_regions`, `top_photos`, `crop_padding`, `contrast_phrases`, `bias`, `weight_meaning`, `meaning_cap`, `weight_visual`, `visual_centre`, `visual_scale`, `weight_dino`, `dino_centre`, `dino_scale`, `weight_margin`, `margin_cap`, `margin_scale`, `score_maybe`, `score_sure`. `score_sure` must not be below `score_maybe` |
+| `[matching]` | `mode` (`evidence`, `keys` or `tau`), `candidate_min`, `max_regions`, `top_photos`, `crop_padding`, `contrast_phrases`, `bias`, `weight_meaning`, `meaning_cap`, `weight_visual`, `visual_centre`, `visual_scale`, `weight_dino`, `dino_centre`, `dino_scale`, `weight_margin`, `margin_cap`, `margin_scale`, `score_maybe`, `score_sure`, `key_crop_size` (a multiple of 14), `sig_strong`, `dino_strong`, `sig_weak`, `dino_weak`, `word_vote`. `score_sure` must not be below `score_maybe`, and `sig_weak` not above `sig_strong` |
 | `[language]` | `enabled`, `max_input_chars`, `max_new_tokens`, `max_names`, `rewrite_system`, `rewrite_examples`, `describe_system`, `describe_max_new_tokens`, `describe_image_side` |
 
 - `embedding.frame_short_edge`, `embedding.frame_long_edge_max` and `embedding.crop_size` must be multiples of 14.
@@ -450,6 +479,7 @@ These parts are not built yet:
 | `tests/test_ai_embedder_math.py` | Frame size, patch pooling, padded crops |
 | `tests/test_ai_api.py` | `AiEngine` with fake models, and `open_image` |
 | `tests/test_ai_calibration.py`, `tests/test_ai_enrollment.py` | The calibration, the box scaling and the brightness |
+| `tests/test_ai_keys.py` | The mode `keys`: the rule for one box, the crop cap, depictions, the word vote, one box for one object, look-alikes, bad data, the engine methods |
 | `tests/test_ai_evidence.py` | The mode `evidence`: the photo agreement, the meaning cap, the margin cap and refusal, look-alikes, the region choice, bad data, the engine methods |
 | `tests/test_ai_matching.py` | The matching: threshold, margin, look-alikes, phrases, skipped regions, bad data |
 | `tests/test_ai_scene.py` | The context box, the rooms and the surfaces in the engine (a fake model), errors, the switch-off |

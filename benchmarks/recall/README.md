@@ -59,7 +59,7 @@ uv run python benchmarks/recall/report.py SET_JSON OUT_DIR --dino-weak 0.40 --ne
 
 | Option | Effect |
 |--------|--------|
-| `--boxes` | `union`: the boxes of both detectors. `gdino`: only the candidates of today |
+| `--boxes` | `union`: the boxes of both detectors. `dedup`: the union without a YOLOE box that has an IoU of 0.5 or more with a candidate. `gdino`: only the candidates of today |
 | `--dino` | The DINOv2 key: `cls` or `pool_mask` |
 | `--sig-strong`, `--dino-strong`, `--sig-weak`, `--word-vote` | The bars of the rule |
 | `--dino-weak` | One fixed DINOv2 bar for the weak rule, for all objects. Without it, each object takes the 1 % bar of the cohort |
@@ -160,6 +160,7 @@ A lower SigLIP weak bar, fixed DINOv2 bar 0.40:
 | 0.62 | 21 | 8 / 151 | 20 | 3 / 62 |
 
 - The fixed bar loses nothing against the cohort bar on this set.
+- `--boxes dedup` loses 1 strong sighting (13 + 7): the blurred Grounding DINO box of bottle N7 hid the sharp YOLOE box. So the runtime keeps all YOLOE boxes.
 - The CLS token and masked pooling give the same result. The CLS token needs no mask, so it is the simpler key.
 - At the start bars the negatives remove 1 false sighting. At lower bars they remove about a half of the false sightings.
   A lower bar finds no more true objects (except 1 headset at 0.62), so the start bars stay.

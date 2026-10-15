@@ -8,7 +8,7 @@ Sections:
 5. Replay: the two-key rule of the plan with given bars, at frame level, against today.
 
 Usage:
-    uv run python benchmarks/recall/report.py SET_JSON STORE_DIR [--boxes union|gdino] [--dino cls|pool_mask]
+    uv run python benchmarks/recall/report.py SET_JSON STORE_DIR [--boxes union|dedup|gdino] [--dino cls|pool_mask]
         [--sig-strong 0.77] [--dino-strong 0.42] [--sig-weak 0.72] [--word-vote 0.3]
         [--dino-weak 0.40] [--negatives none|sig|dino|both] [--neg-margin 0.0]
 """
@@ -372,6 +372,19 @@ class Bars:
     neg_margin: float = 0.0
 
 
+def duplicates(data: Data) -> np.ndarray:
+    """True for a YOLOE box with an IoU of 0.5 or more with a Grounding DINO box of its frame (the runtime keeps one)."""
+    result: np.ndarray = np.zeros(len(data.boxes), bool)
+    for key in dict.fromkeys(data.frame):
+        rows: np.ndarray = np.where(data.frame == key)[0]
+        gdino = [tuple(data.boxes[r]["box"]) for r in rows if data.source[r] == "gdino"]
+        for r in rows:
+            if data.source[r] == "yoloe":
+                box = tuple(data.boxes[r]["box"])
+                result[r] = any(iou(box, g) >= IOU_SAME for g in gdino)
+    return result
+
+
 def replay(data: Data, bars: Bars) -> dict[str, list[tuple[str, int, int, bool]]]:
     """The two-key rule at frame level. Return for each frame the sightings: (object, row, strong)."""
     use: np.ndarray = (
@@ -379,6 +392,8 @@ def replay(data: Data, bars: Bars) -> dict[str, list[tuple[str, int, int, bool]]
         if bars.boxes == "union"
         else data.source == "gdino"
     )
+    if bars.boxes == "dedup":
+        use = ~duplicates(data)
     names: list[str] = data.meta["objects"]
     level: dict[str, np.ndarray] = {}  # 2 strong, 1 weak, 0 nothing
     for name in names:
@@ -491,7 +506,7 @@ def main() -> int:
     )
     parser.add_argument("set_file", type=Path)
     parser.add_argument("store", type=Path)
-    parser.add_argument("--boxes", choices=["union", "gdino"], default="union")
+    parser.add_argument("--boxes", choices=["union", "dedup", "gdino"], default="union")
     parser.add_argument("--dino", choices=["cls", "pool_mask"], default="cls")
     parser.add_argument("--sig-strong", type=float, default=0.77)
     parser.add_argument("--dino-strong", type=float, default=0.42)
