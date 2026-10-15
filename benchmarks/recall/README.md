@@ -49,10 +49,22 @@ Run it on a **copy** of the data or read-only. The scripts open the frames for r
 uv run python benchmarks/recall/collect.py SET_JSON OUT_DIR
 #    A quick check with the first 3 frames
 uv run python benchmarks/recall/collect.py SET_JSON OUT_DIR --limit 3
-# 2. The report (a few seconds). The options set the rule of the replay (section 5)
+# 2. Optional: the negatives of the reference photos (a few minutes). They go into the same OUT_DIR
+uv run python benchmarks/recall/negatives.py SET_JSON OUT_DIR
+# 3. The report (a few seconds). The options set the rule of the replay (section 5)
 uv run python benchmarks/recall/report.py SET_JSON OUT_DIR
 uv run python benchmarks/recall/report.py SET_JSON OUT_DIR --boxes gdino --dino pool_mask --sig-strong 0.78
+uv run python benchmarks/recall/report.py SET_JSON OUT_DIR --dino-weak 0.40 --negatives both
 ```
+
+| Option | Effect |
+|--------|--------|
+| `--boxes` | `union`: the boxes of both detectors. `gdino`: only the candidates of today |
+| `--dino` | The DINOv2 key: `cls` or `pool_mask` |
+| `--sig-strong`, `--dino-strong`, `--sig-weak`, `--word-vote` | The bars of the rule |
+| `--dino-weak` | One fixed DINOv2 bar for the weak rule, for all objects. Without it, each object takes the 1 % bar of the cohort |
+| `--negatives` | `sig`, `dino` or `both`: refuse a box that is closer to a negative of the reference photos than to the object, with this key. Needs `negatives.py` |
+| `--neg-margin` | The box must be closer to the object than to the nearest negative by this value |
 
 The report also works on a partial store. A frame that is not in the store shows `notrun`.
 
@@ -80,6 +92,12 @@ A candidate takes the mask of the YOLOE box that fits it (IoU of 0.5 or more). F
 | `pool_mask` | The DINOv2 patches of the tight crop, pooled inside the mask (all patches if no mask) |
 | `pool_attn` | The DINOv2 patches of the tight crop, pooled with the attention of the CLS token (a simple form of Object-DINO) |
 | `word` | The highest detector score of a candidate with a phrase of the object on this box (IoU of 0.5 or more) |
+
+### The negatives of the reference photos (`negatives.py`)
+
+A reference photo also shows the place of the object. Each other box of the photo is a negative from the home.
+The script uses the same two detectors. It leaves out a box that covers a half or more of the object box.
+A negative belongs only to the object of its photo.
 
 The agreement of a box with an object is the mean of its 2 best reference photos.
 
@@ -119,6 +137,33 @@ The bars of the replay are the start bars of the plan: SigLIP 0.77 and CLS 0.42 
 - 12 of the 15 false cohort sightings of the two-key rule are weak sightings of the watch and the headset.
   A weak sighting changes the last-seen record only after a second one within 60 s. The replay does not count this rule.
 - The false sightings in the cohort show that the bars must come from a cohort, as the plan says. They are not final.
+
+### Without a cohort, and with the negatives of the reference photos (phase R1a)
+
+The owner decided to build the new matching without a cohort first. So the weak rule takes one fixed DINOv2 bar for all objects.
+The 12 reference photos gave 33 negatives (0 to 6 for each photo: the photos are close views).
+
+| Rule (start bars, CLS key) | True found (22) | False, home / cohort |
+|----------------------------|-----------------|----------------------|
+| Cohort bar for each object (R0) | 14 + 6 = 20 | 0 / 15 |
+| Fixed DINOv2 weak bar, any value from 0.36 to 0.42 | 14 + 6 = 20 | 0 / 15 |
+| Fixed bar 0.40, negatives on both keys | 14 + 6 = 20 | 0 / 14 |
+| `--dino pool_mask` in place of `cls` | 14 + 6 = 20 | 0 / 15 |
+
+A lower SigLIP weak bar, fixed DINOv2 bar 0.40:
+
+| SigLIP weak bar | True found, no negatives | False, no negatives | True found, negatives | False, negatives |
+|-----------------|--------------------------|---------------------|-----------------------|------------------|
+| 0.72 | 20 | 0 / 15 | 20 | 0 / 14 |
+| 0.68 | 20 | 2 / 37 | 20 | 2 / 31 |
+| 0.65 | 20 | 4 / 68 | 20 | 2 / 41 |
+| 0.62 | 21 | 8 / 151 | 20 | 3 / 62 |
+
+- The fixed bar loses nothing against the cohort bar on this set.
+- The CLS token and masked pooling give the same result. The CLS token needs no mask, so it is the simpler key.
+- At the start bars the negatives remove 1 false sighting. At lower bars they remove about a half of the false sightings.
+  A lower bar finds no more true objects (except 1 headset at 0.62), so the start bars stay.
+- The new rule keeps every true instance that the mode `evidence` finds (the exit test of phase R1), and it gives no false strong sighting in the home frames.
 
 ### Check against Revision 3 of the plan (the exit test of phase R0)
 

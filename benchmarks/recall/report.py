@@ -10,9 +10,11 @@ Sections:
 Usage:
     uv run python benchmarks/recall/report.py SET_JSON STORE_DIR [--boxes union|gdino] [--dino cls|pool_mask]
         [--sig-strong 0.77] [--dino-strong 0.42] [--sig-weak 0.72] [--word-vote 0.3]
+        [--dino-weak 0.40] [--negatives none|sig|dino|both] [--neg-margin 0.0]
 """
 
 import argparse
+import json
 import logging
 import sys
 from dataclasses import dataclass
@@ -58,6 +60,12 @@ class Data:
     instance: dict[
         str, np.ndarray
     ]  # object -> the index of the truth instance per box, -1 for none
+    pos_best: dict[
+        str, dict[str, np.ndarray]
+    ]  # object -> key -> the best reference cosine per box
+    neg_best: dict[
+        str, dict[str, np.ndarray]
+    ]  # object -> key -> the best negative cosine per box (`negatives.py`)
 
 
 def top_mean(similarity: np.ndarray, top: int) -> np.ndarray:
@@ -76,8 +84,26 @@ def load(set_path: Path, store: Path) -> Data:
     score: dict[str, dict[str, np.ndarray]] = {}
     role: dict[str, np.ndarray] = {}
     instance: dict[str, np.ndarray] = {}
+    pos_best: dict[str, dict[str, np.ndarray]] = {}
+    neg_best: dict[str, dict[str, np.ndarray]] = {}
+    negatives: dict[str, np.ndarray] = {}
+    neg_object: np.ndarray = np.array([])
+    if (store / "negatives.npz").is_file():
+        negatives = dict(np.load(store / "negatives.npz"))
+        neg_object = np.array(
+            [r["object"] for r in json.loads((store / "negatives.json").read_text())]
+        )
     for name in meta["objects"]:
         mine: np.ndarray = ref_object == name
+        pos_best[name] = {
+            k: (vectors[k] @ reference_vectors[k][mine].T).max(axis=1)
+            for k in ("sig", "cls", "pool_mask")
+        }
+        if (neg_object == name).any():
+            neg_best[name] = {
+                k: (vectors[k] @ negatives[k][neg_object == name].T).max(axis=1)
+                for k in ("sig", "cls", "pool_mask")
+            }
         score[name] = {
             k: top_mean(vectors[k] @ reference_vectors[k][mine].T, TOP_PHOTOS)
             for k in vectors
@@ -108,6 +134,8 @@ def load(set_path: Path, store: Path) -> Data:
         score,
         role,
         instance,
+        pos_best,
+        neg_best,
     )
 
 
@@ -335,6 +363,13 @@ class Bars:
     word_vote: float
     dino: str
     boxes: str
+    dino_weak: float | None = (
+        None  # None: the 1 % cohort bar of each object. A number: one fixed bar, no cohort
+    )
+    negatives: str = (
+        "none"  # the keys with the negatives rule: "none", "sig", "dino" or "both"
+    )
+    neg_margin: float = 0.0
 
 
 def replay(data: Data, bars: Bars) -> dict[str, list[tuple[str, int, int, bool]]]:
@@ -349,12 +384,27 @@ def replay(data: Data, bars: Bars) -> dict[str, list[tuple[str, int, int, bool]]
     for name in names:
         s: np.ndarray = data.score[name]["sig"]
         d: np.ndarray = data.score[name][bars.dino]
-        dino_p99: float = cohort_bar(data, name, bars.dino, BUDGETS[0])
+        dino_p99: float = (
+            cohort_bar(data, name, bars.dino, BUDGETS[0])
+            if bars.dino_weak is None
+            else bars.dino_weak
+        )
         strong: np.ndarray = (s >= bars.sig_strong) & (d >= bars.dino_strong)
         weak: np.ndarray = (s >= bars.sig_weak) & (
             (d >= dino_p99) | (data.score[name]["word"] >= bars.word_vote)
         )
         result: np.ndarray = np.where(strong, 2, np.where(weak, 1, 0))
+        # The negatives rule: a box that is closer to a negative of the reference photos than to the object is refused.
+        keys: list[str] = {"none": [], "sig": ["sig"], "dino": [bars.dino]}.get(
+            bars.negatives, ["sig", bars.dino]
+        )
+        for key in keys:
+            if name in data.neg_best and key in data.neg_best[name]:
+                closer: np.ndarray = (
+                    data.pos_best[name][key] - data.neg_best[name][key]
+                    < bars.neg_margin
+                )
+                result = np.where(closer, 0, result)
         # Blur is a cap, not a veto: a box that fails the crop quality can be weak at most.
         result = np.where(~data.quality_ok & (result == 2), 1, result)
         level[name] = np.where(use, result, 0)
@@ -447,6 +497,16 @@ def main() -> int:
     parser.add_argument("--dino-strong", type=float, default=0.42)
     parser.add_argument("--sig-weak", type=float, default=0.72)
     parser.add_argument("--word-vote", type=float, default=0.3)
+    parser.add_argument(
+        "--dino-weak",
+        type=float,
+        default=None,
+        help="one fixed DINOv2 bar of the weak rule (no cohort). Default: the 1 %% cohort bar",
+    )
+    parser.add_argument(
+        "--negatives", choices=["none", "sig", "dino", "both"], default="none"
+    )
+    parser.add_argument("--neg-margin", type=float, default=0.0)
     args = parser.parse_args()
     data: Data = load(args.set_file, args.store)
     section_boxes(data)
@@ -463,6 +523,9 @@ def main() -> int:
                 args.word_vote,
                 args.dino,
                 args.boxes,
+                args.dino_weak,
+                args.negatives,
+                args.neg_margin,
             ),
             today,
         )
