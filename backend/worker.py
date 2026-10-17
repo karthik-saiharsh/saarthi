@@ -7,26 +7,21 @@ For each frame the worker does these steps:
 1. Read the stored file and decode it.
 2. Quality check. Save the blur score and the hash.
 3. Reject a blurry image and a near duplicate of a recent image.
-4. Detect candidate boxes.
-5. Make one vector for each box. This comes before any region row is written,
-   so a model error leaves no half-written regions.
-6. Add the regions and store the vectors.
-7. Match the regions with the objects and update the memory (stages I4 and I6).
-8. Broad detection: find the objects that nobody registered and store them (see `docs/backend/Open Search.md`).
-   This step is an extra. Its errors are logged and never fail the image.
-9. Mark the image `done`.
-
-In the matching mode `keys` (`[matching]` of `ai/config.toml`), steps 4 to 8 change:
-the broad detector runs first, and its boxes join the candidates. Each box gets a SigLIP vector and a DINOv2 key,
-and the memory matches them all (`MemoryService.match_keys`). Then the worker stores the candidates of the detector and
-only those boxes of the broad detector that give a sighting, as regions with the source `full` and no phrase.
-The other boxes of the broad detector are not regions. The open search stores all of them, with the same SigLIP vectors.
+4. Detect the candidate boxes of the registered objects, and the boxes of the broad detector
+   (objects that nobody registered, see `docs/backend/Open Search.md`). An error of the broad detector is logged:
+   the frame goes on with the candidates.
+5. Make the vectors of every box: the DINOv2 region vector, the SigLIP crop vector and the DINOv2 key.
+   This comes before any region row is written, so a model error leaves no half-written regions.
+6. Store all boxes in one table (`region`; a box of the broad detector has `source = broad` and its name),
+   with their vectors. The open search reads the boxes of the broad detector from there.
+7. Match and update the memory (stages I4 to I6). The mode `keys` matches all boxes. The modes `tau` and
+   `evidence` match the candidates only.
+8. Mark the image `done`.
 
 Any error marks the image `failed`. The image is not tried again. The worker
 goes on with the next image.
 """
 
-import dataclasses
 import logging
 import threading
 from collections.abc import Callable
@@ -53,17 +48,8 @@ REASON_DUPLICATE: str = "near duplicate of a recent image"
 REASON_OBJECT_NOT_FOUND: str = "object not found"
 
 
-def _iou(a: Box, b: Box) -> float:
-    """Overlap of two boxes: the area of the overlap divided by the area of both together."""
-    width: int = min(a.x1, b.x1) - max(a.x0, b.x0)
-    height: int = min(a.y1, b.y1) - max(a.y0, b.y0)
-    if width <= 0 or height <= 0:
-        return 0.0
-    inside: int = width * height
-    return inside / (a.area + b.area - inside)
-
-
-def _to_new_region(candidate: Candidate) -> db.NewRegion:
+def _to_new_region(candidate: Candidate, label: str | None = None) -> db.NewRegion:
+    """A region row for a candidate. `label` is the name of a box of the broad detector, cut to the column size."""
     box = candidate.box
     return db.NewRegion(
         box.x0,
@@ -75,6 +61,7 @@ def _to_new_region(candidate: Candidate) -> db.NewRegion:
         list(candidate.phrases),
         candidate.in_hand,
         candidate.quality_ok,
+        label[: db.MAX_LABEL_LENGTH] if label is not None else None,
     )
 
 
@@ -283,76 +270,76 @@ class Worker:
             phrases=db.gallery.gallery_phrases() or None,
             include_generic=every > 0 and self._analysed % every == 0,
         )
-        if self._engine.matching_mode == "keys":
-            self._process_keys(image, picture, candidates)
-            return
-        # The model work comes first. An error here leaves no regions behind.
-        vectors: np.ndarray = self._engine.embed_regions(
-            picture, [c.box for c in candidates]
-        )
-        regions = db.add_regions(image.id, [_to_new_region(c) for c in candidates])
-        if regions:
-            db.store_region_vectors(
-                [r.id for r in regions], vectors, self._engine.embedding_model
-            )
-            # Stage I4 and I6. An error here marks the image `failed`. Its regions and vectors stay.
-            self._memory.remember(image, candidates, regions, vectors, picture)
-        open_boxes: int = self._store_open_boxes(image, picture, candidates, regions)
-        db.mark_image_done(image.id)
-        logger.info(
-            "Image %d is done with %d region(s) and %d open box(es)",
-            image.id,
-            len(regions),
-            open_boxes,
-        )
-
-    def _process_keys(
-        self, image: Image, picture: PilImage.Image, candidates: list[Candidate]
-    ) -> None:
-        """Steps 4 to 9 in the matching mode `keys`. See the module text."""
         found: list[OpenDetection] = self._detect_open(image.id, picture)
-        merged: list[Candidate] = candidates + self._engine.broad_candidates(
+        boxes: list[Candidate] = candidates + self._engine.broad_candidates(
             picture, found
         )
+        labels: list[str | None] = [None] * len(candidates) + [d.label for d in found]
         # The model work comes first. An error here leaves no regions behind.
-        sig_vectors: np.ndarray = self._engine.embed_evidence_crops(
-            picture, [c.box for c in merged]
-        )
-        sightings: list[Sighting] = self._memory.match_keys(
-            picture, merged, sig_vectors
-        )
-        seen: set[int] = {s.region_index for s in sightings}
-        keep: list[int] = list(range(len(candidates))) + [
-            i for i in range(len(candidates), len(merged)) if i in seen
-        ]
-        kept: list[Candidate] = [merged[i] for i in keep]
-        vectors: np.ndarray = self._engine.embed_regions(picture, [c.box for c in kept])
-        regions = db.add_regions(image.id, [_to_new_region(c) for c in kept])
-        if regions:
-            db.store_region_vectors(
-                [r.id for r in regions], vectors, self._engine.embedding_model
-            )
-            position: dict[int, int] = {old: new for new, old in enumerate(keep)}
-            moved: list[Sighting] = [
-                dataclasses.replace(s, region_index=position[s.region_index])
-                for s in sightings
-            ]
-            # Stage I5 and I6. An error here marks the image `failed`. Its regions and vectors stay.
-            self._memory.record(image, moved, kept, regions, vectors, picture)
-        # The SigLIP vectors of the broad boxes serve the open search too, if both cut the crops in the same way.
-        shared: np.ndarray | None = (
-            sig_vectors[len(candidates) :]
-            if self._engine.open_crops_share_key_crops
+        places: list[Box] = [c.box for c in boxes]
+        vectors: np.ndarray = self._engine.embed_regions(picture, places)
+        crops: np.ndarray | None = (
+            self._engine.embed_evidence_crops(picture, places)
+            if self._engine.scene_enabled and places
             else None
         )
-        open_boxes: int = self._store_open(image, picture, found, shared, kept, regions)
+        keys: np.ndarray = self._engine.embed_key_crops(picture, places)
+        regions = db.add_regions(
+            image.id,
+            [_to_new_region(c, label) for c, label in zip(boxes, labels, strict=True)],
+        )
+        if regions:
+            ids: list[int] = [r.id for r in regions]
+            db.store_region_vectors(ids, vectors, self._engine.embedding_model)
+            db.crop_vectors.store(
+                ids,
+                crops,
+                self._engine.open_vector_model if crops is not None else None,
+                keys,
+                self._engine.key_model,
+            )
+            # Stage I4 to I6. An error here marks the image `failed`. Its regions and vectors stay.
+            self._match(
+                image, picture, boxes, regions, vectors, crops, keys, len(candidates)
+            )
         db.mark_image_done(image.id)
         logger.info(
-            "Image %d is done with %d region(s) (%d from the broad detector) and %d open box(es)",
+            "Image %d is done with %d region(s), %d of them from the broad detector",
             image.id,
             len(regions),
-            len(kept) - len(candidates),
-            open_boxes,
+            len(found),
+        )
+
+    def _match(
+        self,
+        image: Image,
+        picture: PilImage.Image,
+        boxes: list[Candidate],
+        regions: list,
+        vectors: np.ndarray,
+        crops: np.ndarray | None,
+        keys: np.ndarray,
+        n_candidates: int,
+    ) -> None:
+        """Match the stored boxes of one frame and update the memory.
+
+        The mode `keys` matches all boxes. The modes `tau` and `evidence` match the first `n_candidates` boxes only
+        (the candidates of the detector), as before the broad detector joined the archive.
+        """
+        if self._engine.matching_mode == "keys":
+            assert crops is not None, "the mode keys needs the crop vectors"
+            found: list[Sighting] = self._memory.match_keys(boxes, crops, keys)
+            self._memory.record(image, found, boxes, regions, vectors, picture)
+            return
+        if not n_candidates:
+            return
+        self._memory.remember(
+            image,
+            boxes[:n_candidates],
+            regions[:n_candidates],
+            vectors[:n_candidates],
+            picture,
+            crops[:n_candidates] if crops is not None else None,
         )
 
     def _detect_open(
@@ -370,72 +357,3 @@ class Worker:
                 type(error).__name__,
             )
             return []
-
-    def _store_open_boxes(
-        self,
-        image: Image,
-        picture: PilImage.Image,
-        candidates: list[Candidate],
-        regions: list,
-    ) -> int:
-        """Find the objects that nobody registered, and store their boxes with a SigLIP vector each.
-
-        Return the number of boxes stored. The step needs the broad detector and the scene model (SigLIP).
-        An error is logged, and the image goes on: the open search is an extra.
-        """
-        found: list[OpenDetection] = self._detect_open(image.id, picture)
-        return self._store_open(image, picture, found, None, candidates, regions)
-
-    def _store_open(
-        self,
-        image: Image,
-        picture: PilImage.Image,
-        found: list[OpenDetection],
-        vectors: np.ndarray | None,
-        candidates: list[Candidate],
-        regions: list,
-    ) -> int:
-        """Store the boxes of the broad detector for the open search. Return the number of boxes stored.
-
-        `vectors` are their SigLIP vectors, if the caller has them already. An error is logged, and the image goes on.
-        """
-        if not found:
-            return 0
-        try:
-            if vectors is None:
-                vectors = self._engine.embed_open_crops(picture, [d.box for d in found])
-            items: list[db.open_regions.NewOpenRegion] = [
-                db.open_regions.NewOpenRegion(
-                    d.box.x0,
-                    d.box.y0,
-                    d.box.x1,
-                    d.box.y1,
-                    d.label,
-                    d.confidence,
-                    self._linked_region(d.box, candidates, regions),
-                )
-                for d in found
-            ]
-            db.open_regions.add_open_regions(
-                image.id, items, vectors, self._engine.open_vector_model
-            )
-        except (AiError, db.DbError) as error:
-            logger.warning(
-                "The broad detection of image %d failed: %s",
-                image.id,
-                type(error).__name__,
-            )
-            return 0
-        return len(items)
-
-    def _linked_region(
-        self, box: Box, candidates: list[Candidate], regions: list
-    ) -> int | None:
-        """Return the id of the registered-object region that this box overlaps most, if the overlap is enough."""
-        best_id: int | None = None
-        best: float = self._config.open_link_iou
-        for candidate, region in zip(candidates, regions, strict=True):
-            overlap: float = _iou(box, candidate.box)
-            if overlap >= best:
-                best, best_id = overlap, region.id
-        return best_id

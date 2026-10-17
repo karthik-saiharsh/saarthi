@@ -18,6 +18,7 @@ PROJECT_DIR: Path = Path(__file__).resolve().parent.parent
 # The files of the vector indexes and the lock sit next to the database. The suffixes belong to SQLite.
 SQLITE_SUFFIXES: tuple[str, ...] = ("", "-wal", "-shm", "-journal")
 LOCK_NAME: str = "saarthi.lock"
+LEGACY_OPEN_INDEX: str = "open_regions.faiss"
 # A model has at least one file with these endings.
 WEIGHT_SUFFIXES: tuple[str, ...] = (".safetensors", ".bin")
 
@@ -31,7 +32,9 @@ def data_paths() -> tuple[list[Path], Path]:
     files: list[Path] = [
         Path(str(db_config.sqlite_path) + suffix) for suffix in SQLITE_SUFFIXES
     ]
-    files += [db_config.faiss_path, db_config.open_faiss_path]
+    files += [db_config.faiss_path, db_config.crop_faiss_path, db_config.key_faiss_path]
+    # The index of an older version (one table for the boxes of the broad detector). ./clear removes it too.
+    files.append(db_config.sqlite_path.parent / LEGACY_OPEN_INDEX)
     files.append(db_config.sqlite_path.parent / LOCK_NAME)
     return files, load_storage_config().root
 

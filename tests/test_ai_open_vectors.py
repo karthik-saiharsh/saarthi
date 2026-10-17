@@ -39,8 +39,8 @@ def test_phrase_with_article(label: str, expected: str) -> None:
 def test_the_boxes_are_cut_with_a_little_space_and_stay_in_the_frame() -> None:
     scene = FakeSceneClassifier()
     engine = make_engine(scene_classifier=scene)
-    # Padding 0.05: a box of 100 x 200 gets 5 and 10 px on each side.
-    vectors = engine.embed_open_crops(
+    # Padding 0.05 (matching.crop_padding): a box of 100 x 200 gets 5 and 10 px on each side.
+    vectors = engine.embed_evidence_crops(
         IMAGE, [Box(100, 50, 200, 250), Box(0, 0, 400, 300), Box(390, 290, 400, 300)]
     )
     assert vectors.shape == (3, scene.dimension)
@@ -50,7 +50,7 @@ def test_the_boxes_are_cut_with_a_little_space_and_stay_in_the_frame() -> None:
 def test_no_box_gives_no_vector() -> None:
     scene = FakeSceneClassifier()
     engine = make_engine(scene_classifier=scene)
-    assert engine.embed_open_crops(IMAGE, []).shape == (0, scene.dimension)
+    assert engine.embed_evidence_crops(IMAGE, []).shape == (0, scene.dimension)
 
 
 def test_phrases_get_vectors_and_the_same_phrase_gives_the_same_vector() -> None:
@@ -64,7 +64,7 @@ def test_a_switched_off_scene_model_is_reported() -> None:
     engine = make_engine()
     engine._scene = None
     for call in (
-        lambda: engine.embed_open_crops(IMAGE, []),
+        lambda: engine.embed_evidence_crops(IMAGE, []),
         lambda: engine.embed_open_phrases(["laptop"]),
         lambda: engine.open_vector_dimension,
         lambda: engine.open_vector_model,

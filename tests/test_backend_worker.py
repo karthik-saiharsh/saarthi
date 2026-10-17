@@ -680,7 +680,9 @@ def open_box(label: str, box: Box, confidence: float = 0.9) -> OpenDetection:
     return OpenDetection(box, label, confidence)
 
 
-def test_open_boxes_are_stored_with_a_vector_and_a_model_name(setup: Setup) -> None:
+def test_open_boxes_are_stored_as_regions_with_their_name_and_vectors(
+    setup: Setup,
+) -> None:
     setup.open_detector.detections = [
         open_box("laptop", Box(5, 5, 50, 40), 0.95),
         open_box("cup", Box(50, 30, 78, 58), 0.4),
@@ -689,49 +691,40 @@ def test_open_boxes_are_stored_with_a_vector_and_a_model_name(setup: Setup) -> N
     assert setup.worker.process_next() is True
 
     assert state(image_id).status == ImageStatus.DONE.value
-    rows = db.open_regions.get_open_regions(image_id)
-    assert [(r.label, r.confidence) for r in rows] == [("laptop", 0.95), ("cup", 0.4)]
-    assert {r.vector_model for r in rows} == {setup.scene.name}
-    vectors = db.open_regions.get_vectors([r.id for r in rows])
+    rows = db.get_broad_regions(image_id)
+    assert [(r.label, r.det_score, r.source) for r in rows] == [
+        ("laptop", 0.95, "broad"),
+        ("cup", 0.4, "broad"),
+    ]
+    assert {r.crop_model for r in rows} == {setup.scene.name}
+    assert {r.key_model for r in rows} == {setup.worker._engine.key_model}
+    vectors = db.crop_vectors.get_crop_vectors([r.id for r in rows])
     assert vectors.shape == (2, setup.scene.dimension)
-    # Each crop has 5 % of space on each side, cut at the edge of the 80 x 60 frame.
+    assert db.get_region_vectors([r.id for r in rows]).shape[0] == 2
+    # Each crop has 5 % of space on each side, cut at the edge of the 80 x 60 frame. One SigLIP run for all boxes.
     assert setup.scene.crop_calls == [[(49, 39), (30, 30)]]
 
 
-def test_an_open_box_that_overlaps_a_registered_candidate_is_linked(
-    setup: Setup,
-) -> None:
+def test_a_candidate_and_an_overlapping_open_box_are_both_kept(setup: Setup) -> None:
     setup.detector.detections = [
         RawDetection(Box(10, 10, 40, 40), 0.6, "bottle", "full")
     ]
-    setup.open_detector.detections = [
-        open_box("bottle", Box(11, 11, 41, 41)),  # IoU about 0.88 with the candidate
-        open_box("laptop", Box(45, 20, 78, 55)),  # No overlap
-    ]
+    setup.open_detector.detections = [open_box("bottle", Box(11, 11, 41, 41))]
     image_id: int = setup.upload(noise(31))
     setup.worker.process_next()
-    region = db.get_regions(image_id)[0]
-    rows = {r.label: r for r in db.open_regions.get_open_regions(image_id)}
-    assert rows["bottle"].region_id == region.id
-    assert rows["laptop"].region_id is None
+    regions = db.get_regions(image_id)
+    assert [r.source for r in regions] == ["full", "broad"]
+    assert regions[0].label is None and regions[1].label == "bottle"
+    # The candidate also gets both crop vectors, in the same SigLIP run.
+    assert all(r.crop_model and r.key_model for r in regions)
+    assert [len(c) for c in setup.scene.crop_calls] == [2]
 
 
-def test_a_small_overlap_gives_no_link(setup: Setup) -> None:
-    setup.detector.detections = [
-        RawDetection(Box(10, 10, 40, 40), 0.6, "bottle", "full")
-    ]
-    # IoU = 100 / (900 + 900 - 100) = 0.06, below open_link_iou (0.5)
-    setup.open_detector.detections = [open_box("shelf", Box(30, 30, 60, 60))]
-    image_id: int = setup.upload(noise(32))
-    setup.worker.process_next()
-    assert db.open_regions.get_open_regions(image_id)[0].region_id is None
-
-
-def test_no_open_box_stores_nothing(setup: Setup) -> None:
+def test_no_box_stores_nothing(setup: Setup) -> None:
     image_id: int = setup.upload(noise(33))
     setup.worker.process_next()
     assert state(image_id).status == ImageStatus.DONE.value
-    assert db.open_regions.get_open_regions(image_id) == []
+    assert db.get_regions(image_id) == []
     assert setup.scene.crop_calls == []  # No box, so no SigLIP run
 
 
@@ -744,16 +737,19 @@ def test_an_error_of_the_broad_detector_does_not_fail_the_image(setup: Setup) ->
     setup.worker.process_next()
     assert state(image_id).status == ImageStatus.DONE.value
     assert len(db.get_regions(image_id)) == 1  # The registered path is complete
-    assert db.open_regions.get_open_regions(image_id) == []
+    assert db.get_broad_regions(image_id) == []
 
 
-def test_an_error_of_the_scene_model_does_not_fail_the_image(setup: Setup) -> None:
+def test_an_error_of_the_scene_model_fails_the_image_and_leaves_no_regions(
+    setup: Setup,
+) -> None:
+    """The crop vectors are a part of the archive now, so a SigLIP error is a model error of the frame."""
     setup.open_detector.detections = [open_box("laptop", Box(5, 5, 50, 40))]
     setup.scene.error = InferenceError("test")
     image_id: int = setup.upload(noise(35))
     setup.worker.process_next()
-    assert state(image_id).status == ImageStatus.DONE.value
-    assert db.open_regions.get_open_regions(image_id) == []
+    assert state(image_id).status == ImageStatus.FAILED.value
+    assert db.get_regions(image_id) == []
 
 
 def test_a_switched_off_broad_detector_is_not_called(setup: Setup) -> None:

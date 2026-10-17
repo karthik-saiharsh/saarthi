@@ -136,3 +136,30 @@ def make_object_with_references(
         gallery.confirm_photo(photo.id)
     gallery.set_calibration(obj.id, TAU, TAU_STRONG, 0.03, model)
     return obj
+
+
+def add_broad_boxes(
+    image: Image,
+    boxes: list[tuple[tuple[int, int, int, int], str, float]],
+    crops: np.ndarray,
+    crop_model: str,
+) -> list:
+    """Add boxes of the broad detector to a `done` frame, as the worker stores them: a region with `source = broad`,
+    its name, a DINOv2 region vector and a SigLIP crop vector. Each box is (box, name, confidence).
+    """
+    status: str = db.get_image(image.id).status  # type: ignore[union-attr]
+    Image.update(status=ImageStatus.PROCESSING.value).where(
+        Image.id == image.id
+    ).execute()
+    regions = db.add_regions(
+        image.id,
+        [
+            db.NewRegion(*box, confidence, db.RegionSource.BROAD, [], label=label)
+            for box, label, confidence in boxes
+        ],
+    )
+    ids: list[int] = [r.id for r in regions]
+    db.store_region_vectors(ids, np.stack([BOTTLE] * len(ids)), model())
+    db.crop_vectors.store(ids, crops, crop_model, None, None)
+    Image.update(status=status).where(Image.id == image.id).execute()
+    return regions

@@ -77,9 +77,10 @@ def test_the_detail_has_everything_that_the_pipeline_stored() -> None:
     assert [(s.object_name, s.sighting.strong) for s in detail.sightings] == [
         (obj.name, True)
     ]
-    assert [(o.label, o.region_id) for o in detail.open_regions] == [
-        ("laptop", detail.regions[0].id)
-    ]
+    assert [(o.label, o.source) for o in detail.open_regions] == [("laptop", "broad")]
+    assert (
+        len(detail.regions) == 1
+    )  # The box of the broad detector is not in the candidates
     assert detail.rooms is not None and detail.rooms["a bedroom"] == 0.7
     assert detail.last_seen_of == [obj.name]
 

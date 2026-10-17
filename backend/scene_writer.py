@@ -20,7 +20,7 @@ from ai.errors import AiError
 from backend.describe import DescribeService, description_model
 from backend.settings import BackendConfig, DescribeConfig
 from db.scenes import FrameToDescribe
-from db.schema import Image, OpenRegion
+from db.schema import Image, Region
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -249,11 +249,11 @@ class SceneWriter:
 
     def _sure_names(self, image_id: int, object_name: str) -> list[str]:
         """Return the names of the broad detector that are sure enough, without a repeat of the object."""
-        boxes: list[OpenRegion] = db.open_regions.get_open_regions(image_id)
+        boxes: list[Region] = db.get_broad_regions(image_id)
         names: list[str] = []
         known: set[str] = set(words_of(object_name))
         for box in boxes:
-            if box.confidence < self._config.name_min_confidence:
+            if box.det_score < self._config.name_min_confidence:
                 continue
             label: str = box.label.strip().lower()
             if label in names or set(words_of(label)) <= known:

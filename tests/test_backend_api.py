@@ -190,20 +190,20 @@ def test_the_backend_refuses_a_model_with_the_wrong_vector_size() -> None:
         Backend(engine)
 
 
-def test_the_backend_refuses_a_scene_model_with_the_wrong_open_vector_size() -> None:
+def test_the_backend_refuses_a_scene_model_with_the_wrong_crop_vector_size() -> None:
     scene = FakeSceneClassifier()
     scene.dimension = 100
     engine = make_engine(scene_classifier=scene)
-    with pytest.raises(BackendConfigError, match="open_dimension"):
+    with pytest.raises(BackendConfigError, match="crop_dimension"):
         Backend(engine)
 
 
-def test_the_open_vector_size_is_not_checked_when_the_broad_detector_is_off() -> None:
+def test_the_crop_vector_size_is_not_checked_when_the_scene_model_is_off() -> None:
     scene = FakeSceneClassifier()
     scene.dimension = 100
     engine = make_engine(scene_classifier=scene)
-    engine._open_detector = None
-    Backend(engine)  # No error: no open vectors are made
+    engine._scene = None
+    Backend(engine)  # No error: no crop vectors are made
 
 
 def test_the_backend_starts_and_stops_the_worker_and_an_upload_wakes_it() -> None:

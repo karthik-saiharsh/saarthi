@@ -1,7 +1,8 @@
 """Read-only views of the stored frames, for the memory browser.
 
-The browser shows every frame that the worker took, with what the pipeline stored for it: the regions of the
-registered objects, the sightings, the boxes of the broad detector and the cached room scores.
+The browser shows every frame that the worker took, with what the pipeline stored for it: the candidate regions
+of the registered objects, the sightings, the boxes of the broad detector (regions with `source = broad`) and the
+cached room scores.
 These helpers read rows only. They change nothing and they read no file.
 """
 
@@ -17,8 +18,8 @@ from db.schema import (
     Image,
     ImageStatus,
     LastSeen,
-    OpenRegion,
     Region,
+    RegionSource,
     Sighting,
 )
 from db.support import translate_errors
@@ -52,9 +53,11 @@ class FrameDetail:
     """Everything that the pipeline stored for one frame."""
 
     image: Image
-    regions: list[Region]
+    regions: list[Region]  # The candidates of the detector of the registered objects
     sightings: list[SightingRow]
-    open_regions: list[OpenRegion]
+    open_regions: list[
+        Region
+    ]  # The boxes of the broad detector, the most confident first
     # The cached room scores, or None if no description needed this frame yet.
     rooms: dict[str, float] | None
     # The names of the objects whose last-seen record is this frame.
@@ -94,18 +97,19 @@ def list_frames(status: str | None, limit: int, offset: int) -> list[FrameRow]:
         if not ids:
             return []
 
-        def counts(model: type, column: object) -> dict[int, int]:
+        def counts(model: type, column: object, *where: object) -> dict[int, int]:
             rows = (
                 model.select(column, fn.COUNT(model.id))
-                .where(column.in_(ids))
+                .where(column.in_(ids), *where)
                 .group_by(column)
                 .tuples()
             )
             return {image_id: number for image_id, number in rows}
 
-        regions = counts(Region, Region.image)
+        broad: str = RegionSource.BROAD.value
+        regions = counts(Region, Region.image, Region.source != broad)
         sightings = counts(Sighting, Sighting.image)
-        open_boxes = counts(OpenRegion, OpenRegion.image)
+        open_boxes = counts(Region, Region.image, Region.source == broad)
         return [
             FrameRow(
                 i,
@@ -124,8 +128,11 @@ def get_frame_detail(image_id: int) -> FrameDetail | None:
         image: Image | None = Image.get_or_none(Image.id == image_id)
         if image is None:
             return None
+        broad: str = RegionSource.BROAD.value
         regions: list[Region] = list(
-            Region.select().where(Region.image == image_id).order_by(Region.id)
+            Region.select()
+            .where(Region.image == image_id, Region.source != broad)
+            .order_by(Region.id)
         )
         sightings: list[SightingRow] = [
             SightingRow(row, row.enrolled_object.name)
@@ -134,10 +141,10 @@ def get_frame_detail(image_id: int) -> FrameDetail | None:
             .where(Sighting.image == image_id)
             .order_by(Sighting.id)
         ]
-        open_regions: list[OpenRegion] = list(
-            OpenRegion.select()
-            .where(OpenRegion.image == image_id)
-            .order_by(OpenRegion.confidence.desc(), OpenRegion.id)
+        open_regions: list[Region] = list(
+            Region.select()
+            .where(Region.image == image_id, Region.source == broad)
+            .order_by(Region.det_score.desc(), Region.id)
         )
         scene: FrameScene | None = FrameScene.get_or_none(FrameScene.image == image_id)
         last_seen_of: list[str] = [

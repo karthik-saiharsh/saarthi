@@ -39,12 +39,11 @@ The db connection is per thread. The worker closes its connection when the threa
 | 3. Quality | `engine.assess_quality`, `db.set_image_analysis` | The blur score and the hash are saved |
 | 4. Blur gate | `engine.is_blurry` | If true: the image is `rejected` with the reason `too blurry` |
 | 5. Duplicate gate | `db.list_recent_phashes`, `engine.is_near_duplicate` | If true: the image is `rejected` with the reason `near duplicate of a recent image` |
-| 6. Detect | `engine.detect_candidates` | A list of candidates |
-| 7. Embed | `engine.embed_regions` | One vector for each candidate |
-| 8. Store | `db.add_regions`, `db.store_region_vectors` | The regions and the vectors |
-| 9. Remember | `MemoryService.remember` | The regions are matched with the `ready` objects, in the mode of `[matching]` (`evidence` by default: the candidate regions are cut from the decoded frame and scored with SigLIP, see `docs/backend/Memory.md`). A weak sighting is checked against the reference photos (see `docs/backend/Verification.md`). The sightings and the last-seen records are written (see `docs/backend/Memory.md`). The worker gives the decoded frame, so the check can cut the object from it |
-| 10. Broad detection | `engine.detect_open`, `engine.embed_open_crops`, `db.open_regions.add_open_regions` | The objects that nobody registered: boxes with a name, and a SigLIP vector for each box (see `docs/backend/Open Search.md`). A box that overlaps a candidate of step 6 by `open_link_iou` or more is linked to its region. An error is logged and the image goes on |
-| 11. Finish | `db.mark_image_done` | The image is `done` |
+| 6. Detect | `engine.detect_candidates`, `engine.detect_open`, `engine.broad_candidates` | The candidates of the registered objects, and the boxes of the broad detector (the objects that nobody registered, see `docs/backend/Open Search.md`). An error of the broad detector is logged, and the frame goes on with the candidates |
+| 7. Embed | `engine.embed_regions`, `engine.embed_evidence_crops`, `engine.embed_key_crops` | Three vectors for each box: the DINOv2 region vector, the SigLIP crop vector (only with the scene model) and the DINOv2 key. One SigLIP run for all boxes |
+| 8. Store | `db.add_regions`, `db.store_region_vectors`, `db.crop_vectors.store` | All boxes in the table `region` (a box of the broad detector has `source = broad` and its name), with their vectors |
+| 9. Remember | `MemoryService.remember`, or `MemoryService.match_keys` and `MemoryService.record` | The boxes are matched with the `ready` objects, in the mode of `[matching]` (see `docs/backend/Memory.md`). The modes `tau` and `evidence` match the candidates only; `evidence` uses the SigLIP vectors of step 7. The mode `keys` matches all boxes. A weak sighting is checked against the reference photos (see `docs/backend/Verification.md`). The sightings and the last-seen records are written |
+| 10. Finish | `db.mark_image_done` | The image is `done` |
 
 When no frame waits, the worker runs an idle task (`Worker(idle_task=...)`). The backend gives it `SceneWriter.write_next`, which writes the sentence about the place of one last-seen frame.
 The task runs one frame at a time, and then the worker looks for a new frame first. An error of the task is logged and never stops the worker.

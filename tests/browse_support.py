@@ -3,14 +3,13 @@
 import numpy as np
 
 import db.api as db
-from db.open_regions import NewOpenRegion
 from db.schema import EnrolledObject, Image
-from tests.search_support import BOX, make_object, store_frame
+from tests.search_support import BOX, add_broad_boxes, make_object, store_frame
 
 
 def open_vectors(count: int) -> np.ndarray:
     raw = np.random.default_rng(count).normal(
-        size=(count, db.current_config().open_vector_dimension)
+        size=(count, db.current_config().crop_vector_dimension)
     )
     raw = raw.astype(np.float32)
     return raw / np.linalg.norm(raw, axis=1, keepdims=True)
@@ -26,12 +25,7 @@ def full_frame(minutes_ago: int, name: str = "bottle") -> tuple[Image, EnrolledO
         obj.id, frame.id, region.id, seen_at, 0.7, 0.2, True, False
     )
     db.sightings.set_last_seen(obj.id, frame.id, BOX, seen_at, 0.7, 0.2, True, False)
-    db.open_regions.add_open_regions(
-        frame.id,
-        [NewOpenRegion(5, 5, 30, 25, "laptop", 0.9, region.id)],
-        open_vectors(1),
-        "test-open-model",
-    )
+    add_broad_boxes(frame, [(BOX, "laptop", 0.9)], open_vectors(1), "test-open-model")
     db.scenes.set_room_scores(
         frame.id, "test-scene", {"a bedroom": 0.7, "a corridor": 0.2, "a kitchen": 0.1}
     )

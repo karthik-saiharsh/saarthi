@@ -41,7 +41,7 @@ from tests.ai_support import (
     make_engine,
 )
 from tests.db_support import TEST_PREFIX, skip_if_actual_data_has_problems
-from tests.search_support import BOTTLE, PREFIX, store_frame
+from tests.search_support import BOTTLE, PREFIX
 from tests.search_support import make_object_with_references as make_object
 
 CANDIDATE_BOX: Box = Box(10, 10, 40, 40)
@@ -194,7 +194,7 @@ def test_reference_vectors_have_a_dino_key_for_each_photo(cleanup: list[str]) ->
 # ---- The worker ----
 
 
-def test_all_boxes_are_matched_and_a_broad_box_with_a_sighting_becomes_a_region(
+def test_all_boxes_are_stored_and_matched_and_a_sighting_can_be_on_a_broad_box(
     cleanup: list[str],
 ) -> None:
     setup = make_setup()
@@ -215,33 +215,25 @@ def test_all_boxes_are_matched_and_a_broad_box_with_a_sighting_becomes_a_region(
     assert target.key_references is not None and target.key_references.shape[0] == 2
 
     stored = db.get_regions(image_id)
-    assert [(r.x0, r.y0, r.x1, r.y1) for r in stored] == [
-        (10, 10, 40, 40),
-        (8, 32, 38, 56),
-    ]  # The candidate and the broad box with a sighting. BROAD_A is not a region
-    assert stored[1].source == "full" and stored[1].phrases == []
+    assert [(r.source, r.label) for r in stored] == [
+        ("full", None),
+        ("broad", "laptop"),
+        ("broad", "handcuff"),
+    ]
     record = sightings.get_last_seen(obj.id)
     assert record is not None and record.image_id == image_id
     assert (record.x0, record.y0, record.x1, record.y1) == (8, 32, 38, 56)
-
-    # The open search keeps both broad boxes, with the SigLIP vectors of the matching: one SigLIP run only.
-    rows = {r.label: r for r in db.open_regions.get_open_regions(image_id)}
-    assert set(rows) == {"laptop", "handcuff"}
-    assert rows["handcuff"].region_id == stored[1].id
-    assert rows["laptop"].region_id is None
-    # 1 call for the 3 boxes of the frame, then 2 for the 2 reference photos. No second call for the open search.
+    # 1 SigLIP call for the 3 boxes of the frame, then 2 for the 2 reference photos.
     assert [len(c) for c in setup.scene.crop_calls] == [3, 1, 1]
 
 
-def test_without_a_sighting_only_the_candidates_become_regions(
-    cleanup: list[str],
-) -> None:
+def test_without_a_sighting_all_boxes_are_still_stored(cleanup: list[str]) -> None:
     setup = make_setup()
     make_object(cleanup, [(60, BOTTLE), (80, BOTTLE)])
     image_id: int = frame_with_boxes(setup, 2)
     setup.worker.process_next()
-    assert len(db.get_regions(image_id)) == 1
-    assert len(db.open_regions.get_open_regions(image_id)) == 2
+    assert len(db.get_regions(image_id)) == 3
+    assert len(db.get_broad_regions(image_id)) == 2
 
 
 def test_a_weak_sighting_on_a_broad_box_follows_the_hysteresis(
@@ -265,7 +257,7 @@ def test_without_a_ready_object_the_frame_is_done_with_its_candidates() -> None:
     image_id: int = frame_with_boxes(setup, 5)
     setup.worker.process_next()
     assert db.get_image(image_id).status == ImageStatus.DONE.value  # type: ignore[union-attr]
-    assert len(db.get_regions(image_id)) == 1
+    assert len(db.get_regions(image_id)) == 3
     assert setup.recorder.calls == []  # No object, so nothing to match
 
 
@@ -281,22 +273,26 @@ def test_an_error_of_the_broad_detector_leaves_the_candidates(
     setup.worker.process_next()
     assert db.get_image(image_id).status == ImageStatus.DONE.value  # type: ignore[union-attr]
     assert len(setup.recorder.calls[-1]["regions"]) == 1  # The candidate only
-    assert db.open_regions.get_open_regions(image_id) == []
+    assert db.get_broad_regions(image_id) == []
 
 
 # ---- The archive search ----
 
 
-def test_the_archive_search_scores_the_chosen_regions_with_the_keys(
+def test_the_archive_search_scores_the_stored_vectors_and_reads_no_frame(
     cleanup: list[str],
 ) -> None:
-    engine = make_engine(matching_mode="keys")
-    recorder = KeyRecorder(engine)
-    recorder.answer_index = 0
+    setup = make_setup()
     obj = make_object(cleanup, [(60, BOTTLE), (80, BOTTLE)])
-    frame = store_frame(minutes_ago=5)
-    answer = SearchService(load_config(), engine).find(obj.id)
-    assert answer.found and answer.image_id == frame.id and answer.strong
-    call = recorder.calls[-1]
-    assert len(call["regions"]) == 1
-    assert call["sig"].shape[0] == call["dino"].shape[0] == 1
+    image_id: int = frame_with_boxes(setup, 7)
+    setup.worker.process_next()  # No sighting: the recorder has no answer yet
+    assert sightings.get_last_seen(obj.id) is None
+    setup.recorder.answer_index = 1  # BROAD_A, a box that the memory did not match
+    calls_before: int = len(setup.scene.crop_calls)
+    answer = SearchService(load_config(), setup.engine).find(obj.id)
+    assert answer.found and answer.image_id == image_id
+    assert answer.box == (45, 5, 75, 30)
+    call = setup.recorder.calls[-1]
+    assert len(call["regions"]) == 3  # All boxes of the frame, the broad ones too
+    # The search made no SigLIP vector of a frame box (only the reference crops, if they were not kept).
+    assert all(len(c) == 1 for c in setup.scene.crop_calls[calls_before:])

@@ -7,8 +7,8 @@ The service does these steps:
 2. It matches the regions with the objects. The mode comes from `[matching]` of `ai/config.toml`:
    `tau` uses one threshold (`AiEngine.match_regions`), and `evidence` combines several signals into one score
    (`AiEngine.score_evidence`, see `ai/evidence.py`). The mode `evidence` needs the decoded frame.
-   The mode `keys` (`AiEngine.match_keys`, see `ai/keys.py`) matches before the regions are stored, because it also
-   scores the boxes of the broad detector. The worker calls `match_keys`, stores the regions, then calls `record`.
+   The mode `keys` (`AiEngine.match_keys`, see `ai/keys.py`) also scores the boxes of the broad detector, with the
+   vectors that the worker made for every box. The worker calls `match_keys`, then `record`.
 3. It checks each weak match against the reference photos of the object (stage I5).
 4. It writes each accepted match to the sighting log.
 5. It changes the last-seen record of an object only by the rule below.
@@ -138,12 +138,15 @@ class MemoryService:
         regions: Sequence[Region],
         vectors: np.ndarray,
         picture: PilImage.Image | None = None,
+        crop_vectors: np.ndarray | None = None,
     ) -> int:
         """Match the regions of one frame and update the memory. Return the number of sightings.
 
         `candidates`, `regions` and `vectors` have the same order. The regions
         must be stored, with their vectors, before this call. `picture` is the
         decoded frame. Without it, no weak sighting is checked, and the mode `tau` is used.
+        `crop_vectors` are the SigLIP vectors of the regions, if the caller has them. The mode `evidence` uses them,
+        so it needs no second SigLIP run.
         Raise `AiError` or `DbError` for a problem of the data. The worker marks the image `failed`.
         """
         assert len(candidates) == len(regions) == len(vectors), "one row per region"
@@ -162,8 +165,12 @@ class MemoryService:
             chosen: list[int] = self._engine.evidence_regions(
                 vectors, match_regions, objects
             )
-            crops: np.ndarray = self._engine.embed_evidence_crops(
-                picture, [candidates[i].box for i in chosen]
+            crops: np.ndarray = (
+                crop_vectors[chosen]
+                if crop_vectors is not None
+                else self._engine.embed_evidence_crops(
+                    picture, [candidates[i].box for i in chosen]
+                )
             )
             found = self._engine.score_evidence(chosen, vectors, crops, objects)
         else:
@@ -175,17 +182,18 @@ class MemoryService:
 
     def match_keys(
         self,
-        picture: PilImage.Image,
         candidates: Sequence[Candidate],
         sig_vectors: np.ndarray,
+        dino_vectors: np.ndarray,
     ) -> list[Sighting]:
         """Match the boxes of one frame in the mode `keys` (stage I4). Nothing is written.
 
-        `candidates` are the candidates of the detector and of the broad detector. `sig_vectors` are their SigLIP
-        vectors from `AiEngine.embed_evidence_crops`. The DINOv2 key is made here. The region index of a sighting is a
-        position in `candidates`. Raise `AiError` or `DbError` for a problem of the data.
+        `candidates` are the candidates of the detector and the boxes of the broad detector. `sig_vectors` are their
+        SigLIP vectors (`AiEngine.embed_evidence_crops`), `dino_vectors` their DINOv2 keys (`AiEngine.embed_key_crops`).
+        The region index of a sighting is a position in `candidates`. Raise `AiError` or `DbError` for a problem of the data.
         """
         assert len(candidates) == len(sig_vectors), "one SigLIP vector per candidate"
+        assert len(candidates) == len(dino_vectors), "one DINOv2 key per candidate"
         if not candidates:
             return []
         objects: list[MatchObject] = load_match_objects(
@@ -193,9 +201,6 @@ class MemoryService:
         )
         if not any(o.tracked for o in objects):
             return []
-        dino_vectors: np.ndarray = self._engine.embed_key_crops(
-            picture, [c.box for c in candidates]
-        )
         regions: list[MatchRegion] = [
             MatchRegion(tuple(c.phrases), c.quality_ok, c.det_score, c.depicted)
             for c in candidates

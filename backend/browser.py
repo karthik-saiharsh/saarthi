@@ -119,8 +119,37 @@ def _summary(row: FrameRow, now: datetime) -> FrameSummary:
     )
 
 
+def _iou(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> float:
+    """Overlap of two boxes: the area of the overlap divided by the area of both together."""
+    width: int = min(a[2], b[2]) - max(a[0], b[0])
+    height: int = min(a[3], b[3]) - max(a[1], b[1])
+    if width <= 0 or height <= 0:
+        return 0.0
+    inside: int = width * height
+    area = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1])
+    return inside / (area - inside)
+
+
 class MemoryBrowser:
-    """Reads the stored frames. It is safe to call from several threads."""
+    """Reads the stored frames. It is safe to call from several threads.
+
+    `link_iou` links a box of the broad detector to the candidate that it overlaps most, if the IoU is at least this.
+    """
+
+    def __init__(self, link_iou: float = 0.5) -> None:
+        assert 0.0 < link_iou <= 1.0, "link_iou must be in (0, 1]"
+        self._link_iou: float = link_iou
+
+    def _linked(
+        self, box: tuple[int, int, int, int], detail: FrameDetail
+    ) -> int | None:
+        best_id: int | None = None
+        best: float = self._link_iou
+        for region in detail.regions:
+            overlap: float = _iou(box, (region.x0, region.y0, region.x1, region.y1))
+            if overlap >= best:
+                best, best_id = overlap, region.id
+        return best_id
 
     def list_frames(
         self, status: str | None = None, offset: int = 0, limit: int = 24
@@ -180,8 +209,8 @@ class MemoryBrowser:
                     o.id,
                     (o.x0, o.y0, o.x1, o.y1),
                     o.label,
-                    o.confidence,
-                    o.region_id,
+                    o.det_score,
+                    self._linked((o.x0, o.y0, o.x1, o.y1), detail),
                 )
                 for o in detail.open_regions
             ],

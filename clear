@@ -41,7 +41,7 @@ if command -v uv >/dev/null 2>&1 && LIST="$(uv run --frozen --offline python -m 
 fi
 if [ -z "$FOLDER" ]; then
   say "The settings could not be read. The usual places are used."
-  for name in saarthi.db saarthi.db-wal saarthi.db-shm saarthi.db-journal regions.faiss open_regions.faiss saarthi.lock; do
+  for name in saarthi.db saarthi.db-wal saarthi.db-shm saarthi.db-journal regions.faiss crops.faiss keys.faiss open_regions.faiss saarthi.lock; do
     FILES+=("$PROJECT/db/data/$name")
   done
   FOLDER="$PROJECT/storage/uploads"

@@ -3,9 +3,12 @@
 
 [paths]
 sqlite = "data/saarthi.db"
+# The DINOv2 region vector of each box (pooled from the whole frame).
 faiss_index = "data/regions.faiss"
-# The vectors of the open search (boxes of the broad detector) are in a second index.
-open_faiss_index = "data/open_regions.faiss"
+# The SigLIP vector of the crop of each box (the matching mode keys and the open search).
+crop_faiss_index = "data/crops.faiss"
+# The DINOv2 key of the crop of each box (the CLS token, the matching mode keys).
+key_faiss_index = "data/keys.faiss"
 
 [vectors]
 # Length of one embedding vector. It must match the embedding model.
@@ -14,5 +17,7 @@ dimension = 384
 # and when the application stops. A crash can lose at most this many
 # vectors. The start-up recovery repairs the loss.
 checkpoint_every = 200
-# Length of one vector of the open search. It must match the scene model (SigLIP base: 768).
-open_dimension = 768
+# Length of one SigLIP crop vector. It must match the scene model (SigLIP base: 768).
+crop_dimension = 768
+# Length of one DINOv2 key. It must match the embedding model (DINOv2 small: 384).
+key_dimension = 384

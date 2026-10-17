@@ -6,10 +6,10 @@
    `search.stale_after_hours`).
 2. The archive of frames. The search goes back in time, one window at a time,
    newest first. It matches the stored regions of each frame with the same
-   rule as the ingestion (the mode of `[matching]` in `ai/config.toml`). In the modes `evidence` and `keys`,
+   rule as the ingestion (the mode of `[matching]` in `ai/config.toml`). In the mode `evidence`,
    a frame is read and scored only if one of its regions is a candidate for the object, and at most
-   `search.evidence_max_frames` frames are scored. The mode `keys` scores the chosen regions with its two keys.
-   The archive has only the boxes that the worker stored as regions. The first frame with an
+   `search.evidence_max_frames` frames are scored. The mode `keys` reads no frame: it scores the stored
+   crop vectors of all boxes (the candidates and the boxes of the broad detector). The first frame with an
    accepted match is the answer. A match that is not strong is checked against
    the reference photos of the object (stage I5). If the check passes, the match counts as
    strong. If not, it stays weak, so the caller can say "maybe".
@@ -222,14 +222,16 @@ class SearchService:
         Return the hit (or None) and False if the search stopped at `max_frames` or `evidence_max_frames`.
         """
         mode: str = self._engine.matching_mode
-        evidence: bool = mode in ("evidence", "keys")  # Both read the chosen frames
+        evidence: bool = mode == "evidence"
         objects: list[MatchObject] = load_match_objects(
             self._engine,
-            self._references if evidence else None,
+            self._references if mode in ("evidence", "keys") else None,
             look_alikes_need_references=mode == "keys",
         )
         if all(o.object_id != object_id for o in objects):
             return None, True  # No views of the current model: nothing to compare
+        if mode == "keys":
+            return self._scan_keys(object_id, objects, lower, upper)
         model: str = self._engine.embedding_model
         window: timedelta = timedelta(minutes=self._config.window_minutes)
         checked: int = 0
@@ -262,6 +264,49 @@ class SearchService:
                     hit = self._score_frame(object_id, objects, frame_regions, chosen)
                 else:
                     hit = self._match_frame(object_id, objects, frame_regions)
+                if hit is not None:
+                    return self._checked(object_id, hit), True
+            until = since
+        logger.info("The search compared %d frame(s) and found nothing", checked)
+        return None, True
+
+    def _scan_keys(
+        self,
+        object_id: int,
+        objects: list[MatchObject],
+        lower: datetime,
+        upper: datetime,
+    ) -> tuple[_Hit | None, bool]:
+        """`_scan_archive` in the mode `keys`: score the stored crop vectors of each frame. No frame is read."""
+        crop_model: str = self._engine.open_vector_model
+        key_model: str = self._engine.key_model
+        window: timedelta = timedelta(minutes=self._config.window_minutes)
+        checked: int = 0
+        until: datetime = upper
+        while until > lower:
+            since: datetime = max(until - window, lower)
+            regions: list[Region] = db.crop_vectors.list_keyed_regions(
+                since, until, crop_model, key_model, self._config.max_regions_per_window
+            )
+            for _, group in groupby(regions, key=lambda r: r.image_id):
+                if checked >= self._config.max_frames:
+                    logger.warning("The search stopped after %d frame(s)", checked)
+                    return None, False
+                checked += 1
+                frame_regions: list[Region] = list(group)
+                ids: list[int] = [r.id for r in frame_regions]
+                sightings: list[Sighting] = self._engine.match_keys(
+                    db.crop_vectors.get_crop_vectors(ids),
+                    db.crop_vectors.get_key_vectors(ids),
+                    [
+                        MatchRegion(tuple(r.phrases), r.quality_ok, r.det_score)
+                        for r in frame_regions
+                    ],
+                    objects,
+                )
+                hit: _Hit | None = self._hit_for(
+                    object_id, sightings, frame_regions, db.get_region_vectors(ids)
+                )
                 if hit is not None:
                     return self._checked(object_id, hit), True
             until = since
@@ -319,7 +364,7 @@ class SearchService:
         regions: list[Region],
         chosen: list[int],
     ) -> _Hit | None:
-        """Score the chosen regions of one frame (mode `evidence` or `keys`). Return the hit for the object, or None.
+        """Score the chosen regions of one frame (mode `evidence`). Return the hit for the object, or None.
 
         A frame that cannot be read gives no hit. The search goes on with the next frame.
         """
@@ -332,28 +377,9 @@ class SearchService:
                 Box(r.x0, r.y0, r.x1, r.y1) for r in (regions[i] for i in chosen)
             ]
             crops: np.ndarray = self._engine.embed_evidence_crops(picture, boxes)
-            sightings: list[Sighting]
-            if self._engine.matching_mode == "keys":
-                found: list[Sighting] = self._engine.match_keys(
-                    crops,
-                    self._engine.embed_key_crops(picture, boxes),
-                    [
-                        MatchRegion(
-                            tuple(regions[i].phrases),
-                            regions[i].quality_ok,
-                            regions[i].det_score,
-                        )
-                        for i in chosen
-                    ],
-                    objects,
-                )
-                # The index of a sighting is a place in `chosen`. The hit needs a place in `regions`.
-                sightings = [
-                    dataclasses.replace(s, region_index=chosen[s.region_index])
-                    for s in found
-                ]
-            else:
-                sightings = self._engine.score_evidence(chosen, vectors, crops, objects)
+            sightings: list[Sighting] = self._engine.score_evidence(
+                chosen, vectors, crops, objects
+            )
         except (AiError, storage.StorageError):
             logger.warning(
                 "Search for object %d: frame %d cannot be scored",

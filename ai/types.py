@@ -5,7 +5,7 @@ from typing import Literal
 
 import numpy as np
 
-Source = Literal["full", "tile", "generic"]
+Source = Literal["full", "tile", "generic", "broad"]  # "broad": the broad detector
 
 
 @dataclass(frozen=True)

@@ -65,13 +65,19 @@ class Backend:
                 f"but vectors.dimension in db/config.toml is {vector_size}"
             )
 
-        # The open search stores one SigLIP vector for each box. The index must have the size of the vectors.
-        if engine.open_detection_enabled and engine.scene_enabled:
-            open_size: int = db.current_config().open_vector_dimension
-            if engine.open_vector_dimension != open_size:
+        # Each box gets a DINOv2 key, and a SigLIP crop vector if the scene model is on. The indexes must fit them.
+        key_size: int = db.current_config().key_vector_dimension
+        if engine.embedding_dimension != key_size:
+            raise BackendConfigError(
+                f"The ai model makes keys of size {engine.embedding_dimension}, "
+                f"but vectors.key_dimension in db/config.toml is {key_size}"
+            )
+        if engine.scene_enabled:
+            crop_size: int = db.current_config().crop_vector_dimension
+            if engine.open_vector_dimension != crop_size:
                 raise BackendConfigError(
                     f"The scene model makes vectors of size {engine.open_vector_dimension}, "
-                    f"but vectors.open_dimension in db/config.toml is {open_size}"
+                    f"but vectors.crop_dimension in db/config.toml is {crop_size}"
                 )
 
         self._describe: DescribeService = DescribeService(self._config, engine)
@@ -79,7 +85,7 @@ class Backend:
         self._scene_writer: SceneWriter = SceneWriter(
             self._config, engine, self._describe
         )
-        # The SigLIP vectors of the reference crops (mode `evidence`). The worker and the search share them.
+        # The vectors of the reference crops (modes `evidence` and `keys`). The worker and the search share them.
         self._references: ReferenceVectors = ReferenceVectors(engine)
         self._worker: Worker = Worker(
             self._config,
@@ -101,7 +107,7 @@ class Backend:
         self._query: QueryResolver = QueryResolver(self._config, engine)
         self._voice: VoiceService = VoiceService(self._config, engine)
         self._open_search: OpenSearchService = OpenSearchService(self._config, engine)
-        self._browser: MemoryBrowser = MemoryBrowser()
+        self._browser: MemoryBrowser = MemoryBrowser(self._config.worker.open_link_iou)
         self._maintenance: Maintenance = Maintenance(self._config)
         self._token: str | None = read_token(self._config)
         self._max_upload_bytes: int = storage.current_config().max_bytes

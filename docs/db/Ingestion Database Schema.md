@@ -131,27 +131,34 @@ The helpers are in `db/scenes.py` (`get_description`, `set_description`, `list_f
 | `facts` | JSON: the facts that the model got |
 | `computed_at` | Naive UTC time |
 
-## Open region table
+## The boxes of the broad detector and the crop vectors
 
-The table `open_region` holds the boxes of the broad detector (see `docs/backend/Open Search.md`).
-The helpers are in `db/open_regions.py`. `db/api.py` gives them as `db.open_regions`.
-The SigLIP vector of a box is in a second FAISS index, `data/open_regions.faiss`. The id of the row is the id of the vector.
+All boxes of a frame are in the table `region` (see `docs/backend/Open Search.md` and `docs/backend/Memory.md`).
+A box of the broad detector has `source = broad`, its name in `label` (a hint, it can be wrong) and its confidence in `det_score`.
+It has no phrase. A candidate of the detector of the registered objects has no `label`.
 
-| Column | Meaning |
-|--------|---------|
-| `image` | The frame. The row goes with the frame (cascade) |
-| `x0`, `y0`, `x1`, `y1` | The box in pixels, in the frame |
-| `label` | The name that the detector gave the box. It is a hint and can be wrong |
-| `confidence` | 0 to 1 |
-| `region` | The candidate box of a registered object that this box overlaps, or null. The row stays if the region goes away |
-| `vector_model` | The model that made the vector. A search compares vectors of one model only |
+Each box can have two crop vectors besides its DINOv2 region vector. The helpers are in `db/crop_vectors.py`. `db/api.py` gives them as `db.crop_vectors`.
+
+| Column of `region` | Index | Vector |
+|--------------------|-------|--------|
+| `embedding_model` | `data/regions.faiss` | The DINOv2 region vector (pooled from the whole frame) |
+| `crop_model` | `data/crops.faiss` | The SigLIP vector of the crop. The matching mode `keys` and the open search use it |
+| `key_model` | `data/keys.faiss` | The DINOv2 key of the crop (the CLS token). The matching mode `keys` uses it |
+
+Null in a model column means that the box has no vector of that kind. The id of the row is the id of each vector.
 
 Rules:
-- `add_open_regions` inserts the rows and adds the vectors in one call. If the vectors are refused, the rows are rolled back.
-- A frame that is processed again starts with no box: the start-up recovery deletes the boxes of an interrupted frame (`drop_for_images`).
-- `recover` removes a vector that has no row, and deletes a box that has no vector. The frame does not go back to `pending`, because the open search is an extra.
-- `delete_images` removes the boxes and the vectors of the frames that it deletes. `checkpoint_vectors` saves both indexes.
-- `list_open_regions` gives the boxes of `done` frames in a time window, newest frame first, for one `vector_model`. The search reads their vectors with `get_vectors`.
+- `crop_vectors.store` adds the crop vectors of stored regions and sets both columns. If a vector or a row is refused, nothing is added.
+- `delete_images` removes all vectors of the regions of the frames that it deletes. `checkpoint_vectors` saves all three indexes.
+- The start-up recovery deletes the regions of an interrupted frame (as before). `crop_vectors.recover` then removes the crop vectors
+  that have no marked region, and clears a mark that has no vector. The crop vectors are an extra: the frame does not go back to `pending`.
+- `crop_vectors.list_broad_regions` gives the boxes of the broad detector of `done` frames in a time window, newest frame first, for one `crop_model` (the open search).
+- `crop_vectors.list_keyed_regions` gives all boxes with both crop vectors of the given models (the archive search of the mode `keys`).
+- `list_searchable_regions` (the archive search of the modes `tau` and `evidence`) does not list the boxes of the broad detector.
+- `get_broad_regions` gives the boxes of the broad detector of one frame, the most confident first.
+
+**Schema change (2026-11-12).** The table `open_region` is gone. There is no migration: `init_db` refuses a database whose
+table `region` has no column `label`, `crop_model` or `key_model`, and says to run `./clear`.
 
 ## Scene table
 
@@ -377,8 +384,10 @@ The loader refuses absolute paths and paths that leave the `db/` folder.
 | `paths.faiss_index` | `data/regions.faiss` | FAISS index file |
 | `vectors.dimension` | `384` | Length of one vector. It must match the embedding model |
 | `vectors.checkpoint_every` | `200` | Save the index after this number of added or removed vectors |
-| `paths.open_faiss_index` | `data/open_regions.faiss` | FAISS index file of the open search |
-| `vectors.open_dimension` | `768` | Length of one vector of the open search. It must match the scene model |
+| `paths.crop_faiss_index` | `data/crops.faiss` | FAISS index file of the SigLIP crop vectors |
+| `paths.key_faiss_index` | `data/keys.faiss` | FAISS index file of the DINOv2 keys |
+| `vectors.crop_dimension` | `768` | Length of one SigLIP crop vector. It must match the scene model |
+| `vectors.key_dimension` | `384` | Length of one DINOv2 key. It must match the embedding model |
 
 The `vectors` keys must be positive integers.
 If the index file has a different dimension than `vectors.dimension`, `init_db()` raises `VectorIndexError`.

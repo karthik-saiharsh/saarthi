@@ -61,7 +61,7 @@ def engine() -> AiEngine:
 
 def score(engine: AiEngine, photo: str, box: Box, phrases: list[str]) -> np.ndarray:
     image = Image.open(DATASET / photo).convert("RGB")
-    crops = engine.embed_open_crops(image, [box])
+    crops = engine.embed_evidence_crops(image, [box])
     return engine.open_pair_scores(crops, engine.embed_open_phrases(phrases))[0]
 
 
@@ -81,7 +81,7 @@ def test_a_bottle_crop_fits_bottle_better_than_laptop(engine: AiEngine) -> None:
 
 def test_the_vectors_have_unit_length_and_the_model_size(engine: AiEngine) -> None:
     image = Image.open(DATASET / "14.jpeg").convert("RGB")
-    crops = engine.embed_open_crops(image, [LAPTOP_BOX, Box(1, 1, 50, 50)])
+    crops = engine.embed_evidence_crops(image, [LAPTOP_BOX, Box(1, 1, 50, 50)])
     phrases = engine.embed_open_phrases(["laptop"])
     assert crops.shape == (2, engine.open_vector_dimension)
     assert np.allclose(np.linalg.norm(crops, axis=1), 1.0, atol=1e-3)

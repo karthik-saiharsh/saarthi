@@ -18,7 +18,7 @@ For the full design, see `docs/db/Ingestion Database Schema.md`.
 | `schema.py` | The tables: `Image`, `Region`, `EnrolledObject`, `ReferencePhoto`, `ObjectView` |
 | `gallery.py` | The helpers of the gallery. `api.py` gives them as `db.gallery` |
 | `browse.py` | Read-only views of the frames for the memory browser: the list with counts, and everything stored for one frame. `api.py` gives them as `db.browse` |
-| `open_regions.py` | The helpers of the open search: the boxes of the broad detector (table `open_region`) and their vectors in a second FAISS index. `api.py` gives them as `db.open_regions` |
+| `crop_vectors.py` | The crop vectors of the regions (the SigLIP vector and the DINOv2 key) in two more FAISS indexes, and the lists of the open search and of the matching mode `keys`. `api.py` gives them as `db.crop_vectors` |
 | `scenes.py` | The helpers of the description of a place: the room scores of a frame (a cache), and the frames near a frame in time. `api.py` gives them as `db.scenes` |
 | `sightings.py` | The helpers of the memory: the sighting log and the last-seen record. `api.py` gives them as `db.sightings` |
 | `support.py` | The error translation that `api.py` and `gallery.py` share |
@@ -38,13 +38,15 @@ For the full design, see `docs/db/Ingestion Database Schema.md`.
 ## Tables
 
 - `image`: one row for each uploaded image.
-- `region`: one row for each detected box in an image.
+- `region`: one row for each box in an image: a candidate of the detector of the registered objects, or a box of the
+  broad detector (`source = broad`, with its name in `label`). Each box has up to three vectors, one in each FAISS index:
+  the DINOv2 region vector (`data/regions.faiss`), the SigLIP crop vector (`data/crops.faiss`, column `crop_model`)
+  and the DINOv2 key of the crop (`data/keys.faiss`, column `key_model`). The id of the row is the id of each vector.
 - `enrolled_object`: one row for each object of the gallery, with its calibration.
 - `reference_photo`: one row for each photo that a carer gave for an object.
 - `object_view`: one vector for each view of a reference photo. These vectors are in SQLite, not in FAISS, because the gallery is small.
 - `sighting`: one row for each accepted match of an object in a frame.
 - `frame_scene`: one row for each frame that the scene model scored: the probability of each room. It is a cache. The row goes with its frame.
-- `open_region`: one row for each box that the broad detector found, with its name, its confidence and the model of its vector. The SigLIP vector is in a second FAISS index (`data/open_regions.faiss`). The row goes with its frame.
 - `frame_description`: one row for each frame and object: the checked sentence of the language model about the place, or an empty text if the check refused it. It is a cache. The row goes with its frame and its object.
 - `last_seen`: one row for each object, with the frame, the box and the time of the last accepted sighting. The frame cannot be deleted while the row exists.
 
@@ -58,20 +60,29 @@ Absolute paths and paths that leave the `db/` folder are not allowed.
 [paths]
 sqlite = "data/saarthi.db"
 faiss_index = "data/regions.faiss"
-open_faiss_index = "data/open_regions.faiss"
+crop_faiss_index = "data/crops.faiss"
+key_faiss_index = "data/keys.faiss"
 
 [vectors]
 dimension = 384
 checkpoint_every = 200
-open_dimension = 768
+crop_dimension = 768
+key_dimension = 384
 ```
 
 | Key | Meaning |
 |-----|---------|
 | `vectors.dimension` | Length of one vector. It must match the embedding model |
 | `vectors.checkpoint_every` | The index is saved after this number of added or removed vectors |
-| `paths.open_faiss_index` | The file of the second index (the open search) |
-| `vectors.open_dimension` | Length of one vector of the open search. It must match the scene model (SigLIP base: 768) |
+| `paths.crop_faiss_index` | The file of the index of the SigLIP crop vectors |
+| `paths.key_faiss_index` | The file of the index of the DINOv2 keys |
+| `vectors.crop_dimension` | Length of one SigLIP crop vector. It must match the scene model (SigLIP base: 768) |
+| `vectors.key_dimension` | Length of one DINOv2 key. It must match the embedding model (DINOv2 small: 384) |
+
+The three index files must have different paths.
+
+**Schema change (2026-11-12).** The table `open_region` and the file `data/open_regions.faiss` are gone: all boxes are in `region`.
+There is no migration. `init_db` refuses a database with the older table `region` and says to run `./clear`.
 
 The index is also saved when the application stops (`checkpoint_vectors()`).
 A crash can lose at most `checkpoint_every` vectors. The start-up recovery repairs the loss.

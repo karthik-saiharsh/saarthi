@@ -14,8 +14,8 @@ from peewee import PeeweeException, SqliteDatabase
 
 from db import (
     browse,
+    crop_vectors,
     gallery,
-    open_regions,
     scenes,
     sightings,
 )
@@ -36,7 +36,6 @@ from db.schema import (
     ImageStatus,
     LastSeen,
     ObjectView,
-    OpenRegion,
     ReferencePhoto,
     Region,
     RegionSource,
@@ -59,8 +58,8 @@ __all__ = [
     "InvalidStateError",
     "VectorIndexError",
     "browse",
+    "crop_vectors",
     "gallery",
-    "open_regions",
     "scenes",
     "sightings",
 ]
@@ -70,8 +69,22 @@ DEFAULT_CONFIG_PATH: Path = DB_DIR / "config.toml"
 # Longest `status_detail` text that the database stores.
 MAX_STATUS_DETAIL_LENGTH: int = 500
 
-_PATH_KEYS: tuple[str, ...] = ("sqlite", "faiss_index", "open_faiss_index")
-_VECTOR_KEYS: tuple[str, ...] = ("dimension", "checkpoint_every", "open_dimension")
+_PATH_KEYS: tuple[str, ...] = (
+    "sqlite",
+    "faiss_index",
+    "crop_faiss_index",
+    "key_faiss_index",
+)
+_VECTOR_KEYS: tuple[str, ...] = (
+    "dimension",
+    "checkpoint_every",
+    "crop_dimension",
+    "key_dimension",
+)
+# The newest columns of the table `region`. A database without them has an older schema.
+_REGION_COLUMNS: tuple[str, ...] = ("label", "crop_model", "key_model")
+# The longest name of a box of the broad detector.
+MAX_LABEL_LENGTH: int = 80
 _SQLITE_PRAGMAS: dict[str, object] = {
     "foreign_keys": 1,
     "journal_mode": "wal",
@@ -93,6 +106,9 @@ class NewRegion:
     phrases: list[str]
     in_hand: bool = False
     quality_ok: bool = True
+    label: str | None = (
+        None  # The name from the broad detector. Only for `source = broad`
+    )
 
     def __post_init__(self) -> None:
         assert all(isinstance(v, int) for v in (self.x0, self.y0, self.x1, self.y1))
@@ -102,6 +118,11 @@ class NewRegion:
         assert isinstance(self.source, RegionSource), "source must be a RegionSource"
         assert isinstance(self.phrases, list)
         assert all(isinstance(phrase, str) for phrase in self.phrases)
+        if self.source == RegionSource.BROAD:
+            assert isinstance(self.label, str) and self.label.strip(), "label needed"
+            assert len(self.label) <= MAX_LABEL_LENGTH, "label is too long"
+        else:
+            assert self.label is None, "only a box of the broad detector has a label"
 
 
 @dataclass(frozen=True)
@@ -142,8 +163,10 @@ class DbConfig:
     faiss_path: Path
     vector_dimension: int
     checkpoint_every: int
-    open_faiss_path: Path
-    open_vector_dimension: int
+    crop_faiss_path: Path
+    crop_vector_dimension: int
+    key_faiss_path: Path
+    key_vector_dimension: int
 
 
 def _resolve_inside_db_dir(key: str, value: object) -> Path:
@@ -197,13 +220,26 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> DbConfig:
         checkpoint_every=_positive_int(
             "vectors", "checkpoint_every", vectors["checkpoint_every"]
         ),
-        open_faiss_path=_resolve_inside_db_dir(
-            "open_faiss_index", paths["open_faiss_index"]
+        crop_faiss_path=_resolve_inside_db_dir(
+            "crop_faiss_index", paths["crop_faiss_index"]
         ),
-        open_vector_dimension=_positive_int(
-            "vectors", "open_dimension", vectors["open_dimension"]
+        crop_vector_dimension=_positive_int(
+            "vectors", "crop_dimension", vectors["crop_dimension"]
+        ),
+        key_faiss_path=_resolve_inside_db_dir(
+            "key_faiss_index", paths["key_faiss_index"]
+        ),
+        key_vector_dimension=_positive_int(
+            "vectors", "key_dimension", vectors["key_dimension"]
         ),
     )
+    files: list[Path] = [
+        config.faiss_path,
+        config.crop_faiss_path,
+        config.key_faiss_path,
+    ]
+    if len(set(files)) != len(files):
+        raise ConfigError("The three FAISS index files must have different paths")
     logger.info("Loaded config from %s", config_path)
     return config
 
@@ -283,10 +319,10 @@ def init_db(config_path: Path = DEFAULT_CONFIG_PATH) -> tuple[SqliteDatabase, Db
                 LastSeen,
                 FrameScene,
                 FrameDescription,
-                OpenRegion,
             ],
             safe=True,
         )
+        _check_region_schema(database)
     except (OSError, PeeweeException) as error:
         logger.error(
             "Cannot open database %s: %s: %s",
@@ -297,16 +333,32 @@ def init_db(config_path: Path = DEFAULT_CONFIG_PATH) -> tuple[SqliteDatabase, Db
         raise
     logger.info(
         "Tables ready: image, region, enrolled_object, reference_photo, object_view, "
-        "sighting, last_seen, frame_scene, frame_description, open_region"
+        "sighting, last_seen, frame_scene, frame_description"
     )
     _replace_vector_index(config)
-    open_regions.configure(
-        config.open_faiss_path, config.open_vector_dimension, config.checkpoint_every
+    crop_vectors.configure(
+        config.crop_faiss_path,
+        config.crop_vector_dimension,
+        config.key_faiss_path,
+        config.key_vector_dimension,
+        config.checkpoint_every,
     )
     gallery.configure(config.vector_dimension)
     global _config
     _config = config
     return database, config
+
+
+def _check_region_schema(database: SqliteDatabase) -> None:
+    """Refuse a database whose table `region` is older than the code. There is no migration: run `./clear`."""
+    columns: set[str] = {column.name for column in database.get_columns("region")}
+    missing: list[str] = [c for c in _REGION_COLUMNS if c not in columns]
+    if missing:
+        logger.error("The database has an older schema (no column %s)", missing[0])
+        raise DbError(
+            "The database has an older schema than the code (one table for all boxes). "
+            "Stop the application and run ./clear to start with a new database"
+        )
 
 
 _translate_errors = translate_errors  # The old private name stays for the code below
@@ -519,11 +571,23 @@ def add_regions(image_id: int, regions: list[NewRegion]) -> list[Region]:
                 phrases=region.phrases,
                 in_hand=region.in_hand,
                 quality_ok=region.quality_ok,
+                label=region.label.strip() if region.label is not None else None,
             )
             for region in regions
         ]
     logger.debug("Added %d region(s) to image %d", len(rows), image_id)
     return rows
+
+
+def get_broad_regions(image_id: int) -> list[Region]:
+    """Return the boxes of the broad detector in an image, the most confident first."""
+    assert isinstance(image_id, int) and image_id > 0, "image_id must be positive"
+    with _translate_errors("get_broad_regions"):
+        return list(
+            Region.select()
+            .where(Region.image == image_id, Region.source == RegionSource.BROAD.value)
+            .order_by(Region.det_score.desc(), Region.id)
+        )
 
 
 def get_regions(image_id: int) -> list[Region]:
@@ -709,7 +773,7 @@ def checkpoint_vectors() -> None:
     write fails.
     """
     _require_index().save()
-    open_regions.checkpoint()
+    crop_vectors.checkpoint()
 
 
 def vector_count() -> int:
@@ -806,13 +870,20 @@ def delete_images(image_ids: list[int]) -> list[str]:
                 Region.image.in_(found_ids), Region.embedding_model.is_null(False)
             )
         ]
-        open_ids: list[int] = open_regions.ids_for_images(found_ids)
+        crop_ids: list[int] = [
+            row.id
+            for row in Region.select(Region.id).where(
+                Region.image.in_(found_ids),
+                Region.crop_model.is_null(False) | Region.key_model.is_null(False),
+            )
+        ]
         paths: list[str] = [i.file_path for i in images]
         Image.delete().where(Image.id.in_(found_ids)).execute()  # Regions go by cascade
 
     index.remove(vector_ids)
     index.checkpoint_if_due()
-    open_regions.remove_vectors(open_ids)
+    for start in range(0, len(crop_ids), crop_vectors.MAX_IDS):
+        crop_vectors.remove(crop_ids[start : start + crop_vectors.MAX_IDS])
     logger.info("Deleted %d image(s) and %d vector(s)", len(paths), len(vector_ids))
     return paths
 
@@ -834,7 +905,9 @@ def list_searchable_regions(
 
     A frame is in the window if `since` < `captured_at` <= `until` (naive UTC
     times). Only regions with `quality_ok` and a vector of `embedding_model`
-    are listed: vectors of other models cannot be compared. Regions of one
+    are listed: vectors of other models cannot be compared. The boxes of the
+    broad detector are not listed: the modes `tau` and `evidence` match the
+    candidates of the detector only. Regions of one
     frame are next to each other, ordered by id. At most `limit` regions are
     returned. Each region has its frame in `region.image`.
     """
@@ -852,6 +925,7 @@ def list_searchable_regions(
                 Image.captured_at <= until,
                 Region.quality_ok == 1,
                 Region.embedding_model == embedding_model,
+                Region.source != RegionSource.BROAD.value,
             )
             .order_by(Image.captured_at.desc(), Image.id.desc(), Region.id)
             .limit(limit)
@@ -915,9 +989,8 @@ def startup_recovery() -> StartupReport:
     index.remove(gap_vector_ids)
     index.checkpoint_if_due()
 
-    # The boxes of the open search: a frame that is processed again starts with none.
-    open_regions.drop_for_images(interrupted.reset_image_ids + requeued_image_ids)
-    open_regions.recover()
+    # The crop vectors of the deleted regions are orphans now. The recovery removes them.
+    crop_vectors.recover()
 
     report: StartupReport = StartupReport(
         interrupted_image_ids=interrupted.reset_image_ids,

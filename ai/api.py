@@ -378,7 +378,8 @@ class AiEngine:
     def embed_evidence_crops(self, image: Image.Image, boxes: list[Box]) -> np.ndarray:
         """Return a unit-length SigLIP vector for each box, cut with `matching.crop_padding`.
 
-        Use it for the regions of a frame and for the boxes of the reference photos, so both are cut in the same way.
+        Use it for all boxes of a frame and for the boxes of the reference photos, so all are cut in the same way.
+        The vectors are in the space of the phrase vectors (`embed_open_phrases`), so the open search uses them too.
         """
         assert self._scene is not None, "the scene classifier is switched off"
         assert isinstance(image, Image.Image), "image must be a PIL image"
@@ -433,18 +434,15 @@ class AiEngine:
 
     # ---- Matching with two keys (stage I4, mode `keys`) ----
 
+    @property
+    def key_model(self) -> str:
+        """Name of the DINOv2 key for `Region.key_model`, with the crop size: keys of another size cannot be compared."""
+        return f"{self._embedder.name}/cls{self._config.matching.key_crop_size}"
+
     def embed_key_crops(self, image: Image.Image, boxes: list[Box]) -> np.ndarray:
         """Return the DINOv2 key of each box: the CLS token of the tight crop. Use it for frames and reference photos."""
         return self._embedder.embed_crops_cls(
             image, boxes, self._config.matching.key_crop_size
-        )
-
-    @property
-    def open_crops_share_key_crops(self) -> bool:
-        """True if `embed_open_crops` and `embed_evidence_crops` cut a box in the same way, so one vector serves both."""
-        return (
-            self._config.open_detection.crop_padding
-            == self._config.matching.crop_padding
         )
 
     def broad_candidates(
@@ -458,7 +456,7 @@ class AiEngine:
         assert isinstance(image, Image.Image), "image must be a PIL image"
         quality = self._config.quality
         raw: list[Candidate] = [
-            Candidate(d.box, d.confidence, "full", (), False, True) for d in detections
+            Candidate(d.box, d.confidence, "broad", (), False, True) for d in detections
         ]
         return apply_crop_quality(
             raw, image, quality.min_crop_side, quality.crop_blur_min
@@ -645,40 +643,15 @@ class AiEngine:
 
     @property
     def open_vector_dimension(self) -> int:
-        """The size of the vectors of `embed_open_crops` and `embed_open_phrases`. They need the scene model."""
+        """The size of the crop vectors of `embed_evidence_crops` and of `embed_open_phrases`. They need the scene model."""
         assert self._scene is not None, "the scene classifier is switched off"
         return self._scene.dimension
 
     @property
     def open_vector_model(self) -> str:
-        """Name of the model that makes the open vectors. Store it with the vectors, as with the region vectors."""
+        """Name of the model that makes the crop vectors and the phrase vectors. Store it with the crop vectors."""
         assert self._scene is not None, "the scene classifier is switched off"
         return self._scene.name
-
-    def embed_open_crops(self, image: Image.Image, boxes: list[Box]) -> np.ndarray:
-        """Return a unit-length SigLIP vector for each box, from the box with `open_detection.crop_padding` around it.
-
-        The vectors live in the same space as the phrase vectors, so a phrase can find a crop.
-        """
-        assert self._scene is not None, "the scene classifier is switched off"
-        assert isinstance(image, Image.Image), "image must be a PIL image"
-        assert isinstance(boxes, list), "boxes must be a list"
-        pad: float = self._config.open_detection.crop_padding
-        crops: list[Image.Image] = []
-        for box in boxes:
-            pad_x: int = round(box.width * pad)
-            pad_y: int = round(box.height * pad)
-            crops.append(
-                image.crop(
-                    (
-                        max(0, box.x0 - pad_x),
-                        max(0, box.y0 - pad_y),
-                        min(image.width, box.x1 + pad_x),
-                        min(image.height, box.y1 + pad_y),
-                    )
-                )
-            )
-        return self._scene.embed_crops(crops)
 
     def embed_open_phrases(self, phrases: list[str]) -> np.ndarray:
         """Return a unit-length SigLIP vector for each phrase, for example `laptop`. An article is added if it is missing."""

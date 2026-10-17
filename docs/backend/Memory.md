@@ -37,21 +37,20 @@ Worker: frame ──▶ regions and vectors stored ──▶ MemoryService.remem
 | `evidence` (default) | Several independent signals give one score (`AiEngine.score_evidence`, `ai/evidence.py`). The detector phrase is not a gate |
 | `keys` | Two picture keys of the crop (SigLIP and the DINOv2 CLS token) with fixed bars, and a word vote (`AiEngine.match_keys`, `ai/keys.py`). It also scores the boxes of the broad detector |
 
-**The steps of the mode `keys`** (`Worker._process_keys`, `MemoryService.match_keys`, `MemoryService.record`):
+**The steps of the mode `keys`** (`Worker._match`, `MemoryService.match_keys`, `MemoryService.record`):
 
-1. **The boxes.** The worker runs the broad detector (YOLOE) before the matching. Its boxes join the candidates of the detector
-   (`AiEngine.broad_candidates`). They have no phrase, and the crop gate applies to them. All boxes are kept: a YOLOE box that
-   overlaps a candidate is not dropped, because it can be sharp where the candidate is blurred (`benchmarks/recall/README.md`).
-2. **The keys.** Each box gets a SigLIP vector (`AiEngine.embed_evidence_crops`) and a DINOv2 key (`AiEngine.embed_key_crops`).
-   The reference photos get the same two vectors (`ReferenceVectors`).
+1. **The boxes.** The worker stores all boxes of the frame in the table `region`: the candidates of the detector and the boxes of
+   the broad detector (YOLOE, `source = broad`). All boxes are kept: a YOLOE box that overlaps a candidate is not dropped, because
+   it can be sharp where the candidate is blurred (`benchmarks/recall/README.md`). The crop gate applies to all of them.
+2. **The keys.** The worker makes the SigLIP crop vector and the DINOv2 key of every box, one time, and stores them
+   (`db.crop_vectors`). The reference photos get the same two vectors (`ReferenceVectors`).
 3. **The decision** (`docs/ai/AI Ingestion Module.md`, "Mode `keys`"). Strong: SigLIP 0.77 and DINOv2 0.42. Weak: SigLIP 0.72 and
    one more vote (DINOv2 0.40, or a detector score of 0.30 for a word of the object). A box with a bad crop (small, blurred, cut by the edge)
    is weak at most. A box inside a screen, frame or mirror is never a sighting. One box is one object, and a look-alike can take a box.
-4. **The regions.** The worker stores the candidates of the detector as regions, as in the other modes. A box of the broad detector
-   becomes a region only if it gives a sighting, with the source `full` and no phrase. So the region table does not grow with every YOLOE box.
-5. **The record.** Stages I5 and I6 as in the other modes (`MemoryService.record`).
-6. **The open search** stores all boxes of the broad detector. It takes the SigLIP vectors of step 2, so no box gets a second SigLIP run
-   (only if `open_detection.crop_padding` equals `matching.crop_padding`; else it makes its own).
+4. **The record.** Stages I5 and I6 as in the other modes (`MemoryService.record`).
+
+The modes `tau` and `evidence` match the candidates of the detector only, as before. The mode `evidence` takes the stored SigLIP
+vectors of its chosen regions, so no box gets a second SigLIP run.
 
 `Sighting.similarity` is the SigLIP key and `Sighting.margin` the SigLIP key minus the best SigLIP key of another object.
 The bars are the same for all objects. They come from the replay of `benchmarks/recall` (phase R1a). They are start values.

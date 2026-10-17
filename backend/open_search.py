@@ -29,7 +29,7 @@ from ai.errors import AiError
 from ai.types import Box
 from backend.search import Answer, AnswerSource
 from backend.settings import OPEN_SEARCH_MODES, BackendConfig, OpenSearchConfig
-from db.schema import Image, OpenRegion, utc_now
+from db.schema import Image, Region, utc_now
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -118,7 +118,7 @@ class OpenSearchService:
         if phrase is None:
             return None
         moment: datetime = now if now is not None else utc_now()
-        rows: list[OpenRegion] = db.open_regions.list_open_regions(
+        rows: list[Region] = db.crop_vectors.list_broad_regions(
             moment - timedelta(hours=self._config.max_scan_hours),
             moment,
             self._engine.open_vector_model,
@@ -128,7 +128,7 @@ class OpenSearchService:
             logger.info("Open search: no stored box")
             return None
         try:
-            hit: tuple[OpenRegion, str, float] | None
+            hit: tuple[Region, str, float] | None
             if self._config.mode == "verified":
                 hit = self._find_verified(phrase, rows)
             else:
@@ -192,8 +192,8 @@ class OpenSearchService:
             return np.stack([self._label_vectors[l] for l in labels])
 
     def _by_label(
-        self, phrase: str, rows: list[OpenRegion], min_score: float | None = None
-    ) -> tuple[OpenRegion, str, float] | None:
+        self, phrase: str, rows: list[Region], min_score: float | None = None
+    ) -> tuple[Region, str, float] | None:
         labels: list[str] = sorted({row.label for row in rows})
         scores: np.ndarray = (
             self._vectors_of_labels(labels) @ self._engine.encode_texts([phrase])[0]
@@ -216,8 +216,8 @@ class OpenSearchService:
     # ---- Step 3: the rewrite ----
 
     def _by_rewrite(
-        self, phrase: str, rows: list[OpenRegion]
-    ) -> tuple[OpenRegion, str, float] | None:
+        self, phrase: str, rows: list[Region]
+    ) -> tuple[Region, str, float] | None:
         """Rewrite the words into names with the language model, and look for each name (step 1).
 
         The best score wins. A name from the model is never shown to the user: only the name of a stored box is.
@@ -227,7 +227,7 @@ class OpenSearchService:
             or len(phrase.split()) < self._config.rewrite_min_words
         ):
             return None  # A name is not a description. The model would give a neighbour of the name.
-        best: tuple[OpenRegion, str, float] | None = None
+        best: tuple[Region, str, float] | None = None
         for name in self._engine.rewrite_query(phrase):
             hit = self._by_label(name, rows, self._config.rewrite_min_score)
             if hit is not None and (best is None or hit[2] > best[2]):
@@ -245,9 +245,9 @@ class OpenSearchService:
             return self._neutral
 
     def _by_picture(
-        self, phrase: str, rows: list[OpenRegion]
-    ) -> tuple[OpenRegion, str, float] | None:
-        crops: np.ndarray = db.open_regions.get_vectors([row.id for row in rows])
+        self, phrase: str, rows: list[Region]
+    ) -> tuple[Region, str, float] | None:
+        crops: np.ndarray = db.crop_vectors.get_crop_vectors([row.id for row in rows])
         asked: np.ndarray = self._engine.embed_open_phrases([phrase])
         probability: np.ndarray = self._engine.open_pair_scores(crops, asked)[:, 0]
         neutral: np.ndarray = self._engine.open_pair_scores(
@@ -265,21 +265,21 @@ class OpenSearchService:
     # ---- The mode "verified" ----
 
     def _find_verified(
-        self, phrase: str, rows: list[OpenRegion]
-    ) -> tuple[OpenRegion, str, float] | None:
+        self, phrase: str, rows: list[Region]
+    ) -> tuple[Region, str, float] | None:
         """Choose candidate boxes, then let Grounding DINO check their frames with the words of the user.
 
         The pictures and the names only choose the candidates. A box is an answer only when the detector
         finds the prompts at the place of the box. No frame that passes means no answer.
         """
         prompts: list[str] = self._prompts(phrase)
-        candidates: list[tuple[OpenRegion, float]] = self._candidates(prompts, rows)
-        best_of_frame: dict[int, tuple[OpenRegion, float]] = {}
+        candidates: list[tuple[Region, float]] = self._candidates(prompts, rows)
+        best_of_frame: dict[int, tuple[Region, float]] = {}
         for row, score in candidates:
             current = best_of_frame.get(row.image_id)
             if current is None or score > current[1]:
                 best_of_frame[row.image_id] = (row, score)
-        frames: list[OpenRegion] = sorted(
+        frames: list[Region] = sorted(
             (row for row, _ in best_of_frame.values()),
             key=lambda row: (row.image.captured_at, row.image_id),
             reverse=True,
@@ -312,13 +312,13 @@ class OpenSearchService:
         return prompts
 
     def _candidates(
-        self, prompts: list[str], rows: list[OpenRegion]
-    ) -> list[tuple[OpenRegion, float]]:
+        self, prompts: list[str], rows: list[Region]
+    ) -> list[tuple[Region, float]]:
         """The best boxes by SigLIP score, and the boxes with a name that fits a prompt.
 
         Return (box, SigLIP score). The name is a hint only: it adds a candidate and never gives an answer.
         """
-        crops: np.ndarray = db.open_regions.get_vectors([row.id for row in rows])
+        crops: np.ndarray = db.crop_vectors.get_crop_vectors([row.id for row in rows])
         asked: np.ndarray = self._engine.embed_open_phrases(prompts)
         scores: np.ndarray = self._engine.open_pair_scores(crops, asked).max(axis=1)
         chosen: set[int] = {
@@ -337,7 +337,7 @@ class OpenSearchService:
         chosen.update(i for i, row in enumerate(rows) if row.label in hinted)
         return [(rows[i], float(scores[i])) for i in sorted(chosen)]
 
-    def _check_frame(self, row: OpenRegion, prompts: list[str]) -> float | None:
+    def _check_frame(self, row: Region, prompts: list[str]) -> float | None:
         """Run Grounding DINO on the frame of the box. Return its best score at the box, or None if it fails."""
         try:
             picture = self._engine.open_image(storage.read_image(row.image.file_path))
@@ -359,7 +359,7 @@ class OpenSearchService:
         )
         return max(fits) if fits else None
 
-    def _answer(self, row: OpenRegion, score: float, moment: datetime) -> Answer:
+    def _answer(self, row: Region, score: float, moment: datetime) -> Answer:
         seen_at: datetime = row.image.captured_at
         return Answer(
             object_id=0,

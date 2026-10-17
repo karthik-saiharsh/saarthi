@@ -14,12 +14,11 @@ from ai.errors import InferenceError
 from backend.describe import DescribeService, description_model
 from backend.scene_writer import FUNCTION_WORDS, SceneWriter, check_sentence, words_of
 from backend.settings import BackendConfig, load_config
-from db.open_regions import NewOpenRegion
 from db.schema import EnrolledObject, Image
 from tests.ai_support import FakeLanguageModel, FakeSceneClassifier, make_engine
 from tests.browse_support import full_frame, open_vectors
 from tests.db_support import skip_if_actual_data_has_problems
-from tests.search_support import PREFIX
+from tests.search_support import PREFIX, add_broad_boxes
 
 ALLOWED = {"bottle", "table", "laptop", "wall"}
 
@@ -140,12 +139,9 @@ def test_a_sentence_with_known_words_is_stored() -> None:
 
 def test_the_model_gets_the_checked_facts_only() -> None:
     frame, obj = full_frame(10, "bottle")
-    db.open_regions.add_open_regions(
-        frame.id,
-        [
-            NewOpenRegion(1, 1, 9, 9, "cork", 0.5),
-            NewOpenRegion(2, 2, 12, 12, "shelf", 0.8),
-        ],
+    add_broad_boxes(
+        frame,
+        [((1, 1, 9, 9), "cork", 0.5), ((2, 2, 12, 12), "shelf", 0.8)],
         open_vectors(2),
         "test-open-model",
     )

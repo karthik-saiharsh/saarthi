@@ -24,7 +24,6 @@ from backend.query import QueryResolver
 from backend.search import AnswerSource, SearchService
 from backend.settings import BackendConfig, load_config
 from backend.ui_adapter import MESSAGE_FIND_FAILED, UiFindService
-from db.open_regions import NewOpenRegion
 from db.schema import EnrolledObject, Image
 from tests.ai_support import (
     FakeDetector,
@@ -33,7 +32,7 @@ from tests.ai_support import (
     make_engine,
 )
 from tests.db_support import skip_if_actual_data_has_problems
-from tests.search_support import PREFIX, make_object, store_frame
+from tests.search_support import PREFIX, add_broad_boxes, make_object, store_frame
 from ui.ports import FindError, FindResult, FindStatus
 
 SCENE = FakeSceneClassifier()
@@ -72,12 +71,7 @@ def make_service(
 def add_box(frame: Image, label: str, shows: str | None = None) -> None:
     """A box with a name from the detector. `shows` is the phrase that its picture fits (default: the name)."""
     vector = SCENE._vector(shows or label).reshape(1, -1)
-    db.open_regions.add_open_regions(
-        frame.id,
-        [NewOpenRegion(10, 10, 50, 40, label, 0.9)],
-        vector,
-        SCENE.name,
-    )
+    add_broad_boxes(frame, [((10, 10, 50, 40), label, 0.9)], vector, SCENE.name)
 
 
 # ---- The phrase ----

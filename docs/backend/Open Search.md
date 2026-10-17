@@ -3,7 +3,8 @@
 ## Status
 
 This feature is **partly built**. Built (phase 1): the broad detector in the `ai` component (`ai/open_detector.py`, `AiEngine.detect_open`).
-Built (phases 2 and 3): the SigLIP vectors, and the table and the vector index for the boxes (`db/open_regions.py`). The worker step (phase 4), the search (phase 5) and the sentence and the page (phase 6) are built.
+Built (phases 2 and 3): the SigLIP vectors, and the table and the vector index for the boxes. Since 2026-11-12 the boxes are rows of the table `region`
+(`source = broad`) and their SigLIP vectors are the crop vectors of `db/crop_vectors.py` (one archive for all boxes, plan phase R2). The worker step (phase 4), the search (phase 5) and the sentence and the page (phase 6) are built.
 The sentence for an open result is the template sentence of the registered path, with "a laptop" in place of "your laptop". It is always weak, and it has the surface and the room when the rules allow them.
 The page `/find` shows an open result as a weak `found` result with the name of the detector. The button "Something else" starts the open search from a `choose` result.
 The query rewriter and the scene description by the language model are also built (see below). Not built: the calibration on real frames (phase 7).
@@ -78,7 +79,7 @@ An older pipeline worked better: SigLIP only ranked the boxes, and Grounding DIN
 
 ### The steps of the mode `verified`
 
-`OpenSearchService._find_verified`. `find` calls it when the mode is `verified`. It reuses `phrase_from_words`, `list_open_regions` and the answer builder.
+`OpenSearchService._find_verified`. `find` calls it when the mode is `verified`. It reuses `phrase_from_words`, `db.crop_vectors.list_broad_regions` and the answer builder.
 
 1. **Prompts.** The phrase. If the phrase has at least `rewrite_min_words` words and the language model is on, the names from `rewrite_query` are added.
    If the model fails, the phrase alone stays.
@@ -215,7 +216,7 @@ and stores the boxes (`Worker._store_open_boxes`, `docs/backend/Worker.md`, step
 - An error of the detector, of the scene model or of the database is logged. The frame is still `done`: the open search is an extra.
 - A box is linked to the region of a registered candidate when the IoU is at least `worker.open_link_iou` (0.5). A box with a link is kept.
   The owner agreed to this rule on 2026-11-10. The link tells the search that the registered path has seen the same thing.
-- The backend refuses to start if the scene model makes vectors of another size than `vectors.open_dimension` in `db/config.toml`.
+- The backend refuses to start if the scene model makes vectors of another size than `vectors.crop_dimension` in `db/config.toml`.
 
 Run on the 14 photos of the dataset, with the real models and an empty database (all 11 frames `done`, no error):
 
@@ -228,7 +229,8 @@ Run on the 14 photos of the dataset, with the real models and an empty database 
 
 ## The vectors (phase 2)
 
-- `AiEngine.embed_open_crops(image, boxes)` makes a unit-length SigLIP vector for each box (the box with `open_detection.crop_padding` around it).
+- `AiEngine.embed_evidence_crops(image, boxes)` makes a unit-length SigLIP vector for each box (the box with `matching.crop_padding` around it).
+  The worker makes it one time for every box of a frame. The matching and the open search share it.
 - `AiEngine.embed_open_phrases(phrases)` makes a vector for each phrase. A phrase without an article gets one ("laptop" gives "a laptop").
 - `AiEngine.open_pair_scores(crops, phrases)` gives the SigLIP probability of each pair, shape (crops, phrases). The pairs are judged alone, so a row does not add up to 1.
 - `open_vector_dimension` is the size of the vectors (768 for the model that is in use). `open_vector_model` is the name to store with the vectors.

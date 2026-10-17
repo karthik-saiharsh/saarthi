@@ -44,11 +44,18 @@ from ai.types import Box, Candidate, MatchObject, MatchRegion, Sighting
 logger: logging.Logger = logging.getLogger("recall.runtime")
 
 
-def runtime_config() -> AiConfig:
-    """The config of the application in the mode `keys`, without the models that the check does not use."""
+def runtime_config(short_edge: int | None) -> AiConfig:
+    """The config of the application in the mode `keys`, without the models that the check does not use.
+
+    `short_edge` replaces `detection.input_short_edge` of the detector, for a test of a smaller input.
+    """
     config: AiConfig = load_config()
+    detection = config.detection
+    if short_edge is not None:
+        detection = dataclasses.replace(detection, input_short_edge=short_edge)
     return dataclasses.replace(
         config,
+        detection=detection,
         matching=dataclasses.replace(config.matching, mode="keys"),
         speech=dataclasses.replace(config.speech, enabled=False),
         language=dataclasses.replace(config.language, enabled=False),
@@ -168,10 +175,17 @@ def main() -> int:
     parser.add_argument("set_file", type=Path)
     parser.add_argument("out_dir", type=Path)
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument(
+        "--short-edge",
+        type=int,
+        default=None,
+        help="the short edge of the detector input (default: detection.input_short_edge)",
+    )
     args = parser.parse_args()
     assert args.limit is None or args.limit > 0, "--limit must be positive"
+    assert args.short_edge is None or args.short_edge >= 224, "--short-edge too small"
     frame_set: FrameSet = load_set(args.set_file)
-    config: AiConfig = runtime_config()
+    config: AiConfig = runtime_config(args.short_edge)
     engine: AiEngine = AiEngine(config)
     assert engine.matching_mode == "keys", "the mode keys needs the scene model"
     objects: list[MatchObject] = enroll(engine, config, frame_set)
@@ -186,13 +200,16 @@ def main() -> int:
         work = work[: args.limit]
     results: dict[str, list[dict]] = {}
     started: float = time.perf_counter()
+    seconds: list[float] = []
     for done, (key, path) in enumerate(work, start=1):
         try:
             image = open_image(resolve(path).read_bytes(), config.image.max_pixels)
         except ImageError:
             logger.warning("Frame %s cannot be read. It is left out", key)
             continue
+        began: float = time.perf_counter()
         merged, n_candidates, found = run_frame(engine, image, phrases, objects)
+        seconds.append(time.perf_counter() - began)
         results[key] = [
             {
                 "object": names[s.object_id - 1],
@@ -218,7 +235,12 @@ def main() -> int:
             )
     args.out_dir.mkdir(parents=True, exist_ok=True)
     (args.out_dir / "runtime.json").write_text(json.dumps(results, indent=1))
-    logger.info("Done: %d frames, %.0f s", len(results), time.perf_counter() - started)
+    logger.info(
+        "Done: %d frames, %.0f s, median %.2f s for each frame (without the decode)",
+        len(results),
+        time.perf_counter() - started,
+        float(np.median(seconds)) if seconds else 0.0,
+    )
     print("\nRuntime, mode keys (one frame at a time)")
     summary(frame_set, results)
     return 0

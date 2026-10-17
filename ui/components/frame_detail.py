@@ -73,7 +73,10 @@ def _overlay(detail: FrameDetail, picture: bytes, layers: dict[str, bool]) -> No
                 _box(region.box, frame.width, frame.height, kind, caption)
         if layers.get("open", True):
             for box in detail.open_boxes:
-                _box(box.box, frame.width, frame.height, "open", box.label)
+                # A box of the broad detector can also hold a sighting (the matching mode keys).
+                found: str | None = matched.get(box.id)
+                kind = "match" if found is not None else "open"
+                _box(box.box, frame.width, frame.height, kind, found or box.label)
 
 
 def _box(

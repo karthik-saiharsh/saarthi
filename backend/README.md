@@ -122,7 +122,7 @@ A variable that is set but empty stops the start, so the route cannot open by mi
 | `worker.duplicate_window_minutes` | Compare the hash of an image with the images from this time |
 | `worker.duplicate_max_compared` | Compare with at most this number of images |
 | `worker.error_pause_seconds` | The pause after an error in the loop of the worker |
-| `worker.open_link_iou` | A box of the broad detector is linked to a registered candidate when the overlap (IoU) is at least this value |
+| `worker.open_link_iou` | The memory browser shows a box of the broad detector as "the same place as" a candidate when the overlap (IoU) is at least this value |
 
 | Key (table `[enrollment]`) | Meaning |
 |----------------------------|---------|

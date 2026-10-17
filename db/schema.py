@@ -1,10 +1,12 @@
 """Database tables.
 
-Ingestion (the region archive):
+Ingestion (the region archive, one table for all boxes):
 - `Image`: one row for each uploaded frame.
-- `Region`: one row for each detected box in a frame.
+- `Region`: one row for each box in a frame: a candidate of the detector of the registered objects, or a
+  box of the broad detector (`source = broad`, with its name in `label`).
 
-`Region.id` is also the vector id in the FAISS index. These vectors are not
+`Region.id` is also the vector id in three FAISS indexes: the DINOv2 region vector (`regions.faiss`),
+the SigLIP crop vector and the DINOv2 key of the crop (`db/crop_vectors.py`). These vectors are not
 stored in SQLite.
 
 Enrollment (the gallery of the objects of the owner):
@@ -25,9 +27,8 @@ Description (the place of an object, for the voice):
 - `FrameDescription`: the sentence about the place of an object in a frame, written by the language model and
   checked by the backend (see `db/scenes.py`). One row for each frame and object. It is a cache too.
 
-Open search (objects that nobody registered, see `docs/backend/Open Search.md`):
-- `OpenRegion`: a box that the broad detector found, with its name and its confidence. The SigLIP
-  vector of the box is in a second FAISS index (see `db/open_regions.py`).
+The open search (objects that nobody registered, see `docs/backend/Open Search.md`) reads the regions
+with `source = broad` and their SigLIP crop vectors.
 
 All timestamps are naive UTC values.
 """
@@ -87,6 +88,7 @@ class RegionSource(StrEnum):
     FULL = "full"  # Full-frame pass
     TILE = "tile"  # Tiled pass for small objects
     GENERIC = "generic"  # Generic "an object" pass
+    BROAD = "broad"  # The broad detector (prompt-free). The box has a name in `label`, no phrase
 
 
 def _check_in(column: str, values: type[StrEnum]) -> Check:
@@ -154,10 +156,15 @@ class Region(BaseModel):
     # List of detector labels that remain after merging duplicate boxes.
     phrases: JSONField = JSONField(default=list)
     in_hand: BooleanField = BooleanField(default=False)
-    # False when the crop failed the size, blur or edge gate.
+    # False when the crop failed the size, blur or edge gate, or lies inside a depiction.
     quality_ok: BooleanField = BooleanField(default=True)
     # Model that made the vector. Null means the vector is not in FAISS yet.
     embedding_model: CharField = CharField(null=True, index=True)
+    # The name that the broad detector gave the box, for example "laptop". It can be wrong. Null for a candidate.
+    label: CharField = CharField(max_length=80, null=True, index=True)
+    # The models of the SigLIP crop vector and of the DINOv2 key (`db/crop_vectors.py`). Null: no such vector.
+    crop_model: CharField = CharField(null=True, index=True)
+    key_model: CharField = CharField(null=True, index=True)
 
     class Meta:
         table_name = "region"
@@ -321,34 +328,6 @@ class FrameScene(BaseModel):
 
     class Meta:
         table_name = "frame_scene"
-
-
-class OpenRegion(BaseModel):
-    """A box from the broad detector. The name is a hint from the detector. It can be wrong."""
-
-    # The row goes with the frame (retention) and with the recovery of an interrupted frame.
-    image: ForeignKeyField = ForeignKeyField(
-        Image, backref="open_regions", on_delete="CASCADE", index=True
-    )
-    x0: IntegerField = IntegerField(constraints=[Check("x0 >= 0")])
-    y0: IntegerField = IntegerField(constraints=[Check("y0 >= 0")])
-    x1: IntegerField = IntegerField(constraints=[Check("x1 > x0")])
-    y1: IntegerField = IntegerField(constraints=[Check("y1 > y0")])
-    # The name that the detector gave the box, for example "laptop".
-    label: CharField = CharField(index=True)
-    confidence: FloatField = FloatField(
-        constraints=[Check("confidence >= 0 AND confidence <= 1")]
-    )
-    # The candidate box of a registered object that this box overlaps. Null if there is none.
-    # The row stays if that region goes away.
-    region: ForeignKeyField = ForeignKeyField(
-        Region, backref="open_regions", null=True, on_delete="SET NULL", index=True
-    )
-    # The model that made the vector of this box. Vectors of another model cannot be compared.
-    vector_model: CharField = CharField()
-
-    class Meta:
-        table_name = "open_region"
 
 
 class FrameDescription(BaseModel):

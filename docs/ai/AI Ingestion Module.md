@@ -77,7 +77,7 @@ The ai module does not import the db module.
 | `engine.detect_phrases(image, phrases)` | One detector pass with the words of a user (the open search, mode `verified`) | List of `RawDetection` |
 | `engine.transcribe(samples)` | Speech to text with Whisper base (stage Q0). `speech_enabled`, `speech_max_seconds`, `speech_sample_rate` describe the input | `str` |
 | `engine.detect_open(image)` | The broad detector (YOLOE, prompt-free) | List of `OpenDetection`, the most confident first |
-| `engine.embed_open_crops(image, boxes)`, `engine.embed_open_phrases(phrases)` | SigLIP vectors of crops and of phrases, for the open search | `float32` array, 768 numbers each, unit length |
+| `engine.embed_open_phrases(phrases)`, `engine.key_model` | SigLIP vectors of phrases, in the space of the crop vectors of `embed_evidence_crops` (the open search); the name of the DINOv2 key for `Region.key_model` | `float32` array, 768 numbers each, unit length |
 | `engine.open_pair_scores(crops, phrases)` | The SigLIP probability of each pair | Array of shape (crops, phrases) |
 | `engine.open_detection_enabled`, `open_vector_dimension`, `open_vector_model` | The broad detector is loaded. The size and the name of the open vectors | `bool`, `int`, `str` |
 | `engine.rewrite_query(words)` | The language model turns a description into up to 3 object names | List of `str` |
@@ -353,7 +353,7 @@ All settings are in `ai/config.toml`. The start values come from the pipeline do
 | `[verification]` | `enabled`, `min_matches`, `match_threshold`, `crop_padding` |
 | `[scene]` | `enabled`, `prompt`, `rooms`, `surfaces`, `surface_context` |
 | `[speech]` | `enabled`, `max_seconds`, `max_new_tokens` |
-| `[open_detection]` | `enabled`, `confidence`, `max_boxes`, `input_size`, `min_box_side`, `crop_padding` |
+| `[open_detection]` | `enabled`, `confidence`, `max_boxes`, `input_size`, `min_box_side`. The SigLIP vector of a box is cut with `matching.crop_padding` |
 | `[matching]` | `mode` (`evidence`, `keys` or `tau`), `candidate_min`, `max_regions`, `top_photos`, `crop_padding`, `contrast_phrases`, `bias`, `weight_meaning`, `meaning_cap`, `weight_visual`, `visual_centre`, `visual_scale`, `weight_dino`, `dino_centre`, `dino_scale`, `weight_margin`, `margin_cap`, `margin_scale`, `score_maybe`, `score_sure`, `key_crop_size` (a multiple of 14), `sig_strong`, `dino_strong`, `sig_weak`, `dino_weak`, `word_vote`. `score_sure` must not be below `score_maybe`, and `sig_weak` not above `sig_strong` |
 | `[language]` | `enabled`, `max_input_chars`, `max_new_tokens`, `max_names`, `rewrite_system`, `rewrite_examples`, `describe_system`, `describe_max_new_tokens`, `describe_image_side` |
 
