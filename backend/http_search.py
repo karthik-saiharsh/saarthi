@@ -7,7 +7,9 @@
 | `GET /api/objects/{id}/last-seen/picture` | A JPEG of the answer. `?view=crop` (the default) or `frame`, and `?max_side=` from 32 to 1024 |
 
 The `answer` has `found`, `source`, `seen_at` (UTC, ends with `Z`), `age_seconds`, `image_id`, `box`,
-`similarity`, `strong` (false means "maybe"), `in_hand`, `stale` and `complete`.
+`similarity`, `strong` (false means "maybe"), `in_hand`, `stale`, `complete` and `newer_maybe`.
+`newer_maybe` is null, or a newer weak sighting in another frame (`seen_at`, `age_seconds`, `image_id`, `box`, `in_hand`):
+the system may have seen the object there, but it is not sure.
 The routes use the same optional token and the same fixed messages as the other routes.
 A picture is a private image: the browser must not keep it. The words of a user are never logged.
 """
@@ -55,6 +57,9 @@ def answer_json(answer: Answer) -> dict[str, Any]:
         None if answer.seen_at is None else answer.seen_at.isoformat() + "Z"
     )
     data["box"] = None if answer.box is None else list(answer.box)
+    if answer.newer_maybe is not None:
+        data["newer_maybe"]["seen_at"] = answer.newer_maybe.seen_at.isoformat() + "Z"
+        data["newer_maybe"]["box"] = list(answer.newer_maybe.box)
     return data
 
 

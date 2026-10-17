@@ -572,3 +572,20 @@ def test_the_time_of_the_answer_stays_in_the_sentence() -> None:
     service, _ = stored_description(frame, "The bottle is on a table.")
     answer = answer_for(frame, object_id=service._test_object_id, age_seconds=3 * 3600)  # type: ignore[attr-defined]
     assert "3 hours ago" in service.describe("bottle", answer).text
+
+
+def test_a_newer_weak_sighting_is_said_as_a_second_place_with_i_am_not_sure() -> None:
+    from backend.search import NewerMaybe
+
+    answer = dataclasses.replace(
+        sure(),
+        newer_maybe=NewerMaybe(datetime(2000, 1, 1), 5 * 60, 2, (1, 1, 5, 5), False),
+    )
+    text = build_sentence("bottle", answer, "a table", None)
+    assert text.startswith(
+        "Your bottle was last seen 10 minutes ago. It was on a table."
+    )
+    assert text.endswith(
+        "I am not sure, but I may have seen it again 5 minutes ago, in another place. "
+        "Please look at the second picture."
+    )

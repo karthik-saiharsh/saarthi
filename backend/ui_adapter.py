@@ -409,6 +409,15 @@ class UiFindService:
                 FindStatus.NOT_SEEN, object_name=name, complete=answer.complete
             )
         description: str = self._describer.describe(name, answer).text
+        maybe: Sighting | None = None
+        if answer.newer_maybe is not None:
+            maybe = Sighting(
+                age_seconds=answer.newer_maybe.age_seconds,
+                in_hand=answer.newer_maybe.in_hand,
+                strong=False,
+                stale=False,
+                picture=self._search.maybe_picture(answer, FIND_PICTURE_SIDE),
+            )
         return FindResult(
             FindStatus.FOUND,
             object_name=name,
@@ -421,6 +430,7 @@ class UiFindService:
             ),
             complete=answer.complete,
             description=description,
+            maybe=maybe,
         )
 
 

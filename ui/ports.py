@@ -295,6 +295,8 @@ class FindResult:
     complete: bool = True
     # The sentence that describes the answer, for FOUND. The place can be left out of it.
     description: str | None = None
+    # A newer weak sighting in another place, for FOUND: "maybe it is here now". None if there is none.
+    maybe: Sighting | None = None
 
 
 class FindService(Protocol):

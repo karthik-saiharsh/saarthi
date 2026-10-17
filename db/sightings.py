@@ -9,7 +9,7 @@ from datetime import datetime
 
 from peewee import fn
 
-from db.schema import LastSeen, Sighting, database_proxy, utc_now
+from db.schema import LastSeen, Region, Sighting, database_proxy, utc_now
 from db.support import translate_errors
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -79,6 +79,28 @@ def count_recent(
         if strong is not None:
             query = query.where(Sighting.strong == strong)
         return int(query.scalar() or 0)
+
+
+def newest_weak(object_id: int, after: datetime, until: datetime) -> Sighting | None:
+    """Return the newest weak sighting of the object with `after` < `seen_at` <= `until`, or None.
+
+    The row has its region in `sighting.region` (the box). The search names it as a second, "maybe" place.
+    """
+    _check_id(object_id, "object_id")
+    assert isinstance(after, datetime) and isinstance(until, datetime), "datetimes"
+    with translate_errors("newest_weak"):
+        return (
+            Sighting.select(Sighting, Region)
+            .join(Region)
+            .where(
+                Sighting.enrolled_object == object_id,
+                Sighting.strong == 0,
+                Sighting.seen_at > after,
+                Sighting.seen_at <= until,
+            )
+            .order_by(Sighting.seen_at.desc(), Sighting.id.desc())
+            .first()
+        )
 
 
 def get_last_seen(object_id: int) -> LastSeen | None:

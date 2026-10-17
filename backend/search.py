@@ -62,6 +62,17 @@ class AnswerSource(StrEnum):
 
 
 @dataclass(frozen=True)
+class NewerMaybe:
+    """A weak sighting that is newer than the answer, in another frame. The answer names it as a second place: "maybe"."""
+
+    seen_at: datetime  # Naive UTC time at which the server received the frame
+    age_seconds: int
+    image_id: int
+    box: tuple[int, int, int, int]
+    in_hand: bool
+
+
+@dataclass(frozen=True)
 class Answer:
     """The result of a search. `found` is False when the object was not seen."""
 
@@ -77,6 +88,8 @@ class Answer:
     in_hand: bool | None  # True: the person held the object
     stale: bool  # True: an old record, and the archive has nothing newer
     complete: bool  # False: the search stopped at `search.max_frames`
+    # A newer weak sighting from the log, younger than `search.stale_after_hours`. None if there is none.
+    newer_maybe: NewerMaybe | None = None
 
 
 @dataclass(frozen=True)
@@ -118,6 +131,10 @@ class SearchService:
         moment: datetime = now if now is not None else utc_now()
         self._require_findable(object_id)
 
+        return self._with_newer_maybe(self._answer(object_id, moment), moment)
+
+    def _answer(self, object_id: int, moment: datetime) -> Answer:
+        """The answer of `find`, without the newer weak sighting."""
         record: LastSeen | None = db.sightings.get_last_seen(object_id)
         stale_after: timedelta = timedelta(hours=self._config.stale_after_hours)
         if record is not None and moment - record.seen_at <= stale_after:
@@ -141,6 +158,59 @@ class SearchService:
             object_id, False, None, None, None, None, None, None, None, None,
             False, complete,
         )  # fmt: skip
+
+    def _with_newer_maybe(self, answer: Answer, moment: datetime) -> Answer:
+        """Add the newest weak sighting of the log that is newer than the answer and in another frame (plan part G1).
+
+        The memory needs a second weak sighting before a weak one changes the record, so the newest place can be
+        in the log only. It must be younger than `search.stale_after_hours`. The answer itself does not change.
+        """
+        if not answer.found or answer.seen_at is None:
+            return answer
+        after: datetime = max(
+            answer.seen_at, moment - timedelta(hours=self._config.stale_after_hours)
+        )
+        if after >= moment:
+            return answer
+        row = db.sightings.newest_weak(answer.object_id, after, moment)
+        if row is None or row.image_id == answer.image_id:
+            return answer
+        region: Region = row.region
+        logger.info(
+            "Search for object %d: a newer weak sighting is a second place",
+            answer.object_id,
+        )
+        return dataclasses.replace(
+            answer,
+            newer_maybe=NewerMaybe(
+                row.seen_at,
+                self._age(row.seen_at, moment),
+                row.image_id,
+                (region.x0, region.y0, region.x1, region.y1),
+                bool(row.in_hand),
+            ),
+        )
+
+    def maybe_picture(self, answer: Answer, max_side: int = 512) -> bytes | None:
+        """Cut the `crop` picture of the newer weak sighting of an answer. None if there is none or the frame is gone."""
+        assert isinstance(max_side, int) and max_side > 0, "max_side must be positive"
+        maybe: NewerMaybe | None = answer.newer_maybe
+        if maybe is None:
+            return None
+        image: Image | None = db.get_image(maybe.image_id)
+        if image is None:
+            return None
+        try:
+            return storage.read_crop(
+                image.file_path,
+                self._padded(maybe.box, image.width, image.height),
+                max_side,
+            )
+        except storage.StorageError:
+            logger.warning(
+                "Search for object %d: no picture of the maybe place", answer.object_id
+            )
+            return None
 
     def get_picture(
         self,

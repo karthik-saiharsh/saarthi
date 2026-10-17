@@ -101,6 +101,7 @@ The sentences that the code builds:
 | Old | "The last time that I saw your bottle was 2 days ago. That was a long time ago." |
 | Not seen | "I have not seen your bottle lately." With an incomplete search: "I could not look at all the pictures." is added |
 | Open search | "I am not sure, but I may have seen a laptop 12 minutes ago. ... Please look at the picture." ("a laptop", not "your laptop") |
+| A newer weak sighting in another frame | The sentence of the answer, then: "I am not sure, but I may have seen it again 5 minutes ago, in another place. Please look at the second picture." |
 
 An error of the scene model, of a file or of the database gives a sentence with the time only.
 The code is `build_sentence` in `backend/describe.py`.

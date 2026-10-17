@@ -111,6 +111,13 @@ If it stops at a limit, the answer has `complete = False`. "Not seen" may then b
 | `in_hand` | The person held the object. The place is then the person |
 | `stale` | An old record, and nothing newer was found |
 | `complete` | False: the search stopped at `search.max_frames` |
+| `newer_maybe` | A second place, or none: the newest weak sighting of the log that is newer than the answer, in another frame, and younger than `search.stale_after_hours`. It has `seen_at`, `age_seconds`, `image_id`, `box` and `in_hand` |
+
+**The second place (`newer_maybe`, owner decision 2026-11-12).** A weak sighting changes the last-seen record only after a second weak
+sighting within 60 s (see `docs/backend/Memory.md`). So the newest place of an object can be in the sighting log only. Example from the
+stored data: the record showed the watch on the bed (frame 4), and the log had a newer, weak and correct sighting on the desk (frame 7).
+The answer stays the same, and it also names the newer place as a "maybe". The voice says it with "I am not sure", and the page shows a
+second picture. `SearchService.maybe_picture` cuts that picture. A false weak sighting can become a "maybe" place: the text always says so.
 
 ### The picture
 

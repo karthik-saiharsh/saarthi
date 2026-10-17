@@ -76,6 +76,7 @@ The picture is shown whole, and is never cut.
 | "Maybe. The computer is not sure. Look at the picture." | `strong` is false |
 | "This was a long time ago. The computer found nothing newer." | `stale` is true |
 | "There is no picture." | The picture is none, for example when the file of the frame is gone |
+| "Maybe it is here now. The computer is not sure." | The answer has a newer weak sighting in another place (`FindResult.maybe`). Under it: "Seen 5 minutes ago.", "You were holding it." if true, and the second picture |
 
 While a search runs, the card shows a spinner and "Looking...". The buttons are off.
 

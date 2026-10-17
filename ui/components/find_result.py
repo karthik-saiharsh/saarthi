@@ -23,6 +23,8 @@ IN_HAND_TEXT: str = "You were holding it."
 STALE_TEXT: str = "This was a long time ago. The computer found nothing newer."
 NO_PICTURE_TEXT: str = "There is no picture."
 PICTURE_ALT: str = "The place where the object was seen"
+MAYBE_PLACE_TITLE: str = "Maybe it is here now. The computer is not sure."
+MAYBE_PICTURE_ALT: str = "A newer place where the object may be"
 
 _MINUTE: int = 60
 _HOUR: int = 60 * _MINUTE
@@ -118,6 +120,20 @@ def _found(
         ).classes("up-find-picture")
     else:
         ui.label(NO_PICTURE_TEXT).classes("up-find-text")
+    if result.maybe is not None:
+        _maybe_place(result.maybe)
+
+
+def _maybe_place(maybe: Sighting) -> None:
+    """The newer weak sighting: a second place, under the first. The text says that the computer is not sure."""
+    ui.label(MAYBE_PLACE_TITLE).classes("up-find-when")
+    ui.label(f"Seen {age_text(maybe.age_seconds)}.").classes("up-find-text")
+    if maybe.in_hand:
+        ui.label(IN_HAND_TEXT).classes("up-find-text")
+    if maybe.picture is not None:
+        ui.image(picture_source(maybe.picture)).props(
+            f'fit=contain alt="{MAYBE_PICTURE_ALT}"'
+        ).classes("up-find-picture")
 
 
 def _not_seen(result: FindResult) -> None:

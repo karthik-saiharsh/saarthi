@@ -218,6 +218,14 @@ def build_sentence(
         parts.append(f"The room {'looks' if sure else 'may look'} like {room}.")
     if not sure:
         parts.append("Please look at the picture.")
+    maybe = answer.newer_maybe
+    if maybe is not None:
+        # A newer weak sighting in another frame: a second place, said with "I am not sure" (plan part G1).
+        later: str = time_phrase(maybe.age_seconds, maybe.seen_at, config)
+        parts.append(
+            f"I am not sure, but I may have seen it again {later}, in another place. "
+            "Please look at the second picture."
+        )
     return " ".join(parts)
 
 

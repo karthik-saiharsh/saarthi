@@ -270,3 +270,74 @@ def test_find_with_picture_gives_none_when_the_object_was_not_seen() -> None:
     obj = make_object()
     answer, picture = make_service().find_with_picture(obj.id, 128, NOW)
     assert not answer.found and picture is None
+
+
+# ---- A newer weak sighting (plan part G1) ----
+
+
+def weak_sighting(obj: EnrolledObject, seen_at: datetime) -> Image:
+    """A frame with a weak sighting of the object in the log (the memory did not change the record)."""
+    image = make_frame(seen_at)
+    region = db.get_regions(image.id)[0]
+    sightings.add_sighting(obj.id, image.id, region.id, seen_at, 0.6, 0.1, False, False)
+    return image
+
+
+def test_a_newer_weak_sighting_is_a_second_place() -> None:
+    obj = make_object()
+    record_frame = make_frame(minutes(120))
+    set_record(obj, record_frame, minutes(120))
+    weak_sighting(obj, minutes(50))
+    newest = weak_sighting(obj, minutes(10))
+    answer: Answer = make_service().find(obj.id, NOW)
+    assert (
+        answer.image_id == record_frame.id and answer.strong is True
+    )  # The answer stays
+    assert answer.newer_maybe is not None
+    assert answer.newer_maybe.image_id == newest.id
+    assert answer.newer_maybe.age_seconds == 10 * 60
+    region = db.get_regions(newest.id)[0]
+    assert answer.newer_maybe.box == (region.x0, region.y0, region.x1, region.y1)
+
+
+def test_an_older_weak_sighting_is_not_a_second_place() -> None:
+    obj = make_object()
+    weak_sighting(obj, minutes(60))
+    record_frame = make_frame(minutes(30))
+    set_record(obj, record_frame, minutes(30))
+    assert make_service().find(obj.id, NOW).newer_maybe is None
+
+
+def test_a_weak_sighting_in_the_frame_of_the_answer_is_not_a_second_place() -> None:
+    obj = make_object()
+    frame = weak_sighting(obj, minutes(20))
+    set_record(obj, frame, minutes(30))  # The record names the same frame
+    assert make_service().find(obj.id, NOW).newer_maybe is None
+
+
+def test_a_weak_sighting_older_than_the_stale_limit_is_not_a_second_place() -> None:
+    obj = make_object()
+    old = NOW - timedelta(hours=30)
+    weak_sighting(obj, old)
+    record_frame = make_frame(old - timedelta(hours=1))
+    set_record(obj, record_frame, old - timedelta(hours=1))
+    assert make_service().find(obj.id, NOW).newer_maybe is None
+
+
+def test_an_object_that_was_not_seen_has_no_second_place() -> None:
+    obj = make_object()
+    answer = make_service().find(obj.id, NOW)
+    assert not answer.found and answer.newer_maybe is None
+
+
+def test_the_json_of_an_answer_has_the_second_place_in_utc() -> None:
+    from backend.http_search import answer_json
+
+    obj = make_object()
+    record_frame = make_frame(minutes(120))
+    set_record(obj, record_frame, minutes(120))
+    weak_sighting(obj, minutes(10))
+    data = answer_json(make_service().find(obj.id, NOW))
+    assert data["newer_maybe"]["seen_at"].endswith("Z")
+    assert isinstance(data["newer_maybe"]["box"], list)
+    assert data["newer_maybe"]["age_seconds"] == 10 * 60
