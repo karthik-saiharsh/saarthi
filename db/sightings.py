@@ -103,6 +103,21 @@ def newest_weak(object_id: int, after: datetime, until: datetime) -> Sighting | 
         )
 
 
+def strong_region_ids(object_id: int, since: datetime) -> set[int]:
+    """Return the regions with a strong sighting of the object since `since`."""
+    _check_id(object_id, "object_id")
+    assert isinstance(since, datetime), "since must be a datetime"
+    with translate_errors("strong_region_ids"):
+        return {
+            row.region_id
+            for row in Sighting.select(Sighting.region).where(
+                Sighting.enrolled_object == object_id,
+                Sighting.strong == 1,
+                Sighting.seen_at >= since,
+            )
+        }
+
+
 def get_last_seen(object_id: int) -> LastSeen | None:
     """Return the last-seen record of an object, or None."""
     _check_id(object_id, "object_id")

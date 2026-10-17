@@ -57,6 +57,7 @@ def _to_match_object(
     views: np.ndarray,
     photo_ids: list[int],
     references: References | None,
+    negatives: tuple[np.ndarray, np.ndarray] | None = None,
 ) -> MatchObject:
     return MatchObject(
         object_id=obj.id,
@@ -70,6 +71,8 @@ def _to_match_object(
         references=references.vectors if references is not None else None,
         reference_photos=references.photo_ids if references is not None else None,
         key_references=references.key_vectors if references is not None else None,
+        negative_crops=negatives[0] if negatives is not None else None,
+        negative_keys=negatives[1] if negatives is not None else None,
     )
 
 
@@ -86,7 +89,8 @@ def load_match_objects(
     With `references` (the mode `evidence`), each tracked object also gets the SigLIP vectors of its reference
     crops. A tracked object without them is left out. A look-alike stays: it is a rival in the margin.
     With `look_alikes_need_references` (the mode `keys`), a look-alike also gets them, because it competes for a box
-    with its own vectors. A look-alike without them is left out.
+    with its own vectors. A look-alike without them is left out. Each object then also gets the boxes that the
+    carer refused for it (`db.reviews`), as negatives.
     """
     assert isinstance(engine, AiEngine), "engine must be an AiEngine"
     model: str = engine.embedding_model
@@ -109,7 +113,12 @@ def load_match_objects(
             if refs is None:
                 logger.warning("Object %d has no readable reference photo", obj.id)
                 continue
-        objects.append(_to_match_object(obj, views, photo_ids, refs))
+        negatives: tuple[np.ndarray, np.ndarray] | None = None
+        if look_alikes_need_references:
+            negatives = db.reviews.load_negatives(
+                obj.id, engine.open_vector_model, engine.key_model
+            )
+        objects.append(_to_match_object(obj, views, photo_ids, refs, negatives))
     return objects
 
 

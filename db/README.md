@@ -20,6 +20,7 @@ For the full design, see `docs/db/Ingestion Database Schema.md`.
 | `browse.py` | Read-only views of the frames for the memory browser: the list with counts, and everything stored for one frame. `api.py` gives them as `db.browse` |
 | `crop_vectors.py` | The crop vectors of the regions (the SigLIP vector and the DINOv2 key) in two more FAISS indexes, and the lists of the open search and of the matching mode `keys`. `api.py` gives them as `db.crop_vectors` |
 | `scenes.py` | The helpers of the description of a place: the room scores of a frame (a cache), and the frames near a frame in time. `api.py` gives them as `db.scenes` |
+| `reviews.py` | The answers of the carer to "Is this your object?" (table `review_answer`). A "no" is a negative of the object. `api.py` gives them as `db.reviews` |
 | `sightings.py` | The helpers of the memory: the sighting log and the last-seen record. `api.py` gives them as `db.sightings` |
 | `support.py` | The error translation that `api.py` and `gallery.py` share |
 | `api.py` | The public interface: config loader, `init_db`, the query helpers, the vector helpers and the start-up recovery |
@@ -48,6 +49,8 @@ For the full design, see `docs/db/Ingestion Database Schema.md`.
 - `sighting`: one row for each accepted match of an object in a frame.
 - `frame_scene`: one row for each frame that the scene model scored: the probability of each room. It is a cache. The row goes with its frame.
 - `frame_description`: one row for each frame and object: the checked sentence of the language model about the place, or an empty text if the check refused it. It is a cache. The row goes with its frame and its object.
+- `review_answer`: one row for each answer of the carer to "Is this your object?": the object, the box (null after retention), "yes" or "no",
+  and a copy of the two crop vectors of the box, so a negative stays when the frame goes. The row goes with its object.
 - `last_seen`: one row for each object, with the frame, the box and the time of the last accepted sighting. The frame cannot be deleted while the row exists.
 
 ## Configuration

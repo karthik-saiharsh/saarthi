@@ -166,6 +166,60 @@ def add_reference_photo(
     return photo
 
 
+def add_confirmed_photo(
+    object_id: int,
+    file_path: str,
+    sha256: str,
+    width: int,
+    height: int,
+    box: tuple[int, int, int, int],
+    views: list[tuple[str, np.ndarray]],
+    embedding_model: str,
+) -> ReferencePhoto:
+    """Add a photo that is `confirmed` at once, with its box and its views. Do all steps or none.
+
+    The carer said "yes" to a box of a frame (plan part D2), so the worker does not need to locate the object.
+    The photo is never `pending`, so the worker cannot claim it. Raise the errors of `add_reference_photo`.
+    """
+    _check_id(object_id, "object_id")
+    assert isinstance(file_path, str) and file_path, "file_path must be a string"
+    assert isinstance(sha256, str) and len(sha256) == 64, "sha256 must have 64 chars"
+    assert len(box) == 4 and all(
+        isinstance(v, int) for v in box
+    ), "box needs 4 integers"
+    assert views, "views must not be empty"
+    assert isinstance(embedding_model, str) and embedding_model, "model name needed"
+    rows: list[tuple[str, bytes]] = [
+        (name, _vector_to_bytes(vector)) for name, vector in views
+    ]
+    with translate_errors("add_confirmed_photo"), database_proxy.atomic():
+        if not EnrolledObject.select().where(EnrolledObject.id == object_id).exists():
+            raise InvalidStateError(f"Object {object_id} does not exist")
+        photo: ReferencePhoto = ReferencePhoto.create(
+            enrolled_object=object_id,
+            file_path=file_path,
+            sha256=sha256,
+            width=width,
+            height=height,
+            status=PhotoStatus.CONFIRMED.value,
+            x0=box[0],
+            y0=box[1],
+            x1=box[2],
+            y1=box[3],
+            det_score=1.0,  # The carer chose the box
+        )
+        for name, data in rows:
+            ObjectView.create(
+                enrolled_object=object_id,
+                photo=photo.id,
+                vector=data,
+                embedding_model=embedding_model,
+                augmentation=name,
+            )
+    logger.info("Added confirmed photo %d to object %d", photo.id, object_id)
+    return photo
+
+
 def get_photo(photo_id: int) -> ReferencePhoto | None:
     """Return the photo with this id, or None."""
     _check_id(photo_id, "photo_id")

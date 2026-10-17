@@ -25,6 +25,7 @@ from backend.maintenance import Maintenance
 from backend.open_search import OpenSearchService
 from backend.query import QueryResolver
 from backend.references import ReferenceVectors
+from backend.review import ReviewService
 from backend.scene_writer import SceneWriter
 from backend.search import SearchService
 from backend.settings import (
@@ -104,6 +105,10 @@ class Backend:
         self._search: SearchService = SearchService(
             self._config, engine, self._references
         )
+        # "Is this your object?": the carer checks boxes of recent frames (plan part D2).
+        self._review: ReviewService = ReviewService(
+            self._config, engine, self._enrollment, self._references
+        )
         self._query: QueryResolver = QueryResolver(self._config, engine)
         self._voice: VoiceService = VoiceService(self._config, engine)
         self._open_search: OpenSearchService = OpenSearchService(self._config, engine)
@@ -134,6 +139,11 @@ class Backend:
     def enrollment(self) -> EnrollmentService:
         """The steps of the carer: objects, reference photos, confirmation, calibration."""
         return self._enrollment
+
+    @property
+    def review(self) -> ReviewService:
+        """The check of the carer: boxes of recent frames that may show an object."""
+        return self._review
 
     @property
     def search(self) -> SearchService:

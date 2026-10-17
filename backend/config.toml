@@ -57,6 +57,12 @@ retention_batch = 100
 # The largest number of reference photos for one object, and of objects.
 max_photos_per_object = 20
 max_objects = 50
+# "Is this your object?" (plan part D2, backend/review.py). The page shows the boxes of the frames of the last
+# review_hours that look most like the object: at most review_max boxes, one for each frame, with a SigLIP
+# agreement of review_min or more. Start values. A lower review_min shows more boxes that are not the object.
+review_hours = 72
+review_max = 6
+review_min = 0.55
 
 [memory]
 # A strong sighting changes the last-seen record of an object at once. A weak one changes it

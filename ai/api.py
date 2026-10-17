@@ -26,7 +26,7 @@ from ai.errors import (
     ModelLoadError,
 )
 from ai.evidence import score_regions, select_regions
-from ai.keys import KeyBars, match_keys
+from ai.keys import KeyBars, match_keys, review_scores
 from ai.language import LanguageModel
 from ai.matching import match_regions
 from ai.open_detector import OpenDetector
@@ -484,6 +484,14 @@ class AiEngine:
             cfg.word_vote,
         )
         return match_keys(sig_vectors, dino_vectors, regions, objects, bars)
+
+    def review_scores(
+        self, sig_vectors: np.ndarray, dino_vectors: np.ndarray, obj: MatchObject
+    ) -> np.ndarray:
+        """Return the SigLIP key of each stored box for one object, for "Is this your object?". A refused box gets -inf."""
+        return review_scores(
+            sig_vectors, dino_vectors, obj, self._config.matching.top_photos
+        )
 
     def _evidence_classes(
         self, objects: list[MatchObject]

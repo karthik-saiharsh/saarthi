@@ -204,6 +204,8 @@ The keys of a box for an object are the mean of the best cosine of the `top_phot
   Words never make a sighting alone, and they never refuse a strong sighting.
 - A box inside a depiction (`MatchRegion.depicted`) is never a sighting.
 - A box with a bad crop (`quality_ok = False`) is weak at most. A blurred crop of the true object is evidence, but not sure evidence.
+- A box that is at least as close to a box that the carer refused for the object ("no") as to every reference photo is refused,
+  with either key (`MatchObject.negative_crops`, `negative_keys`). `engine.review_scores` gives the SigLIP key of stored boxes for one object, for the check of the carer.
 - One box is one object: the passing object with the highest SigLIP key keeps the box. If it is a look-alike, the box gives no sighting.
 - `Sighting.similarity` is the SigLIP key, `Sighting.margin` the SigLIP key minus the best SigLIP key of another object, `Sighting.score` the DINOv2 key.
 - The mode does not use `tau`, `margin_min`, `candidate_min` or `max_regions`. The bars are fixed for all objects.

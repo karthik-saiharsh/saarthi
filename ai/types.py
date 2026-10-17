@@ -140,6 +140,9 @@ class MatchObject:
     # For the mode `keys` only (`ai/keys.py`): the DINOv2 CLS vectors of the reference crops, one row for each
     # row of `references`.
     key_references: np.ndarray | None = None
+    # The SigLIP vectors and the DINOv2 keys of the boxes that the carer refused ("no", plan part D2). Mode `keys` only.
+    negative_crops: np.ndarray | None = None
+    negative_keys: np.ndarray | None = None
 
 
 @dataclass(frozen=True)

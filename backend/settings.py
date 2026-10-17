@@ -149,6 +149,9 @@ class VoiceConfig:
 class EnrollmentConfig:
     max_photos_per_object: int
     max_objects: int
+    review_hours: int
+    review_max: int
+    review_min: float
 
 
 @dataclass(frozen=True)
@@ -346,6 +349,9 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> BackendConfig:
             enrollment, "enrollment", "max_photos_per_object", 1
         ),
         max_objects=_integer(enrollment, "enrollment", "max_objects", 1),
+        review_hours=_integer(enrollment, "enrollment", "review_hours", 1),
+        review_max=_integer(enrollment, "enrollment", "review_max", 1),
+        review_min=_number(enrollment, "enrollment", "review_min", -1.0, 1.0),
     )
     memory: dict = _table(raw, "memory")
     memory_config: MemoryConfig = MemoryConfig(

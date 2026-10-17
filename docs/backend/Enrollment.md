@@ -134,6 +134,27 @@ The name, the category phrase and the synonyms go into the prompt of the detecto
 
 The log shows ids and counts. It never shows a name or a phrase.
 
+## Is this your object? (plan part D2)
+
+The reference photos decide more than any signal. In a test, the 2 photos of a headset on a bed did not look like the frames,
+and one view from the place of use found it. So the carer can check boxes of recent frames (`backend/review.py`, `ReviewService`).
+
+1. **The boxes.** `ReviewService.candidates(object_id)` takes the boxes of the last `enrollment.review_hours` (72 h) from the
+   stored crop vectors (`db.crop_vectors`), with the SigLIP agreement with the reference photos of the object. No model runs.
+   It keeps the box with the highest agreement of each frame, at least `enrollment.review_min` (0.55), at most `enrollment.review_max` (6),
+   the most similar first. A box that the carer answered, or that has a strong sighting of the object, is left out. The object must be `ready`.
+2. **"Yes".** `ReviewService.answer(object_id, region_id, yes=True)` copies the frame into the storage. The copy becomes a
+   `confirmed` reference photo with the box of the frame and its views (`db.gallery.add_confirmed_photo`). It is never `pending`, so the
+   worker does not touch it. All objects are calibrated again. The photo shows on the page like any other photo, and the carer can remove it.
+   An object with `max_photos_per_object` photos refuses a "yes" (`LimitReachedError`).
+3. **"No".** The box becomes a negative of the object (`db.reviews`). The row keeps a copy of the two crop vectors, so the negative
+   stays when retention deletes the frame. The matching mode `keys` refuses a box that is at least as close to a negative as to
+   every reference photo (`docs/ai/AI Ingestion Module.md`). A refused box is not asked again.
+
+**Measured** (`benchmarks/recall`, the replay of R0 with one more view): a "yes" for the headset on the desk (frame N6) made both
+desk sightings strong and gave no false strong sighting in the frames of other homes. It did not help the small, far headset of other frames:
+a view helps the views that look like it. The carer can answer more than one box.
+
 ## Limits
 
 These settings are in the table `[enrollment]` of `backend/config.toml`.

@@ -262,3 +262,46 @@ def test_engine_match_keys_uses_the_bars_of_the_config() -> None:
     dino = np.stack([with_cosine(cfg.dino_strong + 0.01, DINO)])
     found = engine.match_keys(sig, dino, [GOOD], [watch])
     assert len(found) == 1 and found[0].strong
+
+
+# ---- The boxes that the carer refused ----
+
+
+def test_a_box_closer_to_a_refused_box_than_to_the_object_is_refused() -> None:
+    import dataclasses
+
+    watch = make_object(1, sig_axis=0, dino_axis=0)
+    box_sig = np.stack(
+        [with_cosine(0.80, SIG)]
+    )  # Passes for the watch without a negative
+    dino = np.stack([with_cosine(0.45, DINO)])
+    assert match_keys(box_sig, dino, [GOOD], [watch], BARS)
+    no_crop = box_sig.copy()  # The carer said "no" to this very box
+    refused = dataclasses.replace(watch, negative_crops=no_crop)
+    assert match_keys(box_sig, dino, [GOOD], [refused], BARS) == []
+
+
+def test_a_far_refused_box_changes_nothing() -> None:
+    import dataclasses
+
+    watch = make_object(1, sig_axis=0, dino_axis=0)
+    box_sig = np.stack([with_cosine(0.80, SIG)])
+    dino = np.stack([with_cosine(0.45, DINO)])
+    far = dataclasses.replace(
+        watch,
+        negative_crops=np.stack([axis(2, SIG)]),
+        negative_keys=np.stack([axis(2, DINO)]),
+    )
+    assert len(match_keys(box_sig, dino, [GOOD], [far], BARS)) == 1
+
+
+def test_negatives_of_another_size_are_refused() -> None:
+    import dataclasses
+
+    watch = dataclasses.replace(
+        make_object(1, 0, 0), negative_crops=np.stack([axis(0, SIG + 1)])
+    )
+    with pytest.raises(MatchingError):
+        match_keys(
+            np.stack([axis(0, SIG)]), np.stack([axis(0, DINO)]), [GOOD], [watch], BARS
+        )

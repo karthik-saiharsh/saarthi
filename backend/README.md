@@ -32,6 +32,7 @@ For the full design, see `docs/backend/Upload Endpoint.md`, `docs/backend/Enroll
 | `enrollment.py` | `EnrollmentService`: objects, reference photos, the carer's confirmation, the calibration |
 | `ui_adapter.py` | Connects the UI to the upload step, to enrollment and to the search (`ui.ports.UploadService`, `EnrollmentService`, `FindService`) |
 | `memory.py` | `MemoryService`: matches the regions of a frame, writes the sightings, keeps the last-seen records |
+| `review.py` | `ReviewService`: "Is this your object?" The boxes of recent frames that look like an object, for the carer. A "yes" makes the frame a confirmed reference photo, a "no" makes the box a negative of the object (plan part D2, `docs/backend/Enrollment.md`) |
 | `references.py` | `ReferenceVectors`: the SigLIP vectors and the DINOv2 keys of the reference crops of each object, for the modes `evidence` and `keys`. Made from the stored photos and kept in memory. The memory and the search share one |
 | `verification.py` | `ReferenceVerifier`: the check of a sighting against the reference photos of an object (stage I5). The memory and the search use it |
 | `search.py` | `SearchService`: answers "where is my object?" from the last-seen record, then from the archive of frames |

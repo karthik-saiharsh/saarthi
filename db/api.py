@@ -16,6 +16,7 @@ from db import (
     browse,
     crop_vectors,
     gallery,
+    reviews,
     scenes,
     sightings,
 )
@@ -39,6 +40,7 @@ from db.schema import (
     ReferencePhoto,
     Region,
     RegionSource,
+    ReviewAnswer,
     Sighting,
     database_proxy,
     utc_now,
@@ -60,6 +62,7 @@ __all__ = [
     "browse",
     "crop_vectors",
     "gallery",
+    "reviews",
     "scenes",
     "sightings",
 ]
@@ -319,6 +322,7 @@ def init_db(config_path: Path = DEFAULT_CONFIG_PATH) -> tuple[SqliteDatabase, Db
                 LastSeen,
                 FrameScene,
                 FrameDescription,
+                ReviewAnswer,
             ],
             safe=True,
         )
@@ -333,7 +337,7 @@ def init_db(config_path: Path = DEFAULT_CONFIG_PATH) -> tuple[SqliteDatabase, Db
         raise
     logger.info(
         "Tables ready: image, region, enrolled_object, reference_photo, object_view, "
-        "sighting, last_seen, frame_scene, frame_description"
+        "sighting, last_seen, frame_scene, frame_description, review_answer"
     )
     _replace_vector_index(config)
     crop_vectors.configure(
@@ -577,6 +581,18 @@ def add_regions(image_id: int, regions: list[NewRegion]) -> list[Region]:
         ]
     logger.debug("Added %d region(s) to image %d", len(rows), image_id)
     return rows
+
+
+def get_region(region_id: int) -> Region | None:
+    """Return the region with this id, with its frame in `region.image`, or None."""
+    assert isinstance(region_id, int) and region_id > 0, "region_id must be positive"
+    with _translate_errors("get_region"):
+        return (
+            Region.select(Region, Image)
+            .join(Image)
+            .where(Region.id == region_id)
+            .first()
+        )
 
 
 def get_broad_regions(image_id: int) -> list[Region]:

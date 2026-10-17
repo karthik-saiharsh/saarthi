@@ -21,6 +21,8 @@ Rules that can only lower a result:
 - A box inside a screen, frame or mirror (`depicted`) is never a sighting.
 - A box with a bad crop (`quality_ok = False`: small, blurred or cut by the edge) is weak at most.
   A blurred crop of the true object is still evidence. The memory needs a second weak sighting for it.
+- A box that is closer to a box that the carer refused for the object ("no") than to every reference photo of the
+  object is refused, with either key (`MatchObject.negative_crops`, `negative_keys`).
 - One box is one object. If several objects pass on one box, the object with the highest `s` keeps it.
   A look-alike (`tracked = False`) can keep a box. Then the box gives no sighting.
 - One sighting for each object in a frame: the box with the best result, then the highest `s`.
@@ -95,6 +97,27 @@ def _check_object(obj: MatchObject, sig_size: int, dino_size: int) -> None:
         raise MatchingError(f"Object {obj.object_id} has vectors of another size")
 
 
+def _refused(
+    sig_vectors: np.ndarray,
+    dino_vectors: np.ndarray,
+    sig_cos: np.ndarray,
+    dino_cos: np.ndarray,
+    obj: MatchObject,
+) -> np.ndarray:
+    """True for each box that is at least as close to a refused box of the object as to its best reference photo."""
+    refused: np.ndarray = np.zeros(len(sig_vectors), dtype=bool)
+    for negatives, vectors, cosines in (
+        (obj.negative_crops, sig_vectors, sig_cos),
+        (obj.negative_keys, dino_vectors, dino_cos),
+    ):
+        if negatives is None or not len(negatives):
+            continue
+        if negatives.shape[1] != vectors.shape[1]:
+            raise MatchingError(f"Object {obj.object_id} has negatives of another size")
+        refused |= (vectors @ negatives.T).max(axis=1) >= cosines.max(axis=1)
+    return refused
+
+
 def word_score(region: MatchRegion, obj: MatchObject) -> float:
     """The detector score of the region if one of its phrases is a phrase of the object, else 0."""
     return region.det_score if set(region.phrases) & set(obj.phrases) else 0.0
@@ -150,13 +173,18 @@ def match_keys(
         assert obj.reference_photos is not None
         sig_cos: np.ndarray = sig_vectors @ obj.references.T
         dino_cos: np.ndarray = dino_vectors @ obj.key_references.T
+        refused: np.ndarray = _refused(
+            sig_vectors, dino_vectors, sig_cos, dino_cos, obj
+        )
         for i, region in enumerate(regions):
             s[i, j] = photo_agreement(sig_cos[i], obj.reference_photos, bars.top_photos)
             d[i, j] = photo_agreement(
                 dino_cos[i], obj.reference_photos, bars.top_photos
             )
-            level[i, j] = key_level(
-                s[i, j], d[i, j], word_score(region, obj), region, bars
+            level[i, j] = (
+                NONE
+                if refused[i]
+                else key_level(s[i, j], d[i, j], word_score(region, obj), region, bars)
             )
 
     best: dict[int, tuple[int, float, Sighting]] = {}
@@ -192,3 +220,30 @@ def match_keys(
         sum(f.strong for f in found),
     )
     return found
+
+
+def review_scores(
+    sig_vectors: np.ndarray,
+    dino_vectors: np.ndarray,
+    obj: MatchObject,
+    top_photos: int,
+) -> np.ndarray:
+    """Return the SigLIP key of each box for one object, for the question "Is this your object?" (plan part D2).
+
+    A box that the negatives rule refuses gets minus infinity, so it is never asked again.
+    """
+    assert len(sig_vectors) == len(dino_vectors), "one DINOv2 key per SigLIP vector"
+    if not len(sig_vectors):
+        return np.empty(0)
+    _check_unit(sig_vectors, "SigLIP vectors")
+    _check_unit(dino_vectors, "DINOv2 vectors")
+    _check_object(obj, sig_vectors.shape[1], dino_vectors.shape[1])
+    assert obj.references is not None and obj.key_references is not None
+    assert obj.reference_photos is not None
+    sig_cos: np.ndarray = sig_vectors @ obj.references.T
+    dino_cos: np.ndarray = dino_vectors @ obj.key_references.T
+    scores: np.ndarray = np.array(
+        [photo_agreement(row, obj.reference_photos, top_photos) for row in sig_cos]
+    )
+    refused: np.ndarray = _refused(sig_vectors, dino_vectors, sig_cos, dino_cos, obj)
+    return np.where(refused, -np.inf, scores)

@@ -15,6 +15,8 @@ Enrollment (the gallery of the objects of the owner):
 - `ObjectView`: one vector for each view of an object. The gallery is small,
   so these vectors are stored in SQLite and not in FAISS.
 
+- `ReviewAnswer`: the answers of the carer to "Is this your object?" for boxes of frames. A "no" is a negative of the object.
+
 Memory (what the system saw of the objects of the owner):
 - `Sighting`: the log. One row for each accepted match of an object in a frame.
 - `LastSeen`: one row for each object. The newest sighting that the rules accept.
@@ -285,6 +287,32 @@ class Sighting(BaseModel):
     class Meta:
         table_name = "sighting"
         indexes = ((("enrolled_object", "seen_at"), False),)
+
+
+class ReviewAnswer(BaseModel):
+    """The answer of the carer to "Is this your object?" for a box of a frame (plan part D2, `db/reviews.py`).
+
+    "yes": the frame became a reference photo of the object. "no": the box is a negative of the object. The crop
+    vectors are copied into the row, so a negative stays when retention deletes the frame.
+    """
+
+    enrolled_object: ForeignKeyField = ForeignKeyField(
+        EnrolledObject, backref="review_answers", on_delete="CASCADE", index=True
+    )
+    # The box that the carer saw. Null after retention deleted it.
+    region: ForeignKeyField = ForeignKeyField(
+        Region, backref="review_answers", null=True, on_delete="SET NULL", index=True
+    )
+    answer: CharField = CharField(constraints=[Check("answer IN ('yes', 'no')")])
+    # float32 numbers of unit length, as bytes: the SigLIP crop vector and the DINOv2 key of the box.
+    crop_vector: BlobField = BlobField()
+    key_vector: BlobField = BlobField()
+    crop_model: CharField = CharField()
+    key_model: CharField = CharField()
+    answered_at: DateTimeField = DateTimeField(default=utc_now)
+
+    class Meta:
+        table_name = "review_answer"
 
 
 class LastSeen(BaseModel):
