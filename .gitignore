@@ -29,3 +29,4 @@ certs/
 *.pem
 *.key
 docs/guide
+docs/plan

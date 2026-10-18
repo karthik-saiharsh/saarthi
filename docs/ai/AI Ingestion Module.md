@@ -181,7 +181,7 @@ The name in `Region.embedding_model` tells which model made a vector.
 The stage has three modes. `[matching].mode` in `config.toml` chooses one. `engine.matching_mode` gives the mode in use:
 `evidence` and `keys` need the scene model, so without it the mode is `tau`.
 
-### Mode `keys`
+### Mode `keys` (default)
 
 `ai/keys.py`, pure numpy. It is phase R1 of the plan for the recall of registered objects. The backend does these steps for each frame:
 
@@ -211,7 +211,7 @@ The keys of a box for an object are the mean of the best cosine of the `top_phot
 - The mode does not use `tau`, `margin_min`, `candidate_min` or `max_regions`. The bars are fixed for all objects.
   They come from the replay of `benchmarks/recall` (README, phase R1a). They are start values.
 
-### Mode `evidence` (default)
+### Mode `evidence`
 
 `ai/evidence.py`, pure numpy. The backend calls three methods for each frame:
 

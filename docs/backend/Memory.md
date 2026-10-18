@@ -22,7 +22,7 @@ Worker: frame ──▶ regions and vectors stored ──▶ MemoryService.remem
 
 1. Load the `ready` objects of the gallery with their views. An object with no view of the current model is left out.
 2. Match the regions with the objects. A region with `quality_ok = False` is never matched.
-   The mode is `[matching].mode` in `ai/config.toml` (see "The matching modes"). The default is `evidence`.
+   The mode is `[matching].mode` in `ai/config.toml` (see "The matching modes"). The default is `keys` (owner decision 2026-11-12).
    The mode `keys` matches before the regions are stored (see below).
 3. Check each weak match against the reference photos of the object (stage I5, see `docs/backend/Verification.md`).
    A match that passes the check counts as strong.
@@ -34,8 +34,8 @@ Worker: frame ──▶ regions and vectors stored ──▶ MemoryService.remem
 | Mode | How a region becomes a sighting |
 |------|---------------------------------|
 | `tau` | One test: the DINOv2 similarity must reach the `tau` of the object, with the margin `margin_min`. The detector phrase of the region must fit the object (`AiEngine.match_regions`) |
-| `evidence` (default) | Several independent signals give one score (`AiEngine.score_evidence`, `ai/evidence.py`). The detector phrase is not a gate |
-| `keys` | Two picture keys of the crop (SigLIP and the DINOv2 CLS token) with fixed bars, and a word vote (`AiEngine.match_keys`, `ai/keys.py`). It also scores the boxes of the broad detector |
+| `evidence` | Several independent signals give one score (`AiEngine.score_evidence`, `ai/evidence.py`). The detector phrase is not a gate |
+| `keys` (default) | Two picture keys of the crop (SigLIP and the DINOv2 CLS token) with fixed bars, and a word vote (`AiEngine.match_keys`, `ai/keys.py`). It also scores the boxes of the broad detector |
 
 **The steps of the mode `keys`** (`Worker._match`, `MemoryService.match_keys`, `MemoryService.record`):
 

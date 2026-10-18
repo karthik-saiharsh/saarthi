@@ -134,7 +134,7 @@ The bars of the replay are the start bars of the plan: SigLIP 0.77 and CLS 0.42 
 | Pipeline | True found (22) | Strong | Weak | False sightings, home frames | False sightings, cohort frames |
 |----------|-----------------|--------|------|------------------------------|--------------------------------|
 | Today, mode `tau` | 8 | 5 | 3 | 0 | 6 |
-| Today, mode `evidence` (default) | 13 | 8 | 5 | 0 | 3 |
+| Today, mode `evidence` (the default until 2026-11-12) | 13 | 8 | 5 | 0 | 3 |
 | Two keys, union boxes | 20 | 14 | 6 | 0 | 15 (1 strong, 14 weak) |
 | Two keys, Grounding DINO boxes only | 20 | 12 | 8 | 0 | 13 |
 | Two keys, weak bar 0.74 | 19 | 14 | 5 | 0 | 8 (1 strong, 7 weak) |

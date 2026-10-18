@@ -59,8 +59,9 @@ crop_blur_min = 20.0
 [detection]
 box_threshold = 0.25
 text_threshold = 0.20
-# Shortest side of the detector input, in pixels.
-input_short_edge = 800
+# Shortest side of the detector input, in pixels. 640 since 2026-11-12 (owner decision): on 340 frames of the recall
+# benchmark it found the same 20 of 22 objects as 800, and a frame took 4.8 s instead of 5.7 s (benchmarks/recall/README.md).
+input_short_edge = 640
 # Best boxes that one phrase can give.
 max_per_phrase = 10
 # Number of phrases in one detector pass. Each pass is a full model run.
@@ -243,7 +244,8 @@ describe_image_side = 640
 #         It needs the scene model. With the broad detector on, the backend also scores the YOLOE boxes.
 # The evidence values come from benchmarks/matching (15 frames with a watch, a headset and a book, and the
 # 14 photos of the speckled bottle as a hold-out set). They are start values. Measure again with more objects.
-mode = "evidence"
+# Default "keys" since 2026-11-12 (owner decision): 20 of 22 objects found, against 13 for "evidence" (benchmarks/recall).
+mode = "keys"
 # A region is scored only if its DINOv2 similarity to a tracked object is at least this value. It is low on purpose:
 # the watch on a wrist scored 0.26 and was right. The other signals decide.
 candidate_min = 0.20

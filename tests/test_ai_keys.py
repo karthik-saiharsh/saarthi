@@ -218,9 +218,7 @@ def test_no_region_gives_no_sighting() -> None:
 
 
 def test_the_mode_keys_needs_the_scene_model() -> None:
-    assert (
-        load_config().matching.mode == "evidence"
-    )  # The shipped default does not change
+    assert load_config().matching.mode == "keys"  # The shipped default
     engine = make_engine(matching_mode="keys")
     assert engine.matching_mode == "keys"
     engine._scene = None  # The scene model is switched off
