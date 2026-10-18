@@ -195,6 +195,8 @@ class EnrolledObject(BaseModel):
     calibration_model: CharField = CharField(null=True)
     # A short text for the carer, for example a warning about a look-alike.
     calibration_note: TextField = TextField(null=True)
+    # True: a small object (keys, a ring, a hearing aid). The detector also looks for its words in 4 tiles of the frame.
+    small: BooleanField = BooleanField(default=False)
     created_at: DateTimeField = DateTimeField(default=utc_now)
     updated_at: DateTimeField = DateTimeField(default=utc_now)
 

@@ -139,12 +139,20 @@ The name, the category phrase and the synonyms go into the prompt of the detecto
 
 The log shows ids and counts. It never shows a name or a phrase.
 
+## Small objects
+
+The carer can mark an object as small (keys, a ring, a hearing aid): `EnrollmentService.set_small(object_id, small)`, column
+`enrolled_object.small`. The worker then gives the words of the small `ready` objects (`db.gallery.small_phrases`) to the tiled
+pass of the detector: 4 more detector runs for each frame, on 4 overlapping tiles. A small object is then larger in the picture
+that the detector sees. Without a small object, there is no tiled pass. The page says that each picture takes longer.
+The tiled pass was not measured on real small objects. The recording session must show if it helps.
+
 ## Is this your object? (plan part D2)
 
 The reference photos decide more than any signal. In a test, the 2 photos of a headset on a bed did not look like the frames,
 and one view from the place of use found it. So the carer can check boxes of recent frames (`backend/review.py`, `ReviewService`).
 
-1. **The boxes.** `ReviewService.candidates(object_id)` takes the boxes of the last `enrollment.review_hours` (72 h) from the
+1. **The boxes.** `ReviewService.candidates(object_id)` takes the boxes of the last `enrollment.review_hours` (24 h, the rolling buffer) from the
    stored crop vectors (`db.crop_vectors`), with the SigLIP agreement with the reference photos of the object. No model runs.
    It keeps the box with the highest agreement of each frame, at least `enrollment.review_min` (0.55), at most `enrollment.review_max` (6),
    the most similar first. A box that the carer answered, or that has a strong sighting of the object, is left out. The object must be `ready`.

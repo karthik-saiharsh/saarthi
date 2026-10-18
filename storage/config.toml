@@ -20,7 +20,9 @@ jpeg_quality = 95
 
 [retention]
 # Images older than this number of days can be deleted. 0 keeps all images.
-days = 0
+# 1 since 2026-11-12 (owner decision): a rolling buffer of 24 hours saves space on the Raspberry Pi.
+# The frame of a last-seen record is always kept, so the answer keeps its picture.
+days = 1
 
 [cleanup]
 # A file that the database does not know is an orphan only after this time.

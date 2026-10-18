@@ -6,7 +6,7 @@
     "2": [[803, 518, 1029, 949]],
     "3": [[875, 441, 1595, 1324]],
     "4": [],
-    "5": [],
+    "5": [[576, 748, 677, 917]],
     "6": [],
     "7": [],
     "8": [[1023, 630, 1596, 1596]],
@@ -19,6 +19,7 @@
   },
   "remarks": {
     "3": "The bottle is in a hand, close to the camera, and blurred by motion.",
+    "5": "The bottle is in the side pocket of a bag. Only its top half shows. Corrected on 2026-11-12: the first label had no box.",
     "8": "The bottle is held right against the camera. It is huge, out of focus and cut by the corner of the picture.",
     "14": "The bottle is small and far away, at the back of a desk."
   }

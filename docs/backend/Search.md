@@ -166,7 +166,7 @@ curl -o answer.jpg "http://<server>:8080/api/objects/1/last-seen/picture?view=fr
 |------------------------|---------|---------|
 | `stale_after_hours` | 24 | A record is fresh for this time |
 | `window_minutes` | 60 | The size of one window of the archive search |
-| `max_scan_hours` | 72 | The search does not look further back than this |
+| `max_scan_hours` | 24 | The search does not look further back than this. It equals the rolling buffer (`retention.days = 1`) |
 | `max_regions_per_window` | 5000 | A window holds at most this number of regions. The oldest regions are left out |
 | `max_frames` | 3000 | The search compares at most this number of frames |
 | `crop_padding` | 0.25 | Space around the object in the picture, as a part of the size of its box |

@@ -501,6 +501,33 @@ def _update_object(object_id: int, **changes: object) -> EnrolledObject:
         return EnrolledObject.get_by_id(object_id)
 
 
+def set_small(object_id: int, small: bool) -> EnrolledObject:
+    """Mark an object as small or not. A small object makes the detector look in 4 tiles of each frame."""
+    _check_id(object_id, "object_id")
+    assert isinstance(small, bool), "small must be a bool"
+    obj: EnrolledObject = _update_object(object_id, small=small)
+    logger.info("Object %d is %s", object_id, "small" if small else "not small")
+    return obj
+
+
+def small_phrases() -> list[str]:
+    """Return the detector phrases of the `ready` objects that are small. Each phrase is listed once."""
+    with translate_errors("small_phrases"):
+        phrases: list[str] = []
+        for obj in (
+            EnrolledObject.select()
+            .where(
+                EnrolledObject.status == ObjectStatus.READY.value,
+                EnrolledObject.small == 1,
+            )
+            .order_by(EnrolledObject.id)
+        ):
+            for phrase in [obj.category_phrase, *obj.synonyms]:
+                if phrase not in phrases:
+                    phrases.append(phrase)
+        return phrases
+
+
 def gallery_phrases() -> list[str]:
     """Return the detector phrases of all `ready` objects: the category and the synonyms.
 

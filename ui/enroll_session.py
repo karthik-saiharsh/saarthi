@@ -189,6 +189,18 @@ class EnrollSession:
         await self.select(created[0].id)
         return True
 
+    async def set_small(self, small: bool) -> None:
+        """Mark the open object as small or not."""
+        assert isinstance(small, bool), "small must be a bool"
+        object_id: int | None = self._selected_id
+        if object_id is None:
+            return
+
+        async def action() -> None:
+            await self._service.set_small(object_id, small)
+
+        await self._run(action)
+
     async def delete_selected(self) -> None:
         """Delete the open object with its photos."""
         object_id: int | None = self._selected_id

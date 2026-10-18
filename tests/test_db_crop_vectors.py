@@ -223,5 +223,5 @@ def test_a_database_with_the_old_region_table_is_refused() -> None:
     old.connect()
     old.execute_sql("CREATE TABLE region (id INTEGER PRIMARY KEY, x0 INTEGER)")
     with pytest.raises(DbError, match="./clear"):
-        db._check_region_schema(old)
+        db._check_schema(old)
     old.close()

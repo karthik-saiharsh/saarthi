@@ -48,7 +48,12 @@ def build_enroll_page(service: EnrollmentService) -> None:
     @ui.refreshable
     def header_view() -> None:
         if session.detail is not None:
-            object_header(session.detail, session.delete_selected, session.close)
+            object_header(
+                session.detail,
+                session.delete_selected,
+                session.close,
+                session.set_small,
+            )
 
     @ui.refreshable
     def photos_view() -> None:

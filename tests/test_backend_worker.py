@@ -811,3 +811,26 @@ def test_the_thread_runs_the_idle_task_when_the_queue_is_empty() -> None:
         assert ran.wait(10)
     finally:
         setup.worker.stop(timeout=10)
+
+
+def test_the_words_of_a_small_object_go_to_the_tiled_pass(setup: Setup) -> None:
+    if db.gallery.gallery_phrases():
+        pytest.skip("The actual gallery has ready objects")
+    setup.detector.detections = [
+        RawDetection(Box(10, 10, 40, 40), 0.6, "bottle", "full")
+    ]
+    bottle: int = make_ready(setup, 240)
+    setup.detector.detections = [
+        RawDetection(Box(10, 10, 40, 40), 0.6, "a set of keys", "full")
+    ]
+    keys: int = make_ready(setup, 250, phrase="a set of keys", synonyms=["house keys"])
+    setup.upload(noise(260))
+    setup.worker.process_next()
+    assert setup.detector.small_calls[-1] == ([], False)  # No small object: no tiles
+    setup.enrollment.set_small(keys, True)
+    assert setup.enrollment.get_object(keys).summary.small
+    assert not setup.enrollment.get_object(bottle).summary.small
+    setup.upload(noise(270))
+    setup.worker.process_next()
+    # The category phrase and the synonyms of the small object, and no word of the bottle.
+    assert setup.detector.small_calls[-1] == (["a set of keys", "house keys"], True)

@@ -43,7 +43,7 @@ For the full design, see `docs/db/Ingestion Database Schema.md`.
   broad detector (`source = broad`, with its name in `label`). Each box has up to three vectors, one in each FAISS index:
   the DINOv2 region vector (`data/regions.faiss`), the SigLIP crop vector (`data/crops.faiss`, column `crop_model`)
   and the DINOv2 key of the crop (`data/keys.faiss`, column `key_model`). The id of the row is the id of each vector.
-- `enrolled_object`: one row for each object of the gallery, with its calibration.
+- `enrolled_object`: one row for each object of the gallery, with its calibration and the flag `small` (the tiled pass of the detector).
 - `reference_photo`: one row for each photo that a carer gave for an object.
 - `object_view`: one vector for each view of a reference photo. These vectors are in SQLite, not in FAISS, because the gallery is small.
 - `sighting`: one row for each accepted match of an object in a frame.

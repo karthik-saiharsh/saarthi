@@ -158,7 +158,7 @@ Both tables are in `db/schema.py`. The helpers are in `db/sightings.py` (`db.sig
 - The time is the time of the server, not of the wearable. Frames that the wearable keeps and sends later get a wrong time.
 - The rule has no check of the place. The data has no room. The pipeline document asks for it (technique 12).
 - The sighting log is not pruned by age. A frame that expires takes its rows with it.
-  With `retention.days = 0` the log grows without a limit. The rows are small.
+  The rows of the log go with their frames, so the rolling buffer (`retention.days = 1`) also limits the log. With `retention.days = 0` the log grows without a limit. The rows are small.
 - The rule counts the weak sightings of the same object only. A weak sighting does not show if a look-alike was nearby.
 - The views come from one embedding model. If the model changes, an object is ignored until the carer adds its photos again.
 - The values of `[matching]` come from 3 objects in 15 frames and one hold-out object. They are start values. Measure again with more objects.

@@ -176,6 +176,7 @@ def _object_info(summary: ObjectSummary) -> ObjectInfo:
         tracked=summary.tracked,
         ready=summary.status == ObjectStatus.READY.value,
         note=summary.note,
+        small=summary.small,
         photo_counts={
             PhotoState(status): count for status, count in summary.photo_counts.items()
         },
@@ -242,6 +243,10 @@ class UiEnrollmentService:
     async def delete_object(self, object_id: int) -> None:
         assert isinstance(object_id, int), "object_id must be an int"
         await self._call(self._service.delete_object, object_id)
+
+    async def set_small(self, object_id: int, small: bool) -> None:
+        assert isinstance(object_id, int) and isinstance(small, bool), "bad arguments"
+        await self._call(self._service.set_small, object_id, small)
 
     async def add_photo(self, object_id: int, data: bytes) -> PhotoInfo:
         assert isinstance(object_id, int), "object_id must be an int"

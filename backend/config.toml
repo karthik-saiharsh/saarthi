@@ -60,7 +60,7 @@ max_objects = 50
 # "Is this your object?" (plan part D2, backend/review.py). The page shows the boxes of the frames of the last
 # review_hours that look most like the object: at most review_max boxes, one for each frame, with a SigLIP
 # agreement of review_min or more. Start values. A lower review_min shows more boxes that are not the object.
-review_hours = 72
+review_hours = 24  # The frames of the rolling buffer (retention.days = 1)
 review_max = 6
 review_min = 0.55
 
@@ -83,7 +83,7 @@ stale_after_hours = 24
 # The archive is searched in windows of this many minutes, newest window first.
 window_minutes = 60
 # The search never looks further back than this many hours. A search with no record stops here.
-max_scan_hours = 72
+max_scan_hours = 24  # The rolling buffer keeps 24 hours (retention.days = 1)
 # A window holds at most this many regions. The oldest regions of a longer window are left out.
 max_regions_per_window = 5000
 # A search compares at most this many frames. A longer search stops, and the answer says so.
@@ -177,7 +177,7 @@ rewrite_min_words = 3
 # score 0.83) gave a wrong answer in a test.
 rewrite_min_score = 0.9
 # The search never looks back further than this many hours, and reads at most this many boxes.
-max_scan_hours = 72
+max_scan_hours = 24  # The rolling buffer keeps 24 hours (retention.days = 1)
 max_boxes = 5000
 # The version of the search. "classic" trusts the names and the pictures (steps 1 to 3 above).
 # "verified" uses the pictures and names only to choose candidate boxes. Grounding DINO then checks each candidate

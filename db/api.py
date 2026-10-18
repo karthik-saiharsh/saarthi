@@ -84,8 +84,11 @@ _VECTOR_KEYS: tuple[str, ...] = (
     "crop_dimension",
     "key_dimension",
 )
-# The newest columns of the table `region`. A database without them has an older schema.
-_REGION_COLUMNS: tuple[str, ...] = ("label", "crop_model", "key_model")
+# The newest columns of some tables. A database without them has an older schema.
+_NEW_COLUMNS: dict[str, tuple[str, ...]] = {
+    "region": ("label", "crop_model", "key_model"),
+    "enrolled_object": ("small",),
+}
 # The longest name of a box of the broad detector.
 MAX_LABEL_LENGTH: int = 80
 _SQLITE_PRAGMAS: dict[str, object] = {
@@ -326,7 +329,7 @@ def init_db(config_path: Path = DEFAULT_CONFIG_PATH) -> tuple[SqliteDatabase, Db
             ],
             safe=True,
         )
-        _check_region_schema(database)
+        _check_schema(database)
     except (OSError, PeeweeException) as error:
         logger.error(
             "Cannot open database %s: %s: %s",
@@ -353,16 +356,19 @@ def init_db(config_path: Path = DEFAULT_CONFIG_PATH) -> tuple[SqliteDatabase, Db
     return database, config
 
 
-def _check_region_schema(database: SqliteDatabase) -> None:
-    """Refuse a database whose table `region` is older than the code. There is no migration: run `./clear`."""
-    columns: set[str] = {column.name for column in database.get_columns("region")}
-    missing: list[str] = [c for c in _REGION_COLUMNS if c not in columns]
-    if missing:
-        logger.error("The database has an older schema (no column %s)", missing[0])
-        raise DbError(
-            "The database has an older schema than the code (one table for all boxes). "
-            "Stop the application and run ./clear to start with a new database"
-        )
+def _check_schema(database: SqliteDatabase) -> None:
+    """Refuse a database whose tables are older than the code. There is no migration: run `./clear`."""
+    for table, needed in _NEW_COLUMNS.items():
+        columns: set[str] = {column.name for column in database.get_columns(table)}
+        missing: list[str] = [c for c in needed if c not in columns]
+        if missing:
+            logger.error(
+                "The database has an older schema (no column %s.%s)", table, missing[0]
+            )
+            raise DbError(
+                "The database has an older schema than the code. "
+                "Stop the application and run ./clear to start with a new database"
+            )
 
 
 _translate_errors = translate_errors  # The old private name stays for the code below

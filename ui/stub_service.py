@@ -100,6 +100,7 @@ class _StubObject:
     synonyms: tuple[str, ...]
     tracked: bool
     photos: list[_StubPhoto] = field(default_factory=list)
+    small: bool = False
 
 
 class StubEnrollmentService:
@@ -141,6 +142,9 @@ class StubEnrollmentService:
     async def delete_object(self, object_id: int) -> None:
         self._find(object_id)
         del self._objects[object_id]
+
+    async def set_small(self, object_id: int, small: bool) -> None:
+        self._find(object_id).small = small
 
     async def add_photo(self, object_id: int, data: bytes) -> PhotoInfo:
         assert data, "data must not be empty"
@@ -234,6 +238,7 @@ class StubEnrollmentService:
             ready,
             note,
             counts,
+            obj.small,
         )
 
 

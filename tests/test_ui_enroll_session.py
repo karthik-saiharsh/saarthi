@@ -89,6 +89,21 @@ class FakeEnrollment:
         await self._busy()
         return ObjectDetail(self._find(object_id), tuple(self.photos[object_id]))
 
+    async def set_small(self, object_id: int, small: bool) -> None:
+        self._record(f"small {object_id} {small}")
+        info = self._find(object_id)
+        self.objects[object_id] = ObjectInfo(
+            info.id,
+            info.name,
+            info.category_phrase,
+            info.synonyms,
+            info.tracked,
+            info.ready,
+            info.note,
+            info.photo_counts,
+            small,
+        )
+
     async def delete_object(self, object_id: int) -> None:
         self._record(f"delete {object_id}")
         self._find(object_id)
@@ -474,5 +489,17 @@ def test_an_answer_is_sent_and_the_box_goes_away() -> None:
         assert service.answers == [(object_id, 7, False)]
         assert session.review == [] and session.review_picture(7) is None
         assert listener.notices and listener.notices[-1][1] is False
+
+    run(scenario)
+
+
+def test_the_open_object_can_be_marked_small() -> None:
+    async def scenario() -> None:
+        session, service, _ = make_session()
+        object_id = ready_object(service)
+        await session.select(object_id)
+        await session.set_small(True)
+        assert f"small {object_id} True" in service.calls
+        assert session.detail is not None and session.detail.info.small
 
     run(scenario)

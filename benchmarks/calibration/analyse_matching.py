@@ -251,7 +251,8 @@ def main() -> None:
             )
             mark = (
                 "  <- the present values"
-                if floor == 0.0 and offset == base.enrollment.tau_strong_offset
+                if floor == base.enrollment.tau_min
+                and offset == base.enrollment.tau_strong_offset
                 else ""
             )
             print(

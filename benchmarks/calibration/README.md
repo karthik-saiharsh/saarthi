@@ -50,6 +50,18 @@ uv run python benchmarks/calibration/analyse_verification.py DATASET_DIR CACHE_D
 The False strong match is the number that matters most. It changes the last-seen record at once.
 With the old values, 7.6 false candidates for each subset reached the strong level. With the new values, none do.
 
+### Correction of photo 5 (2026-11-12)
+
+`labels.json` had no box for photo 5. It shows the bottle in the side pocket of a bag (half of the bottle, small). The label is corrected,
+so the data has 7 bottles, not 6. The analyses were run again (with `detection.input_short_edge` 800 and 640):
+
+- The detector values stay: `box_threshold` 0.25 and `nms_iou` 0.5 keep all 7 bottles.
+- The matching numbers change. With the present values (`tau_min` 0.45, `tau_strong_offset` 0.10), a subset of reference photos now gives
+  2.0 false strong matches at 800 (1.5 at 640) and 0.36 true strong (0.24), against 0.0 and 0.48 before. The cause is the label:
+  a subset that has the bag photo as a reference gives a weaker `tau`. No other floor or offset is better (fewer false strong matches
+  only come with almost no true strong match). The values stay.
+- These values only decide the mode `tau`. The default mode `keys` does not use `tau` (see `benchmarks/recall/README.md`).
+
 ## What the data could not decide
 
 - `margin_min` and `margin_strong`: there is one object, so there is no other object to compare with.

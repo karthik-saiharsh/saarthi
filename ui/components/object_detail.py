@@ -4,6 +4,7 @@ import base64
 from collections.abc import Awaitable, Callable
 
 from nicegui import ui
+from nicegui.events import ValueChangeEventArguments
 
 from ui.components.status_badge import badge, photo_badge
 from ui.ports import ObjectDetail, PhotoInfo, PhotoState
@@ -31,12 +32,23 @@ def image_source(jpeg: bytes) -> str:
     return "data:image/jpeg;base64," + base64.b64encode(jpeg).decode("ascii")
 
 
+SMALL_LABEL: str = "This is a small object, for example keys, a ring or a hearing aid."
+SMALL_HINT: str = (
+    "The computer then looks more closely at each picture. This finds small things better, "
+    "but each picture takes longer."
+)
+
+
 def object_header(
     detail: ObjectDetail,
     on_delete: Callable[[], Awaitable[None]],
     on_close: Callable[[], None],
+    on_small: Callable[[bool], Awaitable[None]] | None = None,
 ) -> None:
-    """Build the name, the words, the note and the buttons of the open object."""
+    """Build the name, the words, the note and the buttons of the open object.
+
+    `on_small(value)` runs when the carer changes the box "small object". Without it, the box is not shown.
+    """
     assert callable(on_delete) and callable(on_close), "handlers must be callable"
     info = detail.info
     with ui.element("div").classes("up-detail__head"):
@@ -65,6 +77,17 @@ def object_header(
             ui.button("Delete", color=None, on_click=confirm_delete).props(
                 "unelevated no-caps"
             ).classes("up-btn up-btn--danger")
+
+    if on_small is not None:
+
+        async def changed(event: ValueChangeEventArguments) -> None:
+            if bool(event.value) != info.small:
+                await on_small(bool(event.value))
+
+        ui.checkbox(SMALL_LABEL, value=info.small, on_change=changed).classes(
+            "up-form__check"
+        )
+        ui.label(SMALL_HINT).classes("up-form__hint")
 
     with ui.element("div").classes("up-detail__actions"):
         ui.button("Close", color=None, on_click=on_close).props(

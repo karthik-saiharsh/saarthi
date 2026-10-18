@@ -78,6 +78,8 @@ class ObjectInfo:
     # What is missing, or a warning. None when there is nothing to tell.
     note: str | None
     photo_counts: dict[PhotoState, int]
+    # True: a small object. The computer looks at it more closely, and each picture takes longer.
+    small: bool = False
 
 
 @dataclass(frozen=True)
@@ -116,6 +118,10 @@ class EnrollmentService(Protocol):
     async def get_object(self, object_id: int) -> ObjectDetail: ...
 
     async def delete_object(self, object_id: int) -> None: ...
+
+    async def set_small(self, object_id: int, small: bool) -> None:
+        """Mark an object as small or not."""
+        ...
 
     async def add_photo(self, object_id: int, data: bytes) -> PhotoInfo: ...
 

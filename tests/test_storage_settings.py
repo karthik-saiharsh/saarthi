@@ -28,7 +28,9 @@ def test_default_config_loads() -> None:
     config: StorageConfig = load_config()
     assert config.root == (STORAGE_DIR / "uploads").resolve()
     assert config.jpeg_quality == 95
-    assert config.retention_days == 0  # Nothing is deleted until the owner sets a value
+    assert (
+        config.retention_days == 1
+    )  # The rolling buffer of 24 hours (owner decision 2026-11-12)
 
 
 def test_absolute_root_is_accepted(tmp_path: Path) -> None:
@@ -58,7 +60,7 @@ def test_relative_root_inside_storage_is_accepted(tmp_path: Path) -> None:
         ("min_free_bytes = 1073741824", "min_free_bytes = -1"),
         ("jpeg_quality = 95", "jpeg_quality = 96"),
         ("jpeg_quality = 95", "jpeg_quality = 0"),
-        ("days = 0", "days = -1"),
+        ("days = 1", "days = -1"),
         ("orphan_grace_seconds = 3600", "orphan_grace_seconds = 1.5"),
     ],
 )

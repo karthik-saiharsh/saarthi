@@ -265,10 +265,15 @@ class Worker:
         every: int = self._config.generic_pass_every
         # The detector looks for the objects of the owner. Without a ready
         # object, it uses the placeholder list of `ai/config.toml`.
+        # The words of the small objects also go to the tiled pass (4 more detector runs).
+        phrases: list[str] = db.gallery.gallery_phrases()
+        small: list[str] = db.gallery.small_phrases() if phrases else []
         candidates: list[Candidate] = self._engine.detect_candidates(
             picture,
-            phrases=db.gallery.gallery_phrases() or None,
+            phrases=phrases or None,
+            small_phrases=small if phrases else None,
             include_generic=every > 0 and self._analysed % every == 0,
+            tiling=bool(small) if phrases else None,
         )
         found: list[OpenDetection] = self._detect_open(image.id, picture)
         boxes: list[Candidate] = candidates + self._engine.broad_candidates(

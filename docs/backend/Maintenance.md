@@ -17,7 +17,8 @@ They run in this order.
 
 Delete images that are too old.
 
-- The age limit is `retention.days` in `storage/config.toml`. The value 0 (the default) keeps all images, and the job does nothing.
+- The age limit is `retention.days` in `storage/config.toml`. The default is 1 (owner decision 2026-11-12: a rolling buffer of 24 hours
+  saves space on the Raspberry Pi). The value 0 keeps all images, and the job does nothing.
 - The job lists the images that were captured before the limit. It lists only `done`, `rejected` and `failed` images.
   It skips an image that a last-seen record uses.
   An image that waits for the worker or is in use is never deleted.

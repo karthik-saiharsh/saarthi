@@ -69,6 +69,7 @@ class ObjectSummary:
     tau: float | None
     tau_strong: float | None
     note: str | None  # What is missing, or a warning
+    small: bool  # The detector also looks in 4 tiles of each frame
     photo_counts: dict[str, int]  # Photos for each status
 
 
@@ -164,6 +165,12 @@ class EnrollmentService:
             self._photo_info(p) for p in db.gallery.list_photos(object_id)
         ]
         return ObjectDetail(self._summary(obj), photos)
+
+    def set_small(self, object_id: int, small: bool) -> ObjectSummary:
+        """Mark an object as small (keys, a ring): the detector then also looks in 4 tiles of each frame. It costs time."""
+        assert isinstance(small, bool), "small must be a bool"
+        self._require_object(object_id)
+        return self._summary(db.gallery.set_small(object_id, small))
 
     def delete_object(self, object_id: int) -> None:
         """Delete an object, its photos and its files. The other objects are calibrated again."""
@@ -335,5 +342,6 @@ class EnrollmentService:
             tau=obj.tau,
             tau_strong=obj.tau_strong,
             note=obj.calibration_note,
+            small=bool(obj.small),
             photo_counts={status.value: count for status, count in counts.items()},
         )

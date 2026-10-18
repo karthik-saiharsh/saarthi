@@ -48,7 +48,8 @@ From top to bottom:
 3. The form: name, kind of object (the category phrase), other words (synonyms, separated by commas),
    and the check box "This object only looks like one of mine. Never report it."
 4. The list of objects. Each row has the name, the phrase, a count of the photos, a note, and a badge: Ready, Needs photos or Look-alike.
-5. The open object: its name, its words, the buttons Close and Delete object, the photo picker, and one card for each photo.
+5. The open object: its name, its words, the box "This is a small object ..." with a hint that each picture takes longer,
+   the buttons Close and Delete object, the photo picker, and one card for each photo.
 6. For a ready object: "Is this your headset?". One card for each box of a recent frame that may show the object, with the
    picture, the age ("Seen 2 hours ago.") and the buttons "Yes, this is it" and "No". The section is hidden when there is no box.
    After an answer, the box goes away and a toast thanks the carer. A "yes" also adds the picture to the photos of the object.

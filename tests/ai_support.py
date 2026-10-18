@@ -20,6 +20,9 @@ class FakeDetector:
         self.generic_flags: list[bool] = []
         self.phrase_calls: list[list[str]] = []
         self.context_flags: list[bool] = []
+        self.small_calls: list[tuple[list[str], bool | None]] = (
+            []
+        )  # The small phrases and the tiling switch
         self.detections: list[RawDetection] = []
         self.error: Exception | None = None
 
@@ -34,6 +37,7 @@ class FakeDetector:
     ):
         self.generic_flags.append(include_generic)
         self.phrase_calls.append(list(phrases))
+        self.small_calls.append((list(small_phrases), tiling))
         self.context_flags.append(context_phrases)
         if self.error is not None:
             error, self.error = self.error, None  # Fail one time only

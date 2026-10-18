@@ -61,7 +61,7 @@ The open search has a second start. When the resolver says `ambiguous`, the find
 A tap calls `UiFindService.ask_open`. It runs `OpenSearchService.find` with the same words, in the mode of the config, and skips the registered objects.
 The answer is weak, or "no match" (see `docs/ui/Find Page.md`). The route `POST /api/search` does not change.
 
-The search reads the boxes of `done` frames of the last `max_scan_hours` (72), at most `max_boxes` (5000), and compares them in memory.
+The search reads the boxes of `done` frames of the last `max_scan_hours` (24, the rolling buffer), at most `max_boxes` (5000), and compares them in memory.
 The route gives `status: "open"` with the answer, its `label` and `via` (`label`, `visual` or `rewrite`; `verified` in the mode `verified`).
 
 ## The two modes
