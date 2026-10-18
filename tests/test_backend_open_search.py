@@ -59,6 +59,7 @@ def make_service(
     **changes: object,
 ) -> OpenSearchService:
     base: BackendConfig = load_config()
+    changes.setdefault("mode", "classic")  # Most tests here test the classic steps
     config = dataclasses.replace(
         base, open_search=dataclasses.replace(base.open_search, **changes)
     )
@@ -293,8 +294,8 @@ def test_the_mode_decides_the_path() -> None:
     assert len(detector.phrase_calls) == 1
 
 
-def test_the_classic_mode_stays_the_default_and_is_unchanged() -> None:
-    assert load_config().open_search.mode == "classic"
+def test_the_verified_mode_is_the_default_and_classic_is_unchanged() -> None:
+    assert load_config().open_search.mode == "verified"
     add_box(store_frame(8), "stuff", shows="umbrella")
     detector = ScriptedDetector()
     found = make_service(detector=detector).find("umbrella")
@@ -652,7 +653,7 @@ def test_the_route_gives_status_open_and_the_label() -> None:
             QueryResolver(config, engine),
             SearchService(config, engine),
             None,
-            OpenSearchService(config, engine),
+            make_service(),  # The label path of the classic mode
         )
     )
     client = TestClient(app)

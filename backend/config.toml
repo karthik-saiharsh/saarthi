@@ -182,7 +182,7 @@ max_boxes = 5000
 # The version of the search. "classic" trusts the names and the pictures (steps 1 to 3 above).
 # "verified" uses the pictures and names only to choose candidate boxes. Grounding DINO then checks each candidate
 # frame with the words of the user, and an unchecked box is never an answer. See docs/backend/Open Search.md.
-mode = "classic"
+mode = "verified"  # Owner decision 2026-11-12
 # The next four keys are start values. Only the mode "verified" uses them.
 # The number of boxes (best SigLIP score over the prompts) that become candidates.
 verify_top_boxes = 20

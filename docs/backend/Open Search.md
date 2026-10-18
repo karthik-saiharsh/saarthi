@@ -70,8 +70,8 @@ The route gives `status: "open"` with the answer, its `label` and `via` (`label`
 
 | Mode | Behaviour |
 |------|-----------|
-| `classic` (default) | The steps above: the names, the pictures, the rewrite. The search trusts them |
-| `verified` | The pictures and the names only choose candidates. Grounding DINO checks each candidate frame with the words of the user |
+| `classic` | The steps above: the names, the pictures, the rewrite. The search trusts them |
+| `verified` (default since 2026-11-12, owner decision) | The pictures and the names only choose candidates. Grounding DINO checks each candidate frame with the words of the user |
 
 The mode `classic` does not change. The mode `verified` exists because the detector (YOLOE) often gives a box a wrong name,
 and the SigLIP step answers only at a probability of 0.8, which a real object seldom reaches (a real laptop got 0.08).
