@@ -88,6 +88,14 @@ class ObjectDetail:
     photos: tuple[PhotoInfo, ...]
 
 
+@dataclass(frozen=True)
+class ReviewItem:
+    """A box of a recent frame that may show the open object: "Is this your object?"."""
+
+    region_id: int
+    age_seconds: int  # The time since the frame was received
+
+
 class EnrollmentService(Protocol):
     """The gallery: objects and their reference photos.
 
@@ -119,6 +127,18 @@ class EnrollmentService(Protocol):
 
     async def get_crop(self, object_id: int, photo_id: int, max_side: int) -> bytes:
         """Return a JPEG of the part of the photo where the object was found."""
+        ...
+
+    async def list_review(self, object_id: int) -> list[ReviewItem]:
+        """Return the boxes of recent frames that may show the object. Empty if the object is not ready."""
+        ...
+
+    async def get_review_picture(self, region_id: int, max_side: int) -> bytes:
+        """Return a JPEG of a box to check, with some space around it."""
+        ...
+
+    async def answer_review(self, object_id: int, region_id: int, yes: bool) -> None:
+        """Keep the answer of the carer. "Yes" adds a photo of the object."""
         ...
 
 

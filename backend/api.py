@@ -198,7 +198,7 @@ class Backend:
     @property
     def enrollment_service(self) -> UiEnrollmentService:
         """The gallery service that the UI calls. It implements `ui.ports.EnrollmentService`."""
-        return UiEnrollmentService(self._enrollment)
+        return UiEnrollmentService(self._enrollment, self._review)
 
     @property
     def find_service(self) -> UiFindService:

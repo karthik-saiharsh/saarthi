@@ -29,6 +29,7 @@ from ui.ports import (
     OutcomeStatus,
     PhotoInfo,
     PhotoState,
+    ReviewItem,
     Sighting,
     UploadOutcome,
 )
@@ -169,6 +170,16 @@ class StubEnrollmentService:
             raise EnrollmentError("This action is not possible in the present state.")
         photo.fails = False
         photo.retried_at = time.monotonic()
+
+    async def list_review(self, object_id: int) -> list[ReviewItem]:
+        """The stub has no frames, so there is nothing to check."""
+        return []
+
+    async def get_review_picture(self, region_id: int, max_side: int) -> bytes:
+        raise EnrollmentError("The box cannot be checked any more.")
+
+    async def answer_review(self, object_id: int, region_id: int, yes: bool) -> None:
+        raise EnrollmentError("The box cannot be checked any more.")
 
     async def get_crop(self, object_id: int, photo_id: int, max_side: int) -> bytes:
         photo: _StubPhoto = self._find_photo(object_id, photo_id)

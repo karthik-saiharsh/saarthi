@@ -15,6 +15,7 @@ from ui.ports import (
     ObjectDetail,
     ObjectInfo,
     PhotoState,
+    ReviewItem,
 )
 from ui.settings import ACCEPTED_CONTENT_TYPES, MAX_FILE_SIZE_BYTES
 from ui.upload_session import MESSAGE_EMPTY, MESSAGE_TOO_LARGE, MESSAGE_UNSUPPORTED_TYPE
@@ -36,6 +37,10 @@ MESSAGE_NAME_REQUIRED: str = "Enter a name for the object."
 MESSAGE_CATEGORY_REQUIRED: str = "Enter the kind of object, for example: a bottle."
 MESSAGE_LIST_FAILED: str = "The list of objects could not be loaded."
 MESSAGE_OBJECT_CREATED: str = "Object added. Now add photos of it."
+MESSAGE_REVIEW_YES: str = "Thank you. The picture is now a photo of this object."
+MESSAGE_REVIEW_NO: str = "Thank you. The computer will not choose this again."
+# The longest side of a picture to check.
+REVIEW_MAX_SIDE: int = 320
 
 
 def parse_synonyms(text: str) -> tuple[str, ...]:
@@ -68,6 +73,9 @@ class EnrollSession:
         self._selected_id: int | None = None
         self._detail: ObjectDetail | None = None
         self._crops: dict[int, bytes] = {}
+        # "Is this your object?": the boxes to check, and their pictures.
+        self._review: list[ReviewItem] = []
+        self._review_pictures: dict[int, bytes] = {}
         # What the view shows now. `_reload` compares with it.
         self._shown: object = None
 
@@ -91,6 +99,29 @@ class EnrollSession:
         if self._detail is None:
             return False
         return any(photo.state in WAITING_STATES for photo in self._detail.photos)
+
+    @property
+    def review(self) -> list[ReviewItem]:
+        """The boxes of recent frames that may show the open object."""
+        return list(self._review)
+
+    def review_picture(self, region_id: int) -> bytes | None:
+        """Return the JPEG of a box to check, or None."""
+        return self._review_pictures.get(region_id)
+
+    async def answer_review(self, region_id: int, yes: bool) -> None:
+        """The carer says if a box shows the open object."""
+        assert isinstance(region_id, int), "region_id must be an int"
+        assert isinstance(yes, bool), "yes must be a bool"
+        object_id: int | None = self._selected_id
+        if object_id is None:
+            return
+
+        async def action() -> None:
+            await self._service.answer_review(object_id, region_id, yes)
+
+        if await self._run(action):
+            self._notice(MESSAGE_REVIEW_YES if yes else MESSAGE_REVIEW_NO, False)
 
     def crop(self, photo_id: int) -> bytes | None:
         """Return the JPEG crop of a photo, or None if there is none."""
@@ -116,6 +147,7 @@ class EnrollSession:
             self._selected_id = object_id
             self._detail = None
             self._crops = {}
+            self._review, self._review_pictures = [], {}
             self._shown = None
             self._notify_changed()
             await self._reload()
@@ -125,6 +157,7 @@ class EnrollSession:
         self._selected_id = None
         self._detail = None
         self._crops = {}
+        self._review, self._review_pictures = [], {}
         self._notify_changed()
 
     async def create_object(
@@ -249,8 +282,14 @@ class EnrollSession:
                 self._selected_id = None
                 self._detail = None
         await self._load_crops()
+        await self._load_review()
         # The view draws again only when something is new, so a poll does not flicker.
-        state = (self._objects, self._detail, frozenset(self._crops))
+        state = (
+            self._objects,
+            self._detail,
+            frozenset(self._crops),
+            tuple(self._review),
+        )
         if state != self._shown:
             self._shown = state
             self._notify_changed()
@@ -272,6 +311,34 @@ class EnrollSession:
             except EnrollmentError:
                 # The card shows a text instead of the crop.
                 logger.warning("No crop for photo %d", photo_id)
+
+    async def _load_review(self) -> None:
+        """Get the boxes to check for a ready object, and the picture of each one once."""
+        if (
+            self._detail is None
+            or self._selected_id is None
+            or not self._detail.info.ready
+        ):
+            self._review, self._review_pictures = [], {}
+            return
+        try:
+            self._review = await self._service.list_review(self._selected_id)
+        except EnrollmentError:
+            logger.warning("The boxes to check could not be loaded")
+            self._review = []
+        wanted: set[int] = {item.region_id for item in self._review}
+        self._review_pictures = {
+            i: data for i, data in self._review_pictures.items() if i in wanted
+        }
+        for region_id in sorted(wanted - self._review_pictures.keys()):
+            try:
+                self._review_pictures[region_id] = (
+                    await self._service.get_review_picture(region_id, REVIEW_MAX_SIDE)
+                )
+            except EnrollmentError:
+                logger.warning("No picture for box %d", region_id)
+        # A box without a picture cannot be checked.
+        self._review = [i for i in self._review if i.region_id in self._review_pictures]
 
     @staticmethod
     def _check_limits(content_type: str, size: int) -> str | None:

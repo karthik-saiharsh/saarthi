@@ -17,6 +17,7 @@ from ui.ports import (
     ObjectInfo,
     PhotoInfo,
     PhotoState,
+    ReviewItem,
 )
 from ui.settings import MAX_FILE_SIZE_BYTES
 from ui.upload_session import MESSAGE_EMPTY, MESSAGE_TOO_LARGE, MESSAGE_UNSUPPORTED_TYPE
@@ -35,6 +36,9 @@ class FakeEnrollment:
         self.active: int = 0
         self.max_active: int = 0
         self._next: int = 1
+        # The boxes to check of each object, and the answers.
+        self.review: dict[int, list[ReviewItem]] = {}
+        self.answers: list[tuple[int, int, bool]] = []
 
     def _record(self, call: str) -> None:
         self.calls.append(call)
@@ -112,6 +116,21 @@ class FakeEnrollment:
     async def retry_photo(self, object_id: int, photo_id: int) -> None:
         self._record(f"retry {photo_id}")
         self.set_state(object_id, photo_id, PhotoState.PENDING)
+
+    async def list_review(self, object_id: int) -> list[ReviewItem]:
+        self._record(f"review {object_id}")
+        return list(self.review.get(object_id, []))
+
+    async def get_review_picture(self, region_id: int, max_side: int) -> bytes:
+        if region_id == 9999:
+            raise EnrollmentError("gone")
+        return f"box{region_id}".encode()
+
+    async def answer_review(self, object_id: int, region_id: int, yes: bool) -> None:
+        self.answers.append((object_id, region_id, yes))
+        self.review[object_id] = [
+            i for i in self.review.get(object_id, []) if i.region_id != region_id
+        ]
 
     async def get_crop(self, object_id: int, photo_id: int, max_side: int) -> bytes:
         self.crop_calls.append(max_side)
@@ -406,5 +425,54 @@ def test_listener_errors_do_not_stop_the_session() -> None:
         )
         assert await session.create_object("Bottle", "a bottle", "", True)
         assert session.selected_id == 1
+
+    run(scenario)
+
+
+# ---- Is this your object? ----
+
+
+def ready_object(service: FakeEnrollment, ready: bool = True) -> int:
+    info = ObjectInfo(50, "Headset", "headphones", (), True, ready, None, {})
+    service.objects[50] = info
+    service.photos[50] = []
+    return 50
+
+
+def test_a_ready_object_shows_its_boxes_to_check_with_pictures() -> None:
+    async def scenario() -> None:
+        session, service, _ = make_session()
+        object_id = ready_object(service)
+        service.review[object_id] = [ReviewItem(7, 600), ReviewItem(9999, 60)]
+        await session.select(object_id)
+        # The box without a picture cannot be checked, so it is not shown.
+        assert [i.region_id for i in session.review] == [7]
+        assert session.review_picture(7) == b"box7"
+
+    run(scenario)
+
+
+def test_an_object_that_is_not_ready_asks_nothing() -> None:
+    async def scenario() -> None:
+        session, service, _ = make_session()
+        object_id = ready_object(service, ready=False)
+        service.review[object_id] = [ReviewItem(7, 600)]
+        await session.select(object_id)
+        assert session.review == []
+        assert f"review {object_id}" not in service.calls
+
+    run(scenario)
+
+
+def test_an_answer_is_sent_and_the_box_goes_away() -> None:
+    async def scenario() -> None:
+        session, service, listener = make_session()
+        object_id = ready_object(service)
+        service.review[object_id] = [ReviewItem(7, 600)]
+        await session.select(object_id)
+        await session.answer_review(7, yes=False)
+        assert service.answers == [(object_id, 7, False)]
+        assert session.review == [] and session.review_picture(7) is None
+        assert listener.notices and listener.notices[-1][1] is False
 
     run(scenario)

@@ -51,6 +51,7 @@ from backend.query import (
     QueryStatus,
     clean_query,
 )
+from backend.review import ReviewService
 from backend.search import Answer, SearchService
 from backend.settings import load_config
 from backend.voice import VoiceService
@@ -72,6 +73,7 @@ from ui.ports import (
     PhotoInfo,
     PhotoState,
     RegionInfo,
+    ReviewItem,
     Sighting,
     SightingInfo,
     UploadOutcome,
@@ -191,11 +193,15 @@ class UiEnrollmentService:
     `EnrollmentError` with a fixed text.
     """
 
-    def __init__(self, service: EnrollmentService) -> None:
+    def __init__(
+        self, service: EnrollmentService, review: ReviewService | None = None
+    ) -> None:
         assert isinstance(
             service, EnrollmentService
         ), "service must be an EnrollmentService"
         self._service: EnrollmentService = service
+        # "Is this your object?". Without it, the page shows no box to check.
+        self._review: ReviewService | None = review
 
     async def _call(
         self, function: Callable[..., _Result], *arguments: object
@@ -260,6 +266,29 @@ class UiEnrollmentService:
     async def get_crop(self, object_id: int, photo_id: int, max_side: int) -> bytes:
         assert isinstance(object_id, int) and isinstance(photo_id, int), "ids are int"
         return await self._call(self._service.get_crop, object_id, photo_id, max_side)
+
+    async def list_review(self, object_id: int) -> list[ReviewItem]:
+        assert isinstance(object_id, int), "object_id must be an int"
+        if self._review is None or not self._review.enabled:
+            return []
+        obj = await self._call(self._service.get_object, object_id)
+        if obj.summary.status != "ready" or not obj.summary.tracked:
+            return []  # Only a ready, tracked object can be checked
+        found = await self._call(self._review.candidates, object_id)
+        return [ReviewItem(c.region_id, c.age_seconds) for c in found]
+
+    async def get_review_picture(self, region_id: int, max_side: int) -> bytes:
+        assert isinstance(region_id, int), "region_id must be an int"
+        if self._review is None:
+            raise EnrollmentError(MESSAGE_NOT_FOUND)
+        return await self._call(self._review.picture, region_id, max_side)
+
+    async def answer_review(self, object_id: int, region_id: int, yes: bool) -> None:
+        assert isinstance(object_id, int) and isinstance(region_id, int), "ids are int"
+        assert isinstance(yes, bool), "yes must be a bool"
+        if self._review is None:
+            raise EnrollmentError(MESSAGE_NOT_FOUND)
+        await self._call(self._review.answer, object_id, region_id, yes)
 
 
 MESSAGE_VOICE_FAILED: str = "The computer could not listen. Please try again."

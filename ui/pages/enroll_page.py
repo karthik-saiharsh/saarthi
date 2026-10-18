@@ -10,6 +10,7 @@ from ui.components.enroll_guide import enroll_guide
 from ui.components.object_detail import object_header, photo_grid
 from ui.components.object_form import object_form
 from ui.components.object_list import object_list
+from ui.components.object_review import object_review
 from ui.components.upload_picker import upload_picker
 from ui.enroll_session import EnrollSession
 from ui.ports import EnrollmentService
@@ -60,10 +61,21 @@ def build_enroll_page(service: EnrollmentService) -> None:
                 session.retry,
             )
 
+    @ui.refreshable
+    def review_view() -> None:
+        if session.detail is not None:
+            object_review(
+                session.detail.info.name,
+                session.review,
+                session.review_picture,
+                session.answer_review,
+            )
+
     def on_changed() -> None:
         objects_view.refresh()
         header_view.refresh()
         photos_view.refresh()
+        review_view.refresh()
         detail_card.set_visibility(session.selected_id is not None)
 
     session: EnrollSession = EnrollSession(service, on_changed, _notify)
@@ -81,6 +93,7 @@ def build_enroll_page(service: EnrollmentService) -> None:
             header_view()
             upload_picker(session.add_photo, title=PICKER_TITLE)
             photos_view()
+            review_view()
         detail_card.set_visibility(False)
 
     ui.timer(POLL_SECONDS, session.poll)

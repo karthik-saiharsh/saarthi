@@ -222,3 +222,8 @@ def test_the_backend_gives_the_adapter() -> None:
     from backend.api import Backend
 
     assert Backend.enrollment_service.fget is not None  # type: ignore[attr-defined]
+
+
+def test_an_adapter_without_the_review_asks_nothing() -> None:
+    adapter = UiEnrollmentService(EnrollmentService(load_config(), make_engine()))
+    assert asyncio.run(adapter.list_review(1)) == []

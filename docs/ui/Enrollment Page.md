@@ -30,6 +30,9 @@ A small navigation links `/find`, `/upload`, `/enroll` and `/memory` on all page
 | `add_photo(object_id, data)` | `PhotoInfo` |
 | `confirm_photo`, `remove_photo`, `retry_photo` (`object_id`, `photo_id`) | Nothing |
 | `get_crop(object_id, photo_id, max_side)` | The bytes of a JPEG |
+| `list_review(object_id)` | A list of `ReviewItem` (`region_id`, `age_seconds`): the boxes of recent frames that may show the object. Empty for an object that is not ready, or a look-alike |
+| `get_review_picture(region_id, max_side)` | The bytes of a JPEG of the box, with some space around it |
+| `answer_review(object_id, region_id, yes)` | Nothing. "Yes" adds a photo of the object, "No" makes the box a negative (see `docs/backend/Enrollment.md`) |
 
 Each method raises `EnrollmentError` for an expected problem. The text of the error is safe to show.
 The real implementation is `Backend.enrollment_service` (`backend/ui_adapter.py`).
@@ -46,6 +49,9 @@ From top to bottom:
    and the check box "This object only looks like one of mine. Never report it."
 4. The list of objects. Each row has the name, the phrase, a count of the photos, a note, and a badge: Ready, Needs photos or Look-alike.
 5. The open object: its name, its words, the buttons Close and Delete object, the photo picker, and one card for each photo.
+6. For a ready object: "Is this your headset?". One card for each box of a recent frame that may show the object, with the
+   picture, the age ("Seen 2 hours ago.") and the buttons "Yes, this is it" and "No". The section is hidden when there is no box.
+   After an answer, the box goes away and a toast thanks the carer. A "yes" also adds the picture to the photos of the object.
 
 The photo picker is the same component as on the upload page. On a phone it also has a camera button.
 The section of the open object is hidden while no object is open.
@@ -80,6 +86,9 @@ Another reason is not shown, because it is an internal error name.
 
 When the carer adds an object, the session opens it at once, so the carer can add photos.
 
+For a ready object, each reload also loads the boxes to check (`list_review`) and the picture of each box one time
+(at most 320 pixels on the long side). A box without a picture is not shown, because the carer cannot check it.
+
 ## Components
 
 | File | Purpose |
@@ -89,6 +98,7 @@ When the carer adds an object, the session opens it at once, so the carer can ad
 | `components/object_form.py` | The form |
 | `components/object_list.py` | The list of objects. `photo_summary` makes the count text |
 | `components/object_detail.py` | The header of the open object, the photo grid and the photo cards |
+| `components/object_review.py` | "Is this your object?": the cards of the boxes to check, with the buttons Yes and No |
 | `components/upload_picker.py` | The file picker. It takes a title and a sync or async handler |
 | `components/status_badge.py` | The badges for files, photos and objects. The text is always shown, so colour is not the only signal |
 | `pages/enroll_page.py` | Builds the page and connects the components to the session |
