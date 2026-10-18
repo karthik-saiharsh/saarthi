@@ -22,6 +22,7 @@ import db.api as db
 import storage.api as storage
 from ai.api import AiEngine, AiError
 from backend.errors import InvalidInputError, LimitReachedError, NotFoundError
+from backend.references import ReferenceVectors
 from backend.settings import BackendConfig, EnrollmentConfig
 from db.schema import EnrolledObject, PhotoStatus, ReferencePhoto
 
@@ -108,8 +109,12 @@ class EnrollmentService:
         config: BackendConfig,
         engine: AiEngine,
         on_photo_added: Callable[[], None] | None = None,
+        references: ReferenceVectors | None = None,
     ) -> None:
-        """`on_photo_added` runs after a photo is saved. The worker uses it to wake up."""
+        """`on_photo_added` runs after a photo is saved. The worker uses it to wake up.
+
+        `references` gives the backgrounds of the photos for the self-test (plan part D1). Without it, there is no test.
+        """
         assert isinstance(config, BackendConfig), "config must be a BackendConfig"
         assert isinstance(engine, AiEngine), "engine must be an AiEngine"
         assert on_photo_added is None or callable(
@@ -118,6 +123,7 @@ class EnrollmentService:
         self._config: EnrollmentConfig = config.enrollment
         self._engine: AiEngine = engine
         self._on_photo_added: Callable[[], None] | None = on_photo_added
+        self._references: ReferenceVectors | None = references
 
     # ---- Objects ----
 
@@ -259,13 +265,14 @@ class EnrollmentService:
             logger.exception("The calibration of object %d failed", object_id)
             db.gallery.clear_calibration(object_id, "The calibration failed.")
             return
+        notes: list[str] = [n for n in (result.note, self._place_note(object_id)) if n]
         db.gallery.set_calibration(
             object_id,
             result.tau,
             result.tau_strong,
             result.margin_min,
             model,
-            result.note,
+            " ".join(notes) or None,
         )
         logger.info(
             "Object %d is ready: %d views of %d photos, tau %.3f",
@@ -274,6 +281,17 @@ class EnrollmentService:
             result.n_photos,
             result.tau,
         )
+
+    def _place_note(self, object_id: int) -> str | None:
+        """The self-test (plan part D1): a warning if all confirmed photos show one place. An error gives no warning."""
+        if self._references is None:
+            return None
+        try:
+            found = self._references.get(object_id)
+        except (AiError, db.DbError):
+            logger.warning("The self-test of object %d could not run", object_id)
+            return None
+        return None if found is None else self._engine.place_note(found.place_vectors)
 
     # ---- Helpers ----
 

@@ -336,9 +336,12 @@ The module gives three helpers. The `backend` module calls them.
   With negatives, `tau = max(tau, neg_max + margin_min)`. `tau_strong = tau + tau_strong_offset`. No value is above 1.0.
   The result has a note when another object is too similar.
   It has another note when the photos of the object look very different from each other.
+- **The self-test of the photos (plan part D1).** `engine.embed_place(image, box)` gives the background of a reference photo: the DINOv2 key
+  of the whole photo with the object painted grey. `engine.place_note(place_vectors)` gives a note for the carer when every two backgrounds
+  have a cosine of `place_same_min` or more: all photos show one place, and the object can look like its place (`ai/calibration.py`, `one_place`).
 
 The table `[enrollment]` in `config.toml` has `augmentations`, `box_scale`, `brightness`, `tau_std_factor`, `tau_strong_offset`, `tau_min`,
-`margin_min`, `margin_strong` and `min_photos`.
+`margin_min`, `margin_strong`, `min_photos` and `place_same_min`.
 
 ## Configuration
 

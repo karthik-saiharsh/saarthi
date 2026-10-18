@@ -100,7 +100,10 @@ class Backend:
         )
         # A new reference photo wakes the worker, as an upload does.
         self._enrollment: EnrollmentService = EnrollmentService(
-            self._config, engine, on_photo_added=self._worker.wake
+            self._config,
+            engine,
+            on_photo_added=self._worker.wake,
+            references=self._references,
         )
         self._search: SearchService = SearchService(
             self._config, engine, self._references

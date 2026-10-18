@@ -102,6 +102,7 @@ class EnrollmentConfig:
     margin_min: float
     margin_strong: float
     min_photos: int
+    place_same_min: float
 
 
 @dataclass(frozen=True)
@@ -497,6 +498,7 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> AiConfig:
             margin_min=margin_min,
             margin_strong=margin_strong,
             min_photos=enrollment.integer("min_photos", minimum=2),
+            place_same_min=enrollment.number("place_same_min", -1.0, 1.0),
         ),
         query=QueryConfig(max_tokens=query.integer("max_tokens")),
         verification=VerificationConfig(

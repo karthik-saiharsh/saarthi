@@ -135,6 +135,11 @@ margin_min = 0.03
 margin_strong = 0.08
 # An object needs at least this number of confirmed photos before it is calibrated.
 min_photos = 3
+# The self-test of the photos (plan part D1): the carer gets a warning when every two photos of an object have a
+# background (the DINOv2 key of the photo with the object painted grey) with a cosine of place_same_min or more.
+# Then all photos show one place, and the object can look like its place. On 4 test objects: the headset (2 photos
+# on a bed) 0.83, the watch (3 photos on one table) 0.64, the book 0.58, the bottle (other places) 0.18. Start value.
+place_same_min = 0.60
 
 [query]
 # The encoder cuts a text after this many tokens. The model was trained with 128.

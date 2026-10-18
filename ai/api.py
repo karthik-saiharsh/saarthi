@@ -12,7 +12,7 @@ from io import BytesIO
 import numpy as np
 from PIL import Image, ImageOps, UnidentifiedImageError
 
-from ai.calibration import calibrate
+from ai.calibration import NOTE_ONE_PLACE, calibrate, one_place
 from ai.detector import CandidateDetector
 from ai.embedder import RegionEmbedder
 from ai.enrollment import brighten, scale_box
@@ -53,6 +53,9 @@ from ai.types import (
 from ai.verifier import KeypointVerifier
 
 logger: logging.Logger = logging.getLogger(__name__)
+
+# The colour that hides the object in a photo, so that only its place is left.
+PLACE_GREY: tuple[int, int, int] = (128, 128, 128)
 
 __all__ = [
     "AiConfigError",
@@ -332,6 +335,23 @@ class AiEngine:
     ) -> Calibration:
         """Calculate the thresholds of an object from its views and the negatives (stage E4)."""
         return calibrate(views, photo_ids, other_views, self._config.enrollment)
+
+    def embed_place(self, image: Image.Image, box: Box) -> np.ndarray:
+        """Return the background of a reference photo: the DINOv2 key of the whole photo, with the object painted grey."""
+        assert isinstance(image, Image.Image), "image must be a PIL image"
+        assert isinstance(box, Box), "box must be a Box"
+        background: Image.Image = image.convert(
+            "RGB"
+        )  # A copy: the caller keeps its picture
+        background.paste(PLACE_GREY, (box.x0, box.y0, box.x1, box.y1))
+        whole: Box = Box(0, 0, image.width, image.height)
+        return self.embed_key_crops(background, [whole])[0]
+
+    def place_note(self, place_vectors: np.ndarray) -> str | None:
+        """Return a warning for the carer if all photos of an object show one place (plan part D1), or None."""
+        if one_place(place_vectors, self._config.enrollment.place_same_min):
+            return NOTE_ONE_PLACE
+        return None
 
     # ---- Matching (stage I4) ----
 

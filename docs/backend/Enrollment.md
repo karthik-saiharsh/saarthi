@@ -106,6 +106,11 @@ The functions are in `ai/calibration.py`. They use numpy only. The service calls
 4. `tau_strong = tau + 0.10`. The values are not larger than 1.0.
 5. If `neg_max + margin_min` is above the mean of `own`, the object is still `ready`. It has a note: it is too similar to another object.
 6. If the mean of `own` is below `tau_min`, the object is still `ready`. It has a note: the photos look very different from each other.
+7. **The self-test (plan part D1).** If every two confirmed photos show the same place, the object has one more note: "All photos of this object
+   show the same place ... Add photos of the object in the other places where it is used." The test compares the backgrounds of the photos
+   (`AiEngine.embed_place`, the photo with the object painted grey). `ReferenceVectors` makes them one time for each set of confirmed photos.
+   The bar is `place_same_min` (0.60) in `[enrollment]` of `ai/config.toml`. Measured: the headset on a bed 0.83, the watch on one table 0.64,
+   the book 0.58, the bottle in other places 0.18. A start value.
 
 The values are in `[enrollment]` of `ai/config.toml`: `tau_std_factor`, `tau_min`, `tau_strong_offset`, `margin_min` (0.03),
 `margin_strong` (0.08) and `min_photos` (3). The reasons for `tau_min` and `tau_strong_offset` are in `benchmarks/calibration/README.md`.

@@ -161,3 +161,30 @@ def test_a_yes_is_refused_when_the_object_has_the_most_photos(
     with pytest.raises(LimitReachedError):
         review.answer(obj.id, near.id, yes=True)
     assert review.candidates(obj.id)  # Not answered: it is still asked
+
+
+# ---- The self-test of the photos (plan part D1) ----
+
+
+def test_photos_that_all_show_one_place_give_a_warning(cleanup: list[str]) -> None:
+    """The fake embedder gives every background the same DINOv2 key, so the photos show one place."""
+    from ai.calibration import NOTE_ONE_PLACE
+
+    _, engine = make_review()
+    base = load_config()
+    obj = ready_object(cleanup, [(60, BOTTLE), (80, BOTTLE), (70, BOTTLE)])
+    EnrollmentService(
+        base, engine, references=ReferenceVectors(engine)
+    ).recalibrate_all()
+    note = db.gallery.get_object(obj.id).calibration_note  # type: ignore[union-attr]
+    assert note is not None and NOTE_ONE_PLACE in note
+
+
+def test_without_the_references_there_is_no_self_test(cleanup: list[str]) -> None:
+    from ai.calibration import NOTE_ONE_PLACE
+
+    _, engine = make_review()
+    obj = ready_object(cleanup, [(60, BOTTLE), (80, BOTTLE), (70, BOTTLE)])
+    EnrollmentService(load_config(), engine).recalibrate_all()
+    note = db.gallery.get_object(obj.id).calibration_note  # type: ignore[union-attr]
+    assert note is None or NOTE_ONE_PLACE not in note

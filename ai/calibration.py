@@ -27,6 +27,11 @@ NOTE_PHOTOS_DIFFER: str = (
     "Add clearer photos of the object."
 )
 
+NOTE_ONE_PLACE: str = (
+    "All photos of this object show the same place. The computer can mix up the object and the place. "
+    "Add photos of the object in the other places where it is used."
+)
+
 NOTE_LOOK_ALIKE: str = (
     "Another enrolled object looks very similar. Matches for this object may be missed or confused."
 )
@@ -101,3 +106,18 @@ def calibrate(
         n_photos=photo_count,
         note=note,
     )
+
+
+def one_place(place_vectors: np.ndarray, same_min: float) -> bool:
+    """True if every two photos have a background with a cosine of `same_min` or more (plan part D1).
+
+    `place_vectors` has one unit-length row for each confirmed photo. Fewer than 2 photos are never one place.
+    """
+    assert (
+        isinstance(place_vectors, np.ndarray) and place_vectors.ndim == 2
+    ), "2-D array"
+    if place_vectors.shape[0] < 2:
+        return False
+    similarity: np.ndarray = place_vectors @ place_vectors.T
+    others: np.ndarray = similarity[~np.eye(len(place_vectors), dtype=bool)]
+    return bool(others.min() >= same_min)

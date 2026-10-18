@@ -186,3 +186,44 @@ def test_a_floor_of_zero_gives_the_old_result() -> None:
     assert plain.tau == pytest.approx(
         pairs.mean() - CONFIG.tau_std_factor * pairs.std()
     )
+
+
+# ---- The self-test of the photos (plan part D1) ----
+
+
+def test_one_place_needs_every_two_backgrounds_alike() -> None:
+    from ai.calibration import one_place
+
+    same = np.array([[1.0, 0.0], [0.8, 0.6], [0.9, np.sqrt(1 - 0.81)]], np.float32)
+    assert one_place(same, 0.6)
+    apart = np.array([[1.0, 0.0], [0.0, 1.0]], np.float32)
+    assert not one_place(apart, 0.6)
+    assert not one_place(same[:1], 0.6)  # One photo is never one place
+
+
+def test_the_engine_gives_the_note_for_one_place() -> None:
+    from ai.calibration import NOTE_ONE_PLACE
+    from tests.ai_support import make_engine
+
+    engine = make_engine()
+    alike = np.array([[1.0, 0.0], [1.0, 0.0]], np.float32)
+    assert engine.place_note(alike) == NOTE_ONE_PLACE
+    assert engine.place_note(np.array([[1.0, 0.0], [0.0, 1.0]], np.float32)) is None
+
+
+def test_embed_place_paints_the_object_grey_and_keeps_the_picture() -> None:
+    from PIL import Image
+
+    from ai.types import Box
+    from tests.ai_support import FakeEmbedder, make_engine
+
+    embedder = FakeEmbedder()
+    engine = make_engine(embedder=embedder)
+    picture = Image.new("RGB", (100, 80), (10, 200, 10))
+    engine.embed_place(picture, Box(20, 20, 60, 60))
+    assert embedder.cls_calls[-1][0] == [Box(0, 0, 100, 80)]  # The whole photo
+    assert picture.getpixel((30, 30)) == (
+        10,
+        200,
+        10,
+    )  # The caller's picture is unchanged

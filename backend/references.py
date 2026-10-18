@@ -1,6 +1,7 @@
 """The vectors of the reference crops of each object, for the modes `evidence` (`ai/evidence.py`) and `keys` (`ai/keys.py`).
 
-Each confirmed photo gives two vectors of the crop at the box: the SigLIP vector and the DINOv2 key (the CLS token).
+Each confirmed photo gives two vectors of the crop at the box: the SigLIP vector and the DINOv2 key (the CLS token),
+and one vector of its place: the DINOv2 key of the whole photo with the object painted grey (the self-test, plan part D1).
 
 The vectors are made from the stored reference photos: the confirmed photos, cut at the box that the carer
 accepted. The carer does nothing new. The vectors stay in memory. They are made again only when the set of
@@ -27,13 +28,16 @@ logger: logging.Logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class References:
-    """The vectors of the reference crops of one object. The rows of both arrays are the same photos."""
+    """The vectors of the reference photos of one object. The rows of all arrays are the same photos.
 
-    vectors: np.ndarray  # SigLIP, unit length, shape (photos, dimension)
+    `vectors`: SigLIP crop vectors. `key_vectors`: the DINOv2 keys of the crops (CLS token).
+    `place_vectors`: the background of each photo (`AiEngine.embed_place`). All have unit length.
+    """
+
+    vectors: np.ndarray
     photo_ids: np.ndarray  # The photo of each row
-    key_vectors: (
-        np.ndarray
-    )  # The DINOv2 key (CLS token of the crop), unit length, shape (photos, dimension)
+    key_vectors: np.ndarray
+    place_vectors: np.ndarray
 
 
 class ReferenceVectors:
@@ -70,6 +74,7 @@ class ReferenceVectors:
     def _make(self, object_id: int, photos: list[ReferencePhoto]) -> References | None:
         vectors: list[np.ndarray] = []
         key_vectors: list[np.ndarray] = []
+        place_vectors: list[np.ndarray] = []
         photo_ids: list[int] = []
         for photo in photos:
             try:
@@ -80,6 +85,7 @@ class ReferenceVectors:
             box: Box = Box(photo.x0, photo.y0, photo.x1, photo.y1)
             vectors.append(self._engine.embed_evidence_crops(picture, [box])[0])
             key_vectors.append(self._engine.embed_key_crops(picture, [box])[0])
+            place_vectors.append(self._engine.embed_place(picture, box))
             photo_ids.append(photo.id)
         logger.info(
             "Reference vectors of object %d: %d of %d photo(s)",
@@ -89,4 +95,9 @@ class ReferenceVectors:
         )
         if not vectors:
             return None
-        return References(np.stack(vectors), np.array(photo_ids), np.stack(key_vectors))
+        return References(
+            np.stack(vectors),
+            np.array(photo_ids),
+            np.stack(key_vectors),
+            np.stack(place_vectors),
+        )
