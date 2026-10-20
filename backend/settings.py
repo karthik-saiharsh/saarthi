@@ -146,6 +146,12 @@ class VoiceConfig:
 
 
 @dataclass(frozen=True)
+class TalkConfig:
+    max_jobs: int
+    keep_seconds: int
+
+
+@dataclass(frozen=True)
 class EnrollmentConfig:
     max_photos_per_object: int
     max_objects: int
@@ -168,6 +174,7 @@ class BackendConfig:
     describe: DescribeConfig
     voice: VoiceConfig
     open_search: OpenSearchConfig
+    talk: TalkConfig
 
 
 def _table(raw: dict, name: str) -> dict:
@@ -412,6 +419,11 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> BackendConfig:
         min_seconds=_number(voice, "voice", "min_seconds", 0.1, 10.0),
         silence_rms=_number(voice, "voice", "silence_rms", 0.0, 1.0),
     )
+    talk: dict = _table(raw, "talk")
+    talk_config: TalkConfig = TalkConfig(
+        max_jobs=_integer(talk, "talk", "max_jobs", 1, 100),
+        keep_seconds=_integer(talk, "talk", "keep_seconds", 10, 3600),
+    )
     open_search: dict = _table(raw, "open_search")
     neutral: object = open_search.get("neutral_phrases")
     if (
@@ -471,4 +483,5 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> BackendConfig:
         describe_config,
         voice_config,
         open_search_config,
+        talk_config,
     )

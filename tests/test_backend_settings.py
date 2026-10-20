@@ -123,6 +123,7 @@ def test_bad_values_are_refused(tmp_path: Path, old: str, new: str) -> None:
         "search",
         "describe",
         "voice",
+        "talk",
     ],
 )
 def test_missing_table_is_refused(tmp_path: Path, table: str) -> None:

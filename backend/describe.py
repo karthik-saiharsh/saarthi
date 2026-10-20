@@ -173,8 +173,11 @@ def build_sentence(
     config: DescribeConfig | None = None,
     owned: bool = True,
     scene: str | None = None,
+    listening: bool = False,
 ) -> str:
     """Make the sentence for the voice. A weak answer says that the system is not sure.
+
+    `listening` is True for a device with no screen (the wearable). Then the sentence never asks the user to look at a picture.
 
     `scene` is the checked sentence of the language model about the place (see `backend/scene_writer.py`). It takes the
     place of the surface and the room, and only a sure answer uses it.
@@ -216,15 +219,15 @@ def build_sentence(
         )
     elif room:
         parts.append(f"The room {'looks' if sure else 'may look'} like {room}.")
-    if not sure:
+    if not sure and not listening:
         parts.append("Please look at the picture.")
     maybe = answer.newer_maybe
     if maybe is not None:
         # A newer weak sighting in another frame: a second place, said with "I am not sure" (plan part G1).
         later: str = time_phrase(maybe.age_seconds, maybe.seen_at, config)
         parts.append(
-            f"I am not sure, but I may have seen it again {later}, in another place. "
-            "Please look at the second picture."
+            f"I am not sure, but I may have seen it again {later}, in another place."
+            + ("" if listening else " Please look at the second picture.")
         )
     return " ".join(parts)
 
@@ -239,9 +242,16 @@ class DescribeService:
         self._engine: AiEngine = engine
 
     def describe(
-        self, object_name: str, answer: Answer, owned: bool = True
+        self,
+        object_name: str,
+        answer: Answer,
+        owned: bool = True,
+        listening: bool = False,
     ) -> Description:
-        """Make the sentence for an answer. An error of the scene model, of a file or of the database gives a sentence without the place."""
+        """Make the sentence for an answer. An error of the scene model, of a file or of the database gives a sentence without the place.
+
+        `listening` is True for a device with no screen: see `build_sentence`.
+        """
         assert isinstance(answer, Answer), "answer must be an Answer"
         scene: str | None = self._stored_scene(answer)
         surface: str | None = None
@@ -262,7 +272,14 @@ class DescribeService:
                 )
         return Description(
             build_sentence(
-                object_name, answer, surface, room, self._config, owned, scene
+                object_name,
+                answer,
+                surface,
+                room,
+                self._config,
+                owned,
+                scene,
+                listening,
             ),
             surface,
             room,

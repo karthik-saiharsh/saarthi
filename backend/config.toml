@@ -155,6 +155,15 @@ min_seconds = 0.5
 # speech model can write words for silence.
 silence_rms = 0.005
 
+[talk]
+# The question of the wearable (POST /api/talk): a recording becomes an answer to say. See docs/backend/Wearable.md.
+# The routes work only with an access token (the variable of api.token_env_var).
+# The most questions that wait for an answer at one time. A new question is refused above it (503).
+# Also the most answers that are kept: an older answer is deleted when a newer one is done.
+max_jobs = 4
+# A question and its answer are deleted this many seconds after the question came. The answer is private.
+keep_seconds = 300
+
 [open_search]
 # The search for objects that nobody registered (see docs/backend/Open Search.md). It runs only when no enrolled
 # object fits the words. The values are start values.

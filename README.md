@@ -2,6 +2,44 @@
 
 Edge Efficient Episodic Memory Aid
 
+## What Saarthi does
+
+Saarthi helps elderly people and dementia patients to find lost objects.
+A wearable camera sends pictures. The application remembers where it saw each object.
+
+1. The carer registers the belongings of the patient on the page `/enroll`.
+2. The patient asks where an object is. The patient can type, choose the object, or speak.
+3. The application finds the object in the stored pictures.
+4. The application shows the picture. It also says what the picture shows: where and when the object was seen,
+   and what the place looks like. A weak match is said with "I am not sure".
+
+All pictures, questions and audio stay on the local device. The application sends nothing to an external service.
+The audio is never stored and never logged.
+
+## Components
+
+Each component is in its own folder, has its own `README.md`, and does one task.
+
+| Folder | Task |
+|--------|------|
+| `ai/` | Models: quality gate, object detector, region vectors, matching, scene description, speech to text |
+| `storage/` | Image files on disk, without metadata |
+| `db/` | Stored data: SQLite metadata and the FAISS vector index |
+| `backend/` | The control flow, the HTTP routes, the worker and the search. The only interface of the UI |
+| `ui/` | The pages (NiceGUI). They call the backend only |
+| `benchmarks/` | Measurements of the pipeline against a small dataset |
+| `docs/` | Design documents and guides |
+| `tests/` | Tests (`pytest`) |
+
+## Pages
+
+| Page | Use |
+|------|-----|
+| `/upload` | Upload pictures by hand |
+| `/enroll` | Register an object: name, kind, and 5 to 10 photos |
+| `/find` | Ask where an object is. Shows the picture and the spoken sentence |
+| `/memory` | Browse every stored frame and what the pipeline saved for it |
+
 ## Local Project Setup
 
 1. Clone the repo
@@ -23,7 +61,7 @@ Edge Efficient Episodic Memory Aid
 
 1. Run: `uv run python main.py`
 1. Open `http://<address of this computer>:8080/upload` in a browser to upload pictures.
-1. Open `http://<address of this computer>:8080/find` to ask where an object is. Choose the object, or write it in your own words.
+1. Open `http://<address of this computer>:8080/find` to ask where an object is. Choose the object, write it in your own words, or press the Talk button.
 1. The wearable (or a script) sends one picture at a time: `curl -X POST --data-binary @photo.jpg http://<address>:8080/api/images`
 
 - For a guided test of all components, see `docs/Manual Test Guide.md`.
@@ -37,6 +75,21 @@ Edge Efficient Episodic Memory Aid
 - Press Ctrl+C to stop. The application finishes the picture that it works on and saves its data.
 - The settings are in the `config.toml` file of each module (`backend/`, `db/`, `storage/`, `ai/`).
   The design documents are in `docs/` and in the `docs` folder of each module.
+
+## Voice and HTTPS
+
+- The Talk button listens after a tap. English only. The server turns the speech into text with Whisper (base) and drops the audio at once.
+- The browser says the answer with a local voice of the device. No voice model runs on the server.
+- The microphone of a phone or tablet works only on a page with HTTPS. `./start` makes the certificate and serves HTTPS.
+  The phone must trust the local certificate authority: open `http://<address>:8081/ca.pem` on the phone while the application runs.
+- For a manual HTTPS setup, see `docs/backend/HTTPS.md`. For the voice stages, see `docs/backend/Voice.md`.
+
+## Contributors
+
+- Karthik Saiharsh
+- Nihanth Yadalam
+- M Pranesh
+- Leela Mahalakshmi
 
 ## A few ground rules
 

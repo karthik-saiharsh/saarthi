@@ -28,6 +28,8 @@ For the full design, see `docs/backend/Upload Endpoint.md`, `docs/backend/Enroll
 | `http.py` | The HTTP route `POST /api/images` |
 | `http_objects.py` | The HTTP routes of the gallery, `/api/objects` |
 | `http_search.py` | The HTTP routes of the search: `POST /api/search`, `GET /api/objects/{id}/last-seen` and its picture |
+| `http_talk.py` | The HTTP routes of the wearable: `POST /api/talk` and `GET /api/talk/{id}` |
+| `talk.py` | `TalkService`: a spoken question of the wearable becomes a sentence to say, on one background thread |
 | `http_common.py` | What both route files share: the token check, the body reader, the error answers |
 | `enrollment.py` | `EnrollmentService`: objects, reference photos, the carer's confirmation, the calibration |
 | `ui_adapter.py` | Connects the UI to the upload step, to enrollment and to the search (`ui.ports.UploadService`, `EnrollmentService`, `FindService`) |
@@ -102,6 +104,17 @@ The list of routes and codes is in `docs/backend/Enrollment.md`.
 
 They use the same optional token and the same fixed messages as the other routes. An object that is a draft or a look-alike gives 409.
 The pictures and the answers have `Cache-Control: no-store`. The words of a user are never logged.
+
+## Talk routes (the wearable)
+
+| Route | Does |
+|-------|------|
+| `POST /api/talk` | The body is a WAV recording: 16-bit, one channel, 16 kHz. The answer is `202` with `{"id": "...", "status": "pending"}` |
+| `GET /api/talk/{id}` | `status` is `pending` or `done`. When it is `done`, `text` is the sentence to say and `outcome` tells what it says (`found`, `maybe`, `not_seen`, `choose`, `unknown`, `not_heard`, `failed`) |
+
+- These routes always need the token. If no token is set, they answer 503.
+- The sentence never asks the user to look at a picture. If the words fit several objects, it names them and asks the user to press the button again.
+- A job is deleted `talk.keep_seconds` after the question. The recording, the words and the answer are never logged.
 
 ## Configuration
 

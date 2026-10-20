@@ -20,6 +20,7 @@ from backend.errors import BackendConfigError
 from backend.http import create_router, read_token
 from backend.http_objects import create_objects_router
 from backend.http_search import create_search_router
+from backend.http_talk import create_talk_router
 from backend.ingest import IngestService
 from backend.maintenance import Maintenance
 from backend.open_search import OpenSearchService
@@ -34,6 +35,7 @@ from backend.settings import (
     ServerConfig,
     load_config,
 )
+from backend.talk import TalkService
 from backend.ui_adapter import (
     UiBrowseService,
     UiEnrollmentService,
@@ -115,6 +117,15 @@ class Backend:
         self._query: QueryResolver = QueryResolver(self._config, engine)
         self._voice: VoiceService = VoiceService(self._config, engine)
         self._open_search: OpenSearchService = OpenSearchService(self._config, engine)
+        # The spoken question of the wearable, with an answer to say (docs/backend/Wearable.md).
+        self._talk: TalkService = TalkService(
+            self._config,
+            self._voice,
+            self._query,
+            self._search,
+            self._describe,
+            self._open_search,
+        )
         self._browser: MemoryBrowser = MemoryBrowser(self._config.worker.open_link_iou)
         self._maintenance: Maintenance = Maintenance(self._config)
         self._token: str | None = read_token(self._config)
@@ -123,6 +134,11 @@ class Backend:
             "Backend ready. Upload access token: %s",
             "required" if self._token is not None else "not required",
         )
+        if self._token is None:
+            logger.warning(
+                "The talk routes of the wearable are switched off: set %s to use them",
+                self._config.token_env_var,
+            )
 
     @property
     def server(self) -> ServerConfig:
@@ -168,15 +184,16 @@ class Backend:
         self._maintenance.start()
 
     def stop(self) -> None:
-        """Stop the maintenance and the worker.
+        """Stop the talk thread, the maintenance and the worker.
 
         The worker finishes the image that it holds, up to `server.worker_stop_seconds`.
         """
+        self._talk.close()
         self._maintenance.stop(timeout=self._config.server.worker_stop_seconds)
         self._worker.stop(timeout=self._config.server.worker_stop_seconds)
 
     def create_router(self) -> APIRouter:
-        """Return the router with all routes (upload, gallery and search).
+        """Return the router with all routes (upload, gallery, search and the talk of the wearable).
 
         Add it with `app.include_router`.
         """
@@ -191,6 +208,7 @@ class Backend:
                 self._query, self._search, self._token, self._open_search
             )
         )
+        router.include_router(create_talk_router(self._talk, self._token))
         return router
 
     @property
