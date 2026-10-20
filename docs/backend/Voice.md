@@ -7,6 +7,8 @@ the cache of the room scores and the lookup of neighbouring frames in the `db` c
 and the room rule, the sentence and the service in `backend/describe.py` (phase 1c).
 The sentence is on the `/find` page (phase 1d), the browser says it with a local voice (phase 2), the server can serve HTTPS (phase 3), and the Talk button listens (phase 4).
 Not built: the dialogue by voice (phase 5).
+The wearable (an ESP32-CAM with a microphone and a speaker) is built on the server side (2026-11-14): a spoken question through
+`POST /api/talk`, and a spoken answer that a local voice on the server makes (Piper). See `docs/backend/Wearable.md`.
 A checked sentence of the language model about the place is also built (see "The description of the place by the language model").
 This document records the flow that the owner described and the stages that it adds to the pipeline.
 It also lists the decisions that are still open. The sections "The planned parts" and "The candidates" keep the first plan for the record.
@@ -124,7 +126,7 @@ The code is `build_sentence` in `backend/describe.py`.
 |------|------|--------|
 | `ai/speech.py` | The speech recognizer (Q0): audio in, text out | Built |
 | `ai/scene.py` | The scene classifier (Q2): a frame and a box in, the room and the surface out | Built. No colour |
-| The speech synthesizer (Q3) | Text in, audio out | Built in the browser (`ui/speech.py`). No model on the server |
+| The speech synthesizer (Q3) | Text in, audio out | The page: built in the browser (`ui/speech.py`). The wearable: Piper on the server (`ai/tts.py`), see `docs/backend/Wearable.md` |
 | `backend/voice.py` | `VoiceService`: checks the WAV recording and turns it into text | Built |
 | `backend/describe.py` | Builds the sentence from the answer, the surface and the room | Built |
 | The route for the audio | `POST /ui/voice` (`ui/voice_route.py`), with a size limit and fixed messages. It has no token, as the pages have none | Built |
@@ -198,7 +200,7 @@ The owner decided these on 2026-11-09:
 | 2 | How does listening start? | The patient or carer **taps a large button**. There is no wake word and no always-on microphone |
 | 3 | Which languages? | **English only** to start. The object names, the recognizer and the voice are English |
 | 4 | How is the place described? | **Fixed lists, with the room taken from neighbouring frames in time.** No colour. The test is in "The test of the description" |
-| 5 | Where does the voice come from? | **The local voices of the device**, through the browser. No model on the server. A device without a local English voice stays silent |
+| 5 | Where does the voice come from? | **The local voices of the device**, through the browser. No model on the server. A device without a local English voice stays silent. **Changed 2026-11-14 for the wearable only:** a local voice on the server (Piper), because the wearable has no voice. The page keeps the browser voice |
 | 6 | Which time zone? | **A setting**, `describe.time_zone`. Empty (default) uses the time zone of the computer that runs the application |
 
 These decisions are still open:
@@ -206,7 +208,7 @@ These decisions are still open:
 | # | Question | Why it matters |
 |---|----------|----------------|
 | 7 | How much memory and which CPU does the target device have? | Every new model adds memory and time. The application loads eight models. A Pi 5 with 8 GB used up to 5.8 GB (see `docs/Raspberry Pi.md`) |
-| 8 | How does a patient who cannot tap answer "Which one do you mean?" | A yes or no by voice needs a dialogue of more than one turn |
+| 8 | How does a patient who cannot tap answer "Which one do you mean?" | A yes or no by voice needs a dialogue of more than one turn. **For the wearable (2026-11-14):** the answer names the objects and asks the user to press the button again and say the name. The page is not changed |
 
 ## HTTPS
 
@@ -229,6 +231,7 @@ Each phase is one commit.
 3. **HTTPS (built).** The certificate settings, and the guide to make and to install a certificate. The test on a real phone is still to do.
 4. **Listen (Q0, built).** The audio route, the recognizer, and the "Talk" button. The test with real speech on a real phone is still to do.
 5. **The dialogue.** The spoken answers for the cases without an object, and for the choice between objects.
+   The wearable has the spoken answers for these cases (`backend/talk.py`). The page has not.
 6. **The docs.**
 
 ## Risks

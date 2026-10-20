@@ -116,6 +116,7 @@ The pictures and the answers have `Cache-Control: no-store`. The words of a user
 - These routes always need the token. If no token is set, they answer 503.
 - The sentence never asks the user to look at a picture. If the words fit several objects, it names them and asks the user to press the button again.
 - A job is deleted `talk.keep_seconds` after the question. The recording, the words and the answer are never logged.
+- The protocol for the firmware (the formats, the poll loop, HTTPS) is in `docs/backend/Wearable.md`.
 
 ## Configuration
 
