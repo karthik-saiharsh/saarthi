@@ -117,3 +117,29 @@ def test_the_log_never_shows_the_words(caplog: pytest.LogCaptureFixture) -> None
     with caplog.at_level(logging.DEBUG):
         service.transcribe(wav_bytes())
     assert "secret" not in caplog.text
+
+
+def test_speak_gives_a_wav_file_of_the_voice() -> None:
+    from tests.ai_support import FakeSpeechSynthesizer
+
+    fake = FakeSpeechSynthesizer()
+    service = VoiceService(load_config(), make_engine(speech_synthesizer=fake))
+    data = service.speak("Your bottle was last seen just now.")
+    assert data is not None and fake.texts == ["Your bottle was last seen just now."]
+    with wave.open(io.BytesIO(data), "rb") as reader:
+        assert reader.getframerate() == 22050 and reader.getnchannels() == 1
+        assert reader.getsampwidth() == 2 and reader.getnframes() == 2205
+
+
+def test_speak_gives_none_when_the_voice_is_off_fails_or_has_no_text() -> None:
+    from ai.errors import InferenceError
+    from tests.ai_support import FakeSpeechSynthesizer
+
+    fake = FakeSpeechSynthesizer()
+    engine = make_engine(speech_synthesizer=fake)
+    service = VoiceService(load_config(), engine)
+    assert service.speak("  ") is None and not fake.texts
+    fake.error = InferenceError("broke")
+    assert service.speak("Hello.") is None
+    engine._tts = None  # The switch "voice off" of the engine
+    assert not service.speaking_enabled and service.speak("Hello.") is None

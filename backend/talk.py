@@ -4,7 +4,8 @@ The wearable sends a WAV recording and gets an id at once. One background thread
 the recording becomes text (Q0), the text becomes an object (the resolver), the search finds the place (Q1),
 and the place becomes a sentence (Q2). The wearable asks for the answer with the id until it is done.
 
-The answer is always a sentence that the wearable can say, also for an error. The sentence never asks the user to
+The answer is always a sentence that the wearable can say, also for an error. If the voice is on (`[tts]` of
+`ai/config.toml`), the same thread also makes the WAV of the sentence (stage Q3) before the job is done. The sentence never asks the user to
 look at a picture. If the words fit several objects, the sentence names them and asks the user to press the button
 again and say the name. The next press is a new question: the server keeps no dialogue.
 
@@ -17,7 +18,7 @@ import secrets
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 
 from backend.describe import DescribeService
@@ -80,6 +81,9 @@ class TalkJob:
     outcome: TalkOutcome | None = None
     text: str | None = None
     detail: str | None = None  # A fixed message for a recording that is not usable
+    speech: bytes | None = field(
+        default=None, repr=False
+    )  # The WAV of `text`, or None if the voice is off or failed
 
 
 def choose_text(names: list[str]) -> str:
@@ -224,12 +228,23 @@ class TalkService:
         except Exception as error:  # noqa: BLE001
             logger.error("Talk: the answer failed: %s", type(error).__name__)
             outcome, text = TalkOutcome.FAILED, FAILED_TEXT
+        speech: bytes | None = None
+        try:
+            speech = self._voice.speak(text)
+        # The boundary of the thread: the text is still an answer without the audio.
+        except Exception as error:  # noqa: BLE001
+            logger.error("Talk: the speech failed: %s", type(error).__name__)
         with self._lock:
             job: TalkJob | None = self._jobs.get(job_id)
             if job is None:
                 return  # Deleted in the meantime
             self._jobs[job_id] = replace(
-                job, status=TalkStatus.DONE, outcome=outcome, text=text, detail=detail
+                job,
+                status=TalkStatus.DONE,
+                outcome=outcome,
+                text=text,
+                detail=detail,
+                speech=speech,
             )
         logger.info(
             "Talk: question %s… answered (%s) in %.1f s",

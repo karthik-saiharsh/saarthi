@@ -347,6 +347,7 @@ def test_a_switched_off_scene_gives_a_sentence_with_the_time_only() -> None:
         FakeOpenDetector,
         FakeQueryEncoder,
         FakeSpeechRecognizer,
+        FakeSpeechSynthesizer,
         FakeVerifier,
     )
 
@@ -360,7 +361,8 @@ def test_a_switched_off_scene_gives_a_sentence_with_the_time_only() -> None:
         embedder=FakeEmbedder(),  # type: ignore[arg-type]
         query_encoder=FakeQueryEncoder(),  # type: ignore[arg-type]
         verifier=FakeVerifier(),  # type: ignore[arg-type]
-        speech_recognizer=FakeSpeechRecognizer(),  # type: ignore[arg-type]
+        speech_recognizer=FakeSpeechRecognizer(),
+        speech_synthesizer=FakeSpeechSynthesizer(),  # type: ignore[arg-type]
         open_detector=FakeOpenDetector(),  # type: ignore[arg-type]
         language_model=FakeLanguageModel(),  # type: ignore[arg-type]
     )

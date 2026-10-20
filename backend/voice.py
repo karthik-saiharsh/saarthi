@@ -1,8 +1,11 @@
-"""The voice input (stage Q0): a recording of the user becomes text.
+"""The voice input (stage Q0): a recording of the user becomes text. And the voice of the wearable (stage Q3).
 
 The browser sends a WAV file: 16-bit samples, one channel, 16 kHz. The service checks the header and the
 size, turns the samples into numbers and gives them to the speech recognizer. The audio stays in memory.
 It is never written to a file and never logged. The text is a private question: the log shows its length only.
+
+`speak` turns an answer into a WAV recording for the speaker of the wearable (16-bit, mono, the rate of the voice).
+The recording stays in memory. The page does not use it: the browser speaks with its own voice.
 """
 
 import io
@@ -12,6 +15,7 @@ import wave
 import numpy as np
 
 from ai.api import AiEngine
+from ai.errors import AiError
 from backend.errors import InvalidAudioError, VoiceUnavailableError
 from backend.settings import BackendConfig, VoiceConfig
 
@@ -52,6 +56,31 @@ class VoiceService:
             self.max_seconds * self._engine.speech_sample_rate * BYTES_PER_SAMPLE
             + WAV_OVERHEAD_BYTES
         )
+
+    @property
+    def speaking_enabled(self) -> bool:
+        """True if the voice of the wearable is on. If False, `speak` gives None."""
+        return self._engine.tts_enabled
+
+    def speak(self, text: str) -> bytes | None:
+        """Return the WAV recording of the text, or None if the voice is off or fails. The text is never logged."""
+        assert isinstance(text, str), "text must be a string"
+        if not self.speaking_enabled or not text.strip():
+            return None
+        try:
+            samples: np.ndarray = self._engine.synthesize_speech(text)
+        except AiError:
+            logger.warning("The answer could not be spoken")
+            return None
+        if not samples.size:
+            return None
+        buffer: io.BytesIO = io.BytesIO()
+        with wave.open(buffer, "wb") as writer:
+            writer.setnchannels(1)
+            writer.setsampwidth(BYTES_PER_SAMPLE)
+            writer.setframerate(self._engine.tts_sample_rate)
+            writer.writeframes(samples.astype("<i2").tobytes())
+        return buffer.getvalue()
 
     def transcribe(self, wav: bytes) -> str:
         """Return the words in the recording. The text is empty for a silent recording."""

@@ -37,6 +37,7 @@ from ai.runtime import configure_threads
 from ai.scene import SceneClassifier, context_box
 from ai.settings import AiConfig, load_config
 from ai.speech import SAMPLE_RATE, SpeechRecognizer
+from ai.tts import SpeechSynthesizer
 from ai.types import (
     Box,
     Calibration,
@@ -120,6 +121,7 @@ class AiEngine:
         speech_recognizer: SpeechRecognizer | None = None,
         open_detector: OpenDetector | None = None,
         language_model: LanguageModel | None = None,
+        speech_synthesizer: SpeechSynthesizer | None = None,
     ) -> None:
         """Load the models. Pass `detector`, `embedder`, `query_encoder`, `verifier` or `scene_classifier` only in tests.
 
@@ -128,6 +130,7 @@ class AiEngine:
         The speech recognizer loads only if `speech.enabled` is true.
         The broad detector loads only if `open_detection.enabled` is true.
         The language model loads only if `language.enabled` is true.
+        The speech synthesizer (the voice of the wearable) loads only if `tts.enabled` is true.
         """
         self._config: AiConfig = config if config is not None else load_config()
         configure_threads(self._config.models.cpu_threads)
@@ -146,6 +149,9 @@ class AiEngine:
         self._language: LanguageModel | None = language_model or (
             LanguageModel(self._config) if self._config.language.enabled else None
         )
+        self._tts: SpeechSynthesizer | None = speech_synthesizer or (
+            SpeechSynthesizer(self._config) if self._config.tts.enabled else None
+        )
         self._verifier: KeypointVerifier | None = verifier or (
             KeypointVerifier(self._config)
             if self._config.verification.enabled
@@ -154,7 +160,7 @@ class AiEngine:
         self._phrase_lock: threading.Lock = threading.Lock()
         self._phrase_cache: tuple[tuple[str, ...], np.ndarray] | None = None
         logger.info(
-            "AI engine ready: detector %s, embedder %s, query encoder %s, verifier %s, scene %s, speech %s, broad detector %s, language %s",
+            "AI engine ready: detector %s, embedder %s, query encoder %s, verifier %s, scene %s, speech %s, broad detector %s, language %s, voice %s",
             self._detector.name,
             self._embedder.name,
             self._query_encoder.name,
@@ -163,6 +169,7 @@ class AiEngine:
             self._speech.name if self._speech is not None else "off",
             self._open_detector.name if self._open_detector is not None else "off",
             self._language.name if self._language is not None else "off",
+            self._tts.name if self._tts is not None else "off",
         )
 
     @property
@@ -693,6 +700,22 @@ class AiEngine:
         """
         assert self._scene is not None, "the scene classifier is switched off"
         return self._scene.pair_probabilities(crops, phrases)
+
+    @property
+    def tts_enabled(self) -> bool:
+        """True if the speech synthesizer is loaded. If False, `synthesize_speech` must not be called."""
+        return self._tts is not None
+
+    @property
+    def tts_sample_rate(self) -> int:
+        """The sample rate of the samples of `synthesize_speech`."""
+        assert self._tts is not None, "the speech synthesizer is switched off"
+        return self._tts.sample_rate
+
+    def synthesize_speech(self, text: str) -> np.ndarray:
+        """Turn English text into speech: int16 samples, mono, `tts_sample_rate`. The text is never logged."""
+        assert self._tts is not None, "the speech synthesizer is switched off"
+        return self._tts.synthesize(text)
 
     @property
     def speech_enabled(self) -> bool:

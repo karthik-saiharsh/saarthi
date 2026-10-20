@@ -17,6 +17,7 @@ from tests.ai_support import (
     FakeQueryEncoder,
     FakeSceneClassifier,
     FakeSpeechRecognizer,
+    FakeSpeechSynthesizer,
     FakeVerifier,
     make_engine,
 )
@@ -118,7 +119,8 @@ def test_a_switched_off_verification_loads_no_model_and_refuses_calls() -> None:
         embedder=FakeEmbedder(),  # type: ignore[arg-type]
         query_encoder=FakeQueryEncoder(),  # type: ignore[arg-type]
         scene_classifier=FakeSceneClassifier(),  # type: ignore[arg-type]
-        speech_recognizer=FakeSpeechRecognizer(),  # type: ignore[arg-type]
+        speech_recognizer=FakeSpeechRecognizer(),
+        speech_synthesizer=FakeSpeechSynthesizer(),  # type: ignore[arg-type]
         open_detector=FakeOpenDetector(),  # type: ignore[arg-type]
         language_model=FakeLanguageModel(),  # type: ignore[arg-type]
     )  # The real verifier would be loaded here if the switch did not work

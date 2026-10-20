@@ -235,6 +235,23 @@ class FakeSpeechRecognizer:
         return self.text
 
 
+class FakeSpeechSynthesizer:
+    """Gives a short tone for each text. It records each text."""
+
+    name = "fake-voice@00000000"
+    sample_rate = 22050
+
+    def __init__(self) -> None:
+        self.error: Exception | None = None
+        self.texts: list[str] = []
+
+    def synthesize(self, text):
+        if self.error is not None:
+            raise self.error
+        self.texts.append(text)
+        return (np.sin(np.arange(2205) / 5.0) * 8000).astype(np.int16)
+
+
 class FakeOpenDetector:
     """Gives the named boxes that the test sets. It records the size of each frame."""
 
@@ -290,6 +307,7 @@ def make_engine(
     open_detector: FakeOpenDetector | None = None,
     language_model: FakeLanguageModel | None = None,
     matching_mode: str = "tau",
+    speech_synthesizer: FakeSpeechSynthesizer | None = None,
 ) -> AiEngine:
     """An `AiEngine` with fake models. The quality gate and post-processing are real.
 
@@ -315,4 +333,5 @@ def make_engine(
         speech_recognizer=speech_recognizer or FakeSpeechRecognizer(),  # type: ignore[arg-type]
         open_detector=open_detector or FakeOpenDetector(),  # type: ignore[arg-type]
         language_model=language_model or FakeLanguageModel(),  # type: ignore[arg-type]
+        speech_synthesizer=speech_synthesizer or FakeSpeechSynthesizer(),  # type: ignore[arg-type]
     )

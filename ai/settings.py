@@ -37,6 +37,11 @@ class ModelsConfig:
     open_detector_file: str
     open_detector_url: str
     open_detector_sha256: str
+    voice_file: str
+    voice_url: str
+    voice_sha256: str
+    voice_config_url: str
+    voice_config_sha256: str
     device: str
     cpu_threads: int
     local_files_only: bool
@@ -135,6 +140,13 @@ class SpeechConfig:
 
 
 @dataclass(frozen=True)
+class TtsConfig:
+    enabled: bool
+    length_scale: float
+    max_chars: int
+
+
+@dataclass(frozen=True)
 class LanguageConfig:
     enabled: bool
     max_input_chars: int
@@ -202,6 +214,7 @@ class AiConfig:
     verification: VerificationConfig
     scene: SceneConfig
     speech: SpeechConfig
+    tts: TtsConfig
     open_detection: OpenDetectionConfig
     language: LanguageConfig
     matching: MatchingConfig
@@ -292,15 +305,24 @@ def _weights_file(value: str) -> str:
     return value
 
 
-def _https_url(value: str) -> str:
-    if not value.startswith("https://"):
-        raise AiConfigError("models.open_detector_url must start with https://")
+def _voice_file(value: str) -> str:
+    """A plain file name that ends with .onnx. The voice config has the same name with .json added."""
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*\.onnx", value) or ".." in value:
+        raise AiConfigError(
+            "models.voice_file must be a plain file name that ends with .onnx"
+        )
     return value
 
 
-def _sha256(value: str) -> str:
+def _https_url(value: str, key: str = "open_detector_url") -> str:
+    if not value.startswith("https://"):
+        raise AiConfigError(f"models.{key} must start with https://")
+    return value
+
+
+def _sha256(value: str, key: str = "open_detector_sha256") -> str:
     if not re.fullmatch(r"[0-9a-f]{64}", value):
-        raise AiConfigError("models.open_detector_sha256 must be 64 hex characters")
+        raise AiConfigError(f"models.{key} must be 64 hex characters")
     return value
 
 
@@ -381,6 +403,7 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> AiConfig:
     verification: _Table = _Table(raw, "verification")
     scene: _Table = _Table(raw, "scene")
     speech: _Table = _Table(raw, "speech")
+    tts: _Table = _Table(raw, "tts")
     open_detection: _Table = _Table(raw, "open_detection")
     language: _Table = _Table(raw, "language")
     matching: _Table = _Table(raw, "matching")
@@ -449,6 +472,15 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> AiConfig:
             open_detector_file=_weights_file(models.text("open_detector_file")),
             open_detector_url=_https_url(models.text("open_detector_url")),
             open_detector_sha256=_sha256(models.text("open_detector_sha256")),
+            voice_file=_voice_file(models.text("voice_file")),
+            voice_url=_https_url(models.text("voice_url"), "voice_url"),
+            voice_sha256=_sha256(models.text("voice_sha256"), "voice_sha256"),
+            voice_config_url=_https_url(
+                models.text("voice_config_url"), "voice_config_url"
+            ),
+            voice_config_sha256=_sha256(
+                models.text("voice_config_sha256"), "voice_config_sha256"
+            ),
             device=models.choice("device", DEVICES),
             cpu_threads=models.integer("cpu_threads", minimum=0),
             local_files_only=models.boolean("local_files_only"),
@@ -512,6 +544,11 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> AiConfig:
             enabled=speech.boolean("enabled"),
             max_seconds=speech.integer("max_seconds", minimum=1, maximum=30),
             max_new_tokens=speech.integer("max_new_tokens", minimum=1, maximum=440),
+        ),
+        tts=TtsConfig(
+            enabled=tts.boolean("enabled"),
+            length_scale=tts.number("length_scale", 0.5, 2.0),
+            max_chars=tts.integer("max_chars", minimum=20, maximum=2000),
         ),
         open_detection=OpenDetectionConfig(
             enabled=open_detection.boolean("enabled"),

@@ -12,6 +12,7 @@ dependencies = [
     "numpy==2.4.6",
     "peewee==4.3.0",
     "pillow==12.3.0",
+    "piper-tts==1.8.0",
     "torch==2.13.0",
     "torchvision==0.28.0",
     "transformers==5.14.1",

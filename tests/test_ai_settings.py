@@ -98,6 +98,7 @@ def test_bad_values_are_refused(tmp_path: Path, old: str, new: str) -> None:
         "verification",
         "scene",
         "speech",
+        "tts",
         "open_detection",
         "language",
         "matching",
@@ -223,3 +224,23 @@ def test_no_example_is_allowed(tmp_path: Path) -> None:
         '  ["what I listen to music on", "phone, speaker, radio"],\n', ""
     ).replace('  ["what I cook rice in", "pot, cooker, pan"],\n', "")
     assert load_config(write(tmp_path, text)).language.rewrite_examples == ()
+
+
+def test_the_voice_settings_are_checked(tmp_path: Path) -> None:
+    config = load_config()
+    assert config.tts.enabled and config.models.voice_file.endswith(".onnx")
+    assert config.models.voice_url.startswith("https://huggingface.co/rhasspy/")
+    assert re.fullmatch(r"[0-9a-f]{64}", config.models.voice_config_sha256)
+    for old, new in (
+        ('voice_file = "en_GB-alba-medium.onnx"', 'voice_file = "../evil.onnx"'),
+        ('voice_file = "en_GB-alba-medium.onnx"', 'voice_file = "voice.bin"'),
+        ('voice_url = "https://', 'voice_url = "http://'),
+        ('voice_config_url = "https://', 'voice_config_url = "http://'),
+        ('voice_sha256 = "1f9da8', 'voice_sha256 = "ZZZZZZ'),
+        ('voice_config_sha256 = "621460', 'voice_config_sha256 = "ZZZZZZ'),
+        ("length_scale = 1.1", "length_scale = 3.0"),
+        ("max_chars = 600", "max_chars = 5"),
+    ):
+        assert old in DEFAULT_TEXT, old
+        with pytest.raises(AiConfigError):
+            load_config(write(tmp_path, DEFAULT_TEXT.replace(old, new, 1)))

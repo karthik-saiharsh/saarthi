@@ -26,6 +26,7 @@ The source of the design is `docs/guide/DINO-Based Object Recall Pipeline.md`.
 | `language.py` | `LanguageModel`: Qwen3.5-0.8B. It rewrites a description of an object into common object names for the open search, and it writes one sentence about the place of an object from a picture and checked facts |
 | `open_detector.py` | `OpenDetector`: YOLOE without a list of classes. It finds and names objects that nobody registered (broad detection) |
 | `speech.py` | `SpeechRecognizer`: Whisper base. It turns speech into English text (stage Q0). The audio stays in memory |
+| `tts.py` | `SpeechSynthesizer`: Piper with one voice. It turns the answer into speech for the speaker of the wearable (stage Q3). The page does not use it |
 | `verifier.py` | `KeypointVerifier`: LightGlue with SuperPoint. It counts the keypoints that match between two pictures (stage I5) |
 | `query.py` | `QueryEncoder`: a small sentence encoder. It turns the words of a user into vectors, to find the object that the user means |
 | `matching.py` | Match region vectors with the enrolled objects (stage I4, mode `tau`: one threshold). No model |
@@ -93,13 +94,14 @@ Edit `config.toml`. The file explains each key.
 | Check a borderline sighting (I5) | `ETH-CVG/lightglue_superpoint` (**non-commercial research use only**) | About 55 MB |
 | Describe the place (Q2), vectors of the open search | `google/siglip-base-patch16-224` (Apache-2.0) | About 813 MB |
 | Turn speech into text (Q0) | `openai/whisper-base` (Apache-2.0) | About 290 MB |
+| Say the answer on the wearable (Q3) | Piper voice `en_GB-alba-medium` from `rhasspy/piper-voices` on Hugging Face (voice data CC BY 4.0). The engine `piper-tts` is **GPL-3.0-or-later** and includes espeak-ng (GPL), accepted for this academic project. Downloaded into `ai/models/`, SHA-256 checked | About 63 MB |
 | Find objects that nobody registered | YOLOE `yoloe-11s-seg-pf.pt` (**AGPL-3.0**, accepted for this academic project). Downloaded into `ai/models/`, SHA-256 checked | About 28 MB |
 | Rewrite a description, describe a place | `Qwen/Qwen3.5-0.8B` (Apache-2.0) | About 1.75 GB |
 
 - The weights of the verifier are for academic or non-profit non-commercial research use only.
   The owner confirmed that this project is for academic research. Change the verifier if the use changes.
   Set `verification.enabled = false` to not load it.
-- Each Hugging Face model is fixed to one revision in `config.toml`. Only safetensors files are loaded. The YOLOE file is checked with its SHA-256.
+- Each Hugging Face model is fixed to one revision in `config.toml`. Only safetensors files are loaded. The YOLOE file and the two files of the voice are checked with their SHA-256.
   No code from the model repository is run.
 - The first start downloads the models to the Hugging Face cache, `~/.cache/huggingface/hub/`.
   On a slow network the download can take about 15 minutes. If the download does not start (the partial file stays at 0 bytes),

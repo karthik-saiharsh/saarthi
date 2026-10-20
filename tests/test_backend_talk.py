@@ -5,8 +5,10 @@ They use the actual database and storage, and fake ai models. Every object has a
 """
 
 import dataclasses
+import io
 import logging
 import time
+import wave
 from collections.abc import Iterator
 
 import pytest
@@ -18,8 +20,11 @@ import storage.api as storage
 from backend.describe import DescribeService
 from backend.errors import QueueFullError
 from backend.http_talk import (
+    MESSAGE_NO_SPEECH,
     MESSAGE_NO_TOKEN,
+    MESSAGE_NOT_READY,
     MESSAGE_OFF,
+    SPEECH_CHUNK_BYTES,
     TALK_ROUTE,
     create_talk_router,
 )
@@ -38,7 +43,7 @@ from backend.talk import (
 )
 from backend.voice import VoiceService
 from db.schema import EnrolledObject, Image
-from tests.ai_support import FakeSpeechRecognizer, make_engine
+from tests.ai_support import FakeSpeechRecognizer, FakeSpeechSynthesizer, make_engine
 from tests.db_support import skip_if_actual_data_has_problems
 from tests.search_support import BOTTLE, PREFIX, WEAK, make_object, store_frame
 from tests.test_backend_voice import wav_bytes
@@ -68,6 +73,8 @@ def make_service(
     max_jobs: int = 4,
     keep_seconds: int = 300,
     speech: bool = True,
+    voice: FakeSpeechSynthesizer | None = None,
+    tts: bool = True,
 ) -> tuple[TalkService, FakeSpeechRecognizer]:
     base: BackendConfig = load_config()
     config: BackendConfig = dataclasses.replace(
@@ -83,9 +90,11 @@ def make_service(
         ),
     )
     fake = FakeSpeechRecognizer(text)
-    engine = make_engine(speech_recognizer=fake)
+    engine = make_engine(speech_recognizer=fake, speech_synthesizer=voice)
     if not speech:
         engine._speech = None  # The switch "speech off" of the engine
+    if not tts:
+        engine._tts = None  # The switch "voice off" of the engine
     service = TalkService(
         config,
         VoiceService(config, engine),
@@ -248,9 +257,12 @@ def test_an_old_job_is_deleted() -> None:
 
 
 def build_client(
-    token: str | None = TOKEN, speech: bool = True
+    token: str | None = TOKEN,
+    speech: bool = True,
+    tts: bool = True,
+    voice: FakeSpeechSynthesizer | None = None,
 ) -> tuple[TestClient, TalkService]:
-    service, _ = make_service(speech=speech)
+    service, _ = make_service(speech=speech, tts=tts, voice=voice)
     app: FastAPI = FastAPI()
     app.include_router(create_talk_router(service, token))
     return TestClient(app), service
@@ -315,3 +327,87 @@ def test_an_unknown_or_bad_id_is_not_found(job_id: str) -> None:
     got = client.get(f"{TALK_ROUTE}/{job_id}", headers=AUTH)
     service.close()
     assert got.status_code == 404
+
+
+# ---- The audio ----
+
+
+def test_a_done_job_has_the_audio_of_its_sentence() -> None:
+    make_object(name="blue bottle")
+    store_frame(12, BOTTLE)
+    voice = FakeSpeechSynthesizer()
+    service, _ = make_service(voice=voice)
+    done = wait_done(service, service.submit(wav_bytes(1.0)).id)
+    service.close()
+    assert done.speech is not None and voice.texts == [done.text]
+    with wave.open(io.BytesIO(done.speech), "rb") as reader:
+        assert reader.getframerate() == 22050 and reader.getnframes() == 2205
+    assert "speech=" not in repr(done)  # The audio is never in a log line
+
+
+def test_an_error_sentence_is_also_spoken() -> None:
+    voice = FakeSpeechSynthesizer()
+    service, _ = make_service(voice=voice)
+    done = wait_done(service, service.submit(b"not a wav file").id)
+    service.close()
+    assert voice.texts == [NOT_HEARD_TEXT] and done.speech is not None
+
+
+def test_a_failed_voice_still_gives_the_text() -> None:
+    voice = FakeSpeechSynthesizer()
+    voice.error = RuntimeError("voice broke")
+    service, _ = make_service(voice=voice)
+    done = wait_done(service, service.submit(wav_bytes(1.0)).id)
+    service.close()
+    assert done.status == TalkStatus.DONE and done.text and done.speech is None
+
+
+def test_the_speech_route_streams_the_wav() -> None:
+    client, service = build_client()
+    job_id: str = client.post(TALK_ROUTE, content=wav_bytes(1.0), headers=AUTH).json()[
+        "id"
+    ]
+    done = wait_done(service, job_id)
+    assert client.get(f"{TALK_ROUTE}/{job_id}", headers=AUTH).json()["speech"] is True
+    with client.stream("GET", f"{TALK_ROUTE}/{job_id}/speech", headers=AUTH) as got:
+        parts: list[bytes] = list(got.iter_raw())
+        headers = got.headers
+        status: int = got.status_code
+    service.close()
+    assert status == 200 and headers["content-type"] == "audio/wav"
+    assert headers["cache-control"] == "no-store"
+    assert int(headers["content-length"]) == len(done.speech or b"")
+    assert b"".join(parts) == done.speech
+    assert len(done.speech or b"") > SPEECH_CHUNK_BYTES  # More than one part
+
+
+def test_the_speech_of_a_pending_job_is_not_ready() -> None:
+    client, service = build_client()
+    waiting = TalkJob("b" * 22, time.monotonic(), TalkStatus.PENDING)
+    with service._lock:
+        service._jobs[waiting.id] = waiting
+    got = client.get(f"{TALK_ROUTE}/{waiting.id}/speech", headers=AUTH)
+    service.close()
+    assert got.status_code == 409 and got.json()["error"] == MESSAGE_NOT_READY
+
+
+def test_with_the_voice_off_the_text_has_no_audio() -> None:
+    client, service = build_client(tts=False)
+    job_id: str = client.post(TALK_ROUTE, content=wav_bytes(1.0), headers=AUTH).json()[
+        "id"
+    ]
+    wait_done(service, job_id)
+    state = client.get(f"{TALK_ROUTE}/{job_id}", headers=AUTH).json()
+    got = client.get(f"{TALK_ROUTE}/{job_id}/speech", headers=AUTH)
+    service.close()
+    assert state["status"] == "done" and state["speech"] is False
+    assert got.status_code == 404 and got.json()["error"] == MESSAGE_NO_SPEECH
+
+
+@pytest.mark.parametrize("header", [None, "Bearer wrong"])
+def test_the_speech_route_needs_the_token(header: str | None) -> None:
+    client, service = build_client()
+    headers: dict[str, str] = {} if header is None else {"Authorization": header}
+    got = client.get(f"{TALK_ROUTE}/{'a' * 22}/speech", headers=headers)
+    service.close()
+    assert got.status_code == 401

@@ -32,6 +32,15 @@ language_revision = "2fc06364715b967f1860aea9cf38778875588b17"
 open_detector_file = "yoloe-11s-seg-pf.pt"
 open_detector_url = "https://github.com/ultralytics/assets/releases/download/v8.4.0/yoloe-11s-seg-pf.pt"
 open_detector_sha256 = "292bdf157a9ec7315f34b567cb93467c5043cd1889a1cc18abbfdeb88d7a948d"
+# The voice of the wearable (Piper, stage Q3 on the server). Female British English, 22 050 Hz.
+# LICENCE: the engine piper-tts is GPL-3.0-or-later and includes espeak-ng (GPL). The voice data is CC BY 4.0.
+# The owner accepted both for this academic project (2026-11-14). The files come from rhasspy/piper-voices at the revision
+# in the URLs. They are downloaded one time into ai/models and their SHA-256 is checked at each start.
+voice_file = "en_GB-alba-medium.onnx"
+voice_url = "https://huggingface.co/rhasspy/piper-voices/resolve/6b9cfaacb4fb2e02a9621227e3c1a48bec9710c3/en/en_GB/alba/medium/en_GB-alba-medium.onnx"
+voice_sha256 = "1f9da809b6da1ef4190bb5dd6cce4f4af803274539e9cf9e0693085150bac3d7"
+voice_config_url = "https://huggingface.co/rhasspy/piper-voices/resolve/6b9cfaacb4fb2e02a9621227e3c1a48bec9710c3/en/en_GB/alba/medium/en_GB-alba-medium.onnx.json"
+voice_config_sha256 = "6214603a0dd60e9dcd05502e23ef07fbe3d9af36d3189c8cc3eb129e1a099d6f"
 # "auto" uses a GPU if one exists, and the CPU if not. Other values: "cpu", "cuda".
 device = "auto"
 # Number of CPU threads for the models. 0 keeps the torch default.
@@ -197,6 +206,15 @@ enabled = true
 max_seconds = 15
 # The most new tokens (about words) that the model writes for one recording.
 max_new_tokens = 64
+
+[tts]
+# The voice of the wearable: the server turns the answer into a WAV recording (see docs/backend/Wearable.md).
+# false: the model is not loaded, and the wearable gets the text only. The page always uses the voice of the browser.
+enabled = true
+# Above 1 the voice speaks slower. 1.1 is about the rate of the page (0.9 in ui/speech.py).
+length_scale = 1.1
+# The longest text that is spoken, in characters. A longer text is cut (the same limit as the page).
+max_chars = 600
 
 [open_detection]
 # false: the model is not loaded, and no broad detection runs.

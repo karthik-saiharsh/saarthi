@@ -28,7 +28,7 @@ For the full design, see `docs/backend/Upload Endpoint.md`, `docs/backend/Enroll
 | `http.py` | The HTTP route `POST /api/images` |
 | `http_objects.py` | The HTTP routes of the gallery, `/api/objects` |
 | `http_search.py` | The HTTP routes of the search: `POST /api/search`, `GET /api/objects/{id}/last-seen` and its picture |
-| `http_talk.py` | The HTTP routes of the wearable: `POST /api/talk` and `GET /api/talk/{id}` |
+| `http_talk.py` | The HTTP routes of the wearable: `POST /api/talk`, `GET /api/talk/{id}` and `GET /api/talk/{id}/speech` |
 | `talk.py` | `TalkService`: a spoken question of the wearable becomes a sentence to say, on one background thread |
 | `http_common.py` | What both route files share: the token check, the body reader, the error answers |
 | `enrollment.py` | `EnrollmentService`: objects, reference photos, the carer's confirmation, the calibration |
@@ -43,7 +43,7 @@ For the full design, see `docs/backend/Upload Endpoint.md`, `docs/backend/Enroll
 | `scene_writer.py` | `SceneWriter`: writes the sentence about the place of a last-seen frame with the language model, checks every word, and stores it. The worker runs it when no frame waits |
 | `browser.py` | `MemoryBrowser`: the frames that the worker took, and what the pipeline stored for each (for the memory page). It only reads |
 | `describe.py` | `DescribeService`: makes the sentence for the voice (stage Q2). It chooses the room from neighbouring frames, the surface from the box, and builds the text |
-| `voice.py` | `VoiceService`: checks a WAV recording and turns it into text with the speech recognizer (stage Q0) |
+| `voice.py` | `VoiceService`: checks a WAV recording and turns it into text with the speech recognizer (stage Q0). `speak` makes the WAV of an answer for the wearable (stage Q3) |
 | `worker.py` | `Worker`: runs the ai stages on `pending` photos and images, in a background thread |
 | `maintenance.py` | `Maintenance`: retention, orphan and missing files, the vector checkpoint |
 | `instance_lock.py` | `InstanceLock`: only one copy of the application may use the data |
@@ -110,7 +110,8 @@ The pictures and the answers have `Cache-Control: no-store`. The words of a user
 | Route | Does |
 |-------|------|
 | `POST /api/talk` | The body is a WAV recording: 16-bit, one channel, 16 kHz. The answer is `202` with `{"id": "...", "status": "pending"}` |
-| `GET /api/talk/{id}` | `status` is `pending` or `done`. When it is `done`, `text` is the sentence to say and `outcome` tells what it says (`found`, `maybe`, `not_seen`, `choose`, `unknown`, `not_heard`, `failed`) |
+| `GET /api/talk/{id}` | `status` is `pending` or `done`. When it is `done`, `text` is the sentence to say and `outcome` tells what it says (`found`, `maybe`, `not_seen`, `choose`, `unknown`, `not_heard`, `failed`). `speech` is true if the audio is ready |
+| `GET /api/talk/{id}/speech` | The audio of the sentence: a WAV file (16-bit, mono, 22 050 Hz), sent in parts of 4 KB with a `Content-Length`. 409 while the job is pending, 404 if it has no audio (`[tts] enabled = false` in `ai/config.toml`, or an error of the voice) |
 
 - These routes always need the token. If no token is set, they answer 503.
 - The sentence never asks the user to look at a picture. If the words fit several objects, it names them and asks the user to press the button again.

@@ -67,7 +67,7 @@ def ensure_weights(
         )
     directory.mkdir(parents=True, exist_ok=True)
     partial: Path = path.with_suffix(path.suffix + ".part")
-    logger.info("Downloading the broad detector weights %s", name)
+    logger.info("Downloading the model file %s", name)
     try:
         with (
             urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT_SECONDS) as response,
