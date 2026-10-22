@@ -27,7 +27,7 @@ words ──▶ QueryResolver ──▶ object ──▶ SearchService.find ─�
 - The HTTP routes (`backend/http_search.py`) and the UI adapter (`UiFindService`) call both parts.
 - The search reads data only. It never writes to the database, the index or the storage.
 - The search uses the same matching rule as the ingestion: the mode `evidence` (`AiEngine.score_evidence`), `keys` (`AiEngine.match_keys`) or `tau` (`AiEngine.match_regions`).
-  A look-alike, a margin or a phrase works in the same way in both places.
+  A look-alike, a margin, a phrase or a negative of the carer works in the same way in both places.
 
 ## The resolver
 
@@ -79,7 +79,7 @@ So the resolver uses the gap, and it asks the user when it is not sure.
 1. The object must exist (`NotFoundError`). It must be `ready` and not a look-alike (`ObjectNotReadyError`).
 2. **A fresh record.** If the `last_seen` record is younger than `search.stale_after_hours`, it is the answer. The archive is not searched.
 3. **The archive.** Otherwise the search goes back in time, one window of `search.window_minutes` at a time, newest window first.
-   - A window holds the good regions of `done` frames that have a vector of the present model.
+   - A window holds the regions of `done` frames that have a vector of the present model. The modes `tau` and `evidence` take the good regions only.
    - Each frame is matched with the same mode as the memory (`[matching].mode`, see `docs/backend/Memory.md`). The first frame with an accepted match for the object is the answer.
    - In the mode `evidence`, a frame is read from the storage and scored only if one of its regions is a candidate for the object
      (DINOv2 similarity of at least `matching.candidate_min`). At most `search.evidence_max_frames` frames are scored.
@@ -106,7 +106,7 @@ If it stops at a limit, the answer has `complete = False`. "Not seen" may then b
 | `seen_at` | The time at which the server received the frame (UTC) |
 | `age_seconds` | The time between the frame and the search |
 | `image_id`, `box` | The frame and the place of the object in it |
-| `similarity` | The cosine to the best view of the object |
+| `similarity` | The SigLIP key in the mode `keys`. The cosine to the best view of the object in the modes `tau` and `evidence` |
 | `strong` | False means that the match is weak. The caller says "maybe" |
 | `in_hand` | The person held the object. The place is then the person |
 | `stale` | An old record, and nothing newer was found |
@@ -241,12 +241,13 @@ The test found one picture problem, which is fixed (see `docs/ui/Find Page.md`).
   The search checks only the newest weak hit. If the check fails, the search does not look for an older strong hit.
 - **The clock.** The time is the time of the server. A frame that the wearable sends late gets a wrong time.
   The page shows an age ("12 minutes ago"), not a time of day.
-- **The blur check of the crop.** A region is not matched if its crop is blurred (`quality.crop_blur_min`). A wearable moves, so held objects are often blurred.
+- **The blur check of the crop.** In the modes `tau` and `evidence`, a region is not matched if its crop is blurred (`quality.crop_blur_min`). A wearable moves, so held objects are often blurred.
   In the first run, this check hid a correct sighting (photo 8). The first report of this limit named the edge of the picture. That was wrong: the edge was not the reason.
+  In the mode `keys` (the default), a blurred crop can still be a weak sighting.
 - **A held object.** If the person held the object, the place is the person. The answer says so with `in_hand`.
 - **Cost.** The search matches each frame alone, because the newest match must win. It is exact and not fast.
   The mode `evidence` also reads each frame with a candidate and runs SigLIP on it. `search.evidence_max_frames` bounds this cost.
-  The frame limit and the time limit bound it. The speed on the Raspberry Pi is not measured.
+  The frame limit and the time limit bound it. The speed of a search on the Raspberry Pi is not measured.
 - **A long window.** If a window has more than `max_regions_per_window` regions, the oldest regions of it are left out.
 - **One model.** The search compares only the vectors of the present embedding model. After a model change, an object needs new photos.
 - **No rate limit** on the search route. The size limit and the local network protect it.

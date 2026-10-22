@@ -22,10 +22,11 @@ Use it on a network that only the household uses. A carer-only page needs a sign
 3. **The page buttons** (Newer and Older) show the position, for example `1 to 24 of 60`.
 4. **The details.** A tap on a card opens a full-screen sheet:
    - The picture of the frame with the boxes over it. A green box is a match of a registered object (with its name).
+     In the matching mode `keys`, a box of the broad detector can also be a match, and then it is green.
      An orange box is a box of the registered-object detector without a match. A dashed box is a box of the broad detector (with its name).
    - Two check boxes switch the two groups of boxes on and off.
    - The size and the sharpness of the frame, and a note (for example the reason of a rejection).
-   - **Registered objects:** the matches (object, similarity, strong or weak, box), a line if the frame is the last-seen record of an object,
+   - **Registered objects:** the matches (object, similarity, strong or weak, box; the similarity is the SigLIP key in the mode `keys`), a line if the frame is the last-seen record of an object,
      and every box of the registered-object detector (words, confidence, source, in a hand, and why a crop is not used).
    - **Other objects:** every box of the broad detector with its name and confidence, and the link to a registered box that it overlaps.
      The text reminds the reader that a name can be wrong.

@@ -15,7 +15,7 @@ For the full design, see `docs/db/Ingestion Database Schema.md`.
 
 | File | Purpose |
 |------|---------|
-| `schema.py` | The tables: `Image`, `Region`, `EnrolledObject`, `ReferencePhoto`, `ObjectView` |
+| `schema.py` | The tables: `Image`, `Region`, `EnrolledObject`, `ReferencePhoto`, `ObjectView`, `Sighting`, `LastSeen`, `ReviewAnswer`, `FrameScene`, `FrameDescription` |
 | `gallery.py` | The helpers of the gallery. `api.py` gives them as `db.gallery` |
 | `browse.py` | Read-only views of the frames for the memory browser: the list with counts, and everything stored for one frame. `api.py` gives them as `db.browse` |
 | `crop_vectors.py` | The crop vectors of the regions (the SigLIP vector and the DINOv2 key) in two more FAISS indexes, and the lists of the open search and of the matching mode `keys`. `api.py` gives them as `db.crop_vectors` |
@@ -23,7 +23,7 @@ For the full design, see `docs/db/Ingestion Database Schema.md`.
 | `reviews.py` | The answers of the carer to "Is this your object?" (table `review_answer`). A "no" is a negative of the object. `api.py` gives them as `db.reviews` |
 | `sightings.py` | The helpers of the memory: the sighting log and the last-seen record. `api.py` gives them as `db.sightings` |
 | `support.py` | The error translation that `api.py` and `gallery.py` share |
-| `api.py` | The public interface: config loader, `init_db`, the query helpers, the vector helpers and the start-up recovery |
+| `api.py` | The public interface: config loader (`load_config`, `current_config`), `init_db`, the query helpers, the vector helpers and the start-up recovery |
 | `vector_index.py` | The FAISS index. It has no database code |
 | `errors.py` | The error classes |
 | `config.toml` | Paths and vector settings |
@@ -118,12 +118,15 @@ All helpers are in `api.py`. The helpers return `Image` and `Region` objects.
 | `set_image_analysis` | Save `phash` and `blur_score` of a `processing` image |
 | `add_regions` | Insert the regions of a `processing` image |
 | `get_regions` | Read the regions of an image |
+| `get_region` | Read one region, with its frame |
+| `get_broad_regions` | Read the boxes of the broad detector in an image, the most confident first |
 | `mark_image_done` | Set a `processing` image to `done` |
 | `mark_image_rejected` | Set a `processing` image to `rejected`, with a reason |
 | `mark_image_failed` | Set a `processing` image to `failed`, with an error text |
 | `list_images_older_than` | List `done`, `rejected` and `failed` images captured before a time (retention) |
 | `delete_images` | Delete images, their regions and their vectors. Returns the file paths for the storage module |
-| `list_image_paths` | List the file path of every image (orphan and missing file checks) |
+| `list_image_paths` | List the file path of every image |
+| `list_all_file_paths` | List the file path of every image and every reference photo (the orphan check of the maintenance) |
 | `count_images_by_status` | Count the images with one status (the upload step limits the queue with it) |
 | `close_connection` | Close the database connection of the current thread. A long-running thread calls it when it ends |
 
@@ -166,6 +169,7 @@ If a region has no vector, the recovery sets its image back to `pending`.
 | `ConfigError` | `config.toml` is missing or not correct |
 | `DbError` | Base class of the errors below. Also used for other database errors |
 | `DuplicateImageError` | `file_path` or `sha256` is already in the database |
+| `DuplicateObjectError` | An enrolled object with this name already exists |
 | `InvalidStateError` | The image does not exist or has the wrong status |
 | `InvalidRecordError` | The database refuses a value |
 | `VectorIndexError` | The vector index refuses the call (for example, an id is already in the index) |

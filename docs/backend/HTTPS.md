@@ -13,6 +13,7 @@ The application stays on HTTP when you set no certificate. This is the default.
 `./start` does all the steps of this guide on its own. It makes the local authority and the certificate (for every address of the machine, and for `hostname.local`),
 renews the certificate when the address changes or when it ends in less than 30 days, sets the variables `SAARTHI_TLS_CERT` and `SAARTHI_TLS_KEY`, and starts the application with HTTPS.
 It also serves the public certificate of the authority at `http://<address>:8081/ca.pem` for the phone, as long as it runs. Nothing else of `certs/` is served.
+The wearable needs the same `ca.pem` in its firmware (see `docs/backend/Wearable.md`).
 The steps below are for a manual setup.
 
 ## Settings
@@ -86,6 +87,7 @@ Then tap **Talk** on `/find`. The browser asks for the microphone (stage Q0, see
 
 - **ca.key.** Anyone who has it can make certificates that the phones trust. Keep it off the device, or delete it after step 3.
   The device needs only `saarthi.pem` and `saarthi.key`.
+  Note: `./start` keeps `certs/ca.key` on the device, because it renews the certificate when the address changes. If you delete the key, `./start` makes a new authority, and each phone and the wearable must install it again.
 - **A changed address.** The browser shows a warning. Make a new certificate.
 - **A clock that is wrong.** A device with a wrong date can make the certificate look invalid.
 - **Not tested on a real phone.** The steps above are the standard way. Test them on the real phone and browser before you rely on them.

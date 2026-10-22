@@ -68,14 +68,17 @@ The lines come before the picture. A tall object, for example a bottle, makes a 
 On a phone, such a picture can fill the whole screen. The page limits the height of the picture to 45 % of the screen.
 The picture is shown whole, and is never cut.
 
+The page shows the name of the object, then these lines, from top to bottom:
+
 | Line | When |
 |------|------|
 | "Seen 12 minutes ago." | Always (large text). The time is an age: just now, minutes, hours or days |
-| The sentence of the description | When the system saw the object. It says the time, the surface and the room, for example "It was on a table." The voice says the same text (see "The voice") |
 | "You were holding it." | `in_hand` is true |
 | "Maybe. The computer is not sure. Look at the picture." | `strong` is false |
 | "This was a long time ago. The computer found nothing newer." | `stale` is true |
-| "There is no picture." | The picture is none, for example when the file of the frame is gone |
+| The sentence of the description | When the system saw the object. It says the time, the surface and the room, for example "It was on a table." The voice says the same text (see "The voice") |
+| The button "Say it again" | Under the sentence of the description |
+| The picture | Under the lines. "There is no picture." if it is none |
 | "Maybe it is here now. The computer is not sure." | The answer has a newer weak sighting in another place (`FindResult.maybe`). Under it: "Seen 5 minutes ago.", "You were holding it." if true, and the second picture |
 
 While a search runs, the card shows a spinner and "Looking...". The buttons are off.

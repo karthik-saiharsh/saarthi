@@ -15,7 +15,8 @@ A weak sighting that passes the check counts as a **strong** sighting.
 
 - The check **only promotes**. It never rejects a sighting. A sighting that fails stays weak, as it was without the check.
   This is the decision of the owner. A plain object (for example keys) has few keypoints, so a rejection would hide true sightings.
-- It runs on **weak** sightings only. A strong sighting needs no check. This is the same in both matching modes:
+- It runs on **weak** sightings only. A strong sighting needs no check. This is the same in the three matching modes:
+  in the mode `keys` (the default), a sighting that passes the weak rule and not the strong rule is weak;
   in the mode `evidence`, a sighting with `score_maybe <= score < score_sure` is weak (see `docs/backend/Memory.md`).
 - An error of the check changes nothing. If the verifier fails, or a reference file cannot be read, the sighting stays as it is.
   The image does not fail, and the search does not fail.
@@ -24,7 +25,7 @@ A weak sighting that passes the check counts as a **strong** sighting.
 ## Where it fits
 
 ```
-worker: frame ──▶ MemoryService.remember ──▶ weak sighting ──▶ ReferenceVerifier ──▶ strong, or still weak
+worker: frame ──▶ MemoryService.record ──▶ weak sighting ──▶ ReferenceVerifier ──▶ strong, or still weak
 search: archive hit ──▶ SearchService._checked ──▶ weak hit ──▶ ReferenceVerifier ──▶ strong, or still weak
                                                                     │
                                               ai: AiEngine.verify_match ──▶ KeypointVerifier (LightGlue)
@@ -36,8 +37,8 @@ search: archive hit ──▶ SearchService._checked ──▶ weak hit ──�
 
 ## The steps of one check
 
-1. **Choose the references.** The object has confirmed reference photos. Each photo has views (vectors).
-   A photo is as similar to the candidate as its most similar view. The photos are sorted by this value, the most similar first.
+1. **Choose the references.** The object has confirmed reference photos. Each photo has views (the DINOv2 region vectors of enrollment).
+   A photo is as similar to the candidate as its most similar view. The candidate gives its DINOv2 region vector. The photos are sorted by this value, the most similar first.
    At most `verify_max_references` photos are used (3 by default).
 2. **Cut the pictures.** The module cuts the box of the object from each reference photo and from the frame.
    Each cut has `verification.crop_padding` of space on each side (0.15). `AiEngine.verification_crop` does this for both, so the cuts are alike.

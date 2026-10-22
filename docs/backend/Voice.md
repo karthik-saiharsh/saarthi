@@ -33,7 +33,7 @@ The flow:
 | Q0 | Listen | Turn the speech of the patient into text | Built (phase 4) |
 | Q1 | Answer | Find the object, and where and when it was seen | Built (`docs/backend/Search.md`) |
 | Q2 | Describe | Describe the place in the frame of the answer: the surface and the kind of room, from fixed lists. No colour | Built (phase 1) |
-| Q3 | Speak | Say the answer with a voice. The page also shows the picture | Built (phase 2) |
+| Q3 | Speak | Say the answer with a voice. The page also shows the picture | Built (phase 2): the browser for the page, Piper on the server for the wearable |
 
 ```
 patient speaks ─▶ Q0 Listen ─▶ words ─▶ resolver (built) ─▶ object ─▶ Q1 Answer: frame, box, time (built)
@@ -56,6 +56,7 @@ The resolver already accepts any words, for example "I can't find my water bottl
 - **A wrong description can mislead the patient.** The description must be careful. A fixed template and fixed word lists are safer than free text.
   The owner chose fixed word lists (see "Decisions").
 - **The picture stays on the page.** The voice adds to the picture. It does not replace it.
+  The wearable has no screen. Its sentence never asks the user to look at a picture (see `docs/backend/Wearable.md`).
 
 ## The spoken sentence
 
@@ -111,7 +112,7 @@ The code is `build_sentence` in `backend/describe.py`.
 ## The listening (built, phase 4)
 
 - **Recognizer.** Whisper base (`openai/whisper-base`, Apache-2.0, 74 million parameters, 290 MB), English only. `ai/speech.py`, `AiEngine.transcribe`.
-  The owner chose it on 2026-11-09. It ran in about 1 second for 2 seconds of audio on the development machine. The Raspberry Pi is not measured.
+  The owner chose it on 2026-11-09. It ran in about 1 second for 2 seconds of audio on the development machine, and in 2 to 5 seconds on the Raspberry Pi 5 (`docs/Raspberry Pi.md`).
 - **Recording.** The browser records and makes a WAV file (16 kHz, 16-bit, mono). The server needs no audio tool. `ui/static/js/talk.js`.
 - **Route.** `POST /ui/voice` (`ui/voice_route.py`) reads the body with a size limit and calls `ui.ports.VoiceService`. The route has no token, as the pages have none.
 - **Service.** `backend/voice.py`, `VoiceService`, checks the WAV header (mono, 16-bit, 16 kHz), the length (`speech.max_seconds`, `voice.min_seconds`) and the sound level.
@@ -159,7 +160,7 @@ The licences below were read on the model pages. Check the licence of every mode
 | Describe (Q2), free text | SmolVLM 256M or 500M (`HuggingFaceTB/SmolVLM-*`) | Apache-2.0. Writes free text. A small model can invent details |
 | Describe (Q2), free text | Florence-2 base (`microsoft/Florence-2-base`) | MIT. It may need code from its repository. The rules do not allow that. Check |
 | Speak (Q3) | Kokoro 82M (`hexgrad/Kokoro-82M`) | Apache-2.0. Languages: check |
-| Speak (Q3) | Piper (`rhasspy/piper-voices`) | The repository has the MIT licence. Each voice has its own licence. Check the voice |
+| Speak (Q3) | Piper (`rhasspy/piper-voices`) | Chosen for the wearable (2026-11-14): voice `en_GB-alba-medium` (CC BY 4.0). The engine `piper-tts` 1.8 is GPL-3.0-or-later (the old MIT repository is archived). The owner accepted it |
 | Speak (Q3) | The speech synthesis of the browser | No model on the server. The voices belong to the device. Some browser voices use a cloud service, so only local voices are allowed |
 
 The scene describer is the risky part. The test on the 14 photos of `../Dataset` is done. Its results are in the next section.

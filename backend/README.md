@@ -13,11 +13,14 @@ The backend has these jobs:
 6. The maintenance jobs. They delete old images and orphan files, report missing files, and save the vector index.
 7. The open search. It finds objects that nobody registered (see `docs/backend/Open Search.md`).
 8. The description and the voice. It builds the sentence about the place, and turns a recording into text (see `docs/backend/Voice.md`).
+9. The wearable. It turns a spoken question into a sentence and its audio (see `docs/backend/Wearable.md`).
+10. "Is this your object?" The carer confirms or refuses boxes of recent frames (see `docs/backend/Enrollment.md`).
 
 `main.py` starts the application and stops it. It calls the backend after all other modules are ready.
 
 For the full design, see `docs/backend/Upload Endpoint.md`, `docs/backend/Enrollment.md`, `docs/backend/Worker.md`,
-`docs/backend/Memory.md`, `docs/backend/Maintenance.md` and `docs/backend/Lifecycle.md`.
+`docs/backend/Memory.md`, `docs/backend/Verification.md`, `docs/backend/Search.md`, `docs/backend/Open Search.md`,
+`docs/backend/Voice.md`, `docs/backend/Wearable.md`, `docs/backend/HTTPS.md`, `docs/backend/Maintenance.md` and `docs/backend/Lifecycle.md`.
 
 ## Files
 
@@ -30,9 +33,9 @@ For the full design, see `docs/backend/Upload Endpoint.md`, `docs/backend/Enroll
 | `http_search.py` | The HTTP routes of the search: `POST /api/search`, `GET /api/objects/{id}/last-seen` and its picture |
 | `http_talk.py` | The HTTP routes of the wearable: `POST /api/talk`, `GET /api/talk/{id}` and `GET /api/talk/{id}/speech` |
 | `talk.py` | `TalkService`: a spoken question of the wearable becomes a sentence to say, on one background thread |
-| `http_common.py` | What both route files share: the token check, the body reader, the error answers |
+| `http_common.py` | What the route files share: the token check, the body reader, the error answers |
 | `enrollment.py` | `EnrollmentService`: objects, reference photos, the carer's confirmation, the calibration |
-| `ui_adapter.py` | Connects the UI to the upload step, to enrollment and to the search (`ui.ports.UploadService`, `EnrollmentService`, `FindService`) |
+| `ui_adapter.py` | Connects the UI to the upload step, to enrollment, to the search, to the voice input and to the memory browser (`ui.ports.UploadService`, `EnrollmentService`, `FindService`, `VoiceService`, `BrowseService`) |
 | `memory.py` | `MemoryService`: matches the regions of a frame, writes the sightings, keeps the last-seen records |
 | `review.py` | `ReviewService`: "Is this your object?" The boxes of recent frames that look like an object, for the carer. A "yes" makes the frame a confirmed reference photo, a "no" makes the box a negative of the object (plan part D2, `docs/backend/Enrollment.md`) |
 | `references.py` | `ReferenceVectors`: the SigLIP vectors and the DINOv2 keys of the reference crops of each object, for the modes `evidence` and `keys`. Made from the stored photos and kept in memory. The memory and the search share one |
@@ -49,7 +52,7 @@ For the full design, see `docs/backend/Upload Endpoint.md`, `docs/backend/Enroll
 | `instance_lock.py` | `InstanceLock`: only one copy of the application may use the data |
 | `settings.py` | Reads `config.toml` |
 | `errors.py` | The error classes |
-| `config.toml` | The queue limit, the token variable, the worker, the enrollment limits, the server and the maintenance settings |
+| `config.toml` | Every setting of the backend: the queue, the token variable, the worker, the server, the maintenance, enrollment, the memory, the search, the words, the description, the voice, the wearable and the open search |
 
 ## Rules
 
@@ -98,7 +101,7 @@ The list of routes and codes is in `docs/backend/Enrollment.md`.
 
 | Route | Does |
 |-------|------|
-| `POST /api/search` | The body is JSON: `{"query": "the blue thing I drink from"}`. The answer has `status` (`matched`, `ambiguous` or `none`), the `candidates` and, for `matched`, the `answer` |
+| `POST /api/search` | The body is JSON: `{"query": "the blue thing I drink from"}`. The answer has `status` (`matched`, `ambiguous`, `open` or `none`), the `candidates` and, for `matched` and `open`, the `answer`. `open`: no enrolled object fits, but the broad detection saw something that fits (a weak answer, with `label` and `via`) |
 | `GET /api/objects/{id}/last-seen` | Where and when the object was seen last |
 | `GET /api/objects/{id}/last-seen/picture` | A JPEG of the answer. `?view=crop` (the default) or `frame`, and `?max_side=` from 32 to 1024 |
 
@@ -144,6 +147,9 @@ A variable that is set but empty stops the start, so the route cannot open by mi
 |----------------------------|---------|
 | `enrollment.max_photos_per_object` | The most reference photos for one object |
 | `enrollment.max_objects` | The most objects in the gallery |
+| `enrollment.review_hours` | "Is this your object?" shows boxes of the frames of this many last hours |
+| `enrollment.review_max` | ...at most this many boxes, one for each frame |
+| `enrollment.review_min` | ...with a SigLIP agreement of at least this value (start value) |
 
 | Key (table `[server]`) | Meaning |
 |------------------------|---------|
@@ -175,6 +181,7 @@ A variable that is set but empty stops the start, so the route cannot open by mi
 | `search.verify_weak` | Check a weak hit in the archive against the reference photos (stage I5). A hit that passes counts as strong. The check never rejects a hit |
 | `search.verify_max_references` | The check compares with at most this many reference photos, the most similar first |
 | `search.crop_padding` | The picture of an answer shows the object with this much space around it (a part of the size of its box) |
+| `search.evidence_max_frames` | Mode `evidence` only: a search scores at most this many frames |
 
 | Key (table `[query]`) | Meaning |
 |-----------------------|---------|
@@ -197,6 +204,8 @@ A variable that is set but empty stops the start, so the route cannot open by mi
 | `describe.day_part_min_hours` | A sighting this old or older gets a part of the day ("yesterday evening") |
 | `voice.min_seconds` | A recording shorter than this is refused |
 | `voice.silence_rms` | A recording with a sound level below this value is silent. It gets no text |
+| `talk.max_jobs` | The wearable: the most questions that wait at one time, and the most answers that are kept |
+| `talk.keep_seconds` | The wearable: a question and its answer are deleted after this time |
 | `open_search.label_min_score` | A name of a stored box fits the words if its score is at least this value |
 | `open_search.label_tier` | The boxes of the names within this distance of the best score can be the answer. The newest frame wins |
 | `open_search.visual_min_probability` | The SigLIP step answers only if the best box reaches this probability |
@@ -205,7 +214,7 @@ A variable that is set but empty stops the start, so the route cannot open by mi
 | `open_search.rewrite_min_score` | A name from the model must fit the name of a stored box at least this well |
 | `open_search.neutral_phrases` | Phrases for the comparison of the SigLIP step ("a wall", "an object") |
 | `open_search.max_scan_hours`, `open_search.max_boxes` | How far back the search looks, and how many boxes it reads |
-| `open_search.mode` | `classic` (default) or `verified`. Any other value stops the start |
+| `open_search.mode` | `verified` (default since 2026-11-12) or `classic`. Any other value stops the start |
 | `open_search.verify_top_boxes` | Mode `verified` (start value): the number of boxes with the best SigLIP score that become candidates |
 | `open_search.verify_max_frames` | Mode `verified` (start value): the number of frames that Grounding DINO checks, newest first |
 | `open_search.verify_min_score` | Mode `verified` (start value): a frame passes if a detector box has at least this score... |
@@ -218,8 +227,11 @@ The largest upload is `limits.max_bytes` in `storage/config.toml`.
 `Worker.process_next()` takes the oldest `pending` reference photo first (see `docs/backend/Enrollment.md`).
 If there is none, it takes the oldest `pending` image and does these steps:
 read and decode the file, check the quality, reject a blurry image or a near duplicate, detect candidates,
-make the vectors, store the regions and the vectors, match the regions with the objects (the memory), and mark the image `done`.
-The detector looks for the phrases of the `ready` objects of the gallery. Without a ready object, it uses the placeholder phrases of `ai/config.toml`.
+run the broad detector, make the three vectors of every box, store the boxes and the vectors,
+match the boxes with the objects and update the memory, and mark the image `done`.
+The detector looks for the phrases of the `ready` objects of the gallery, and also in 4 tiles for the small objects.
+Without a ready object, it uses the placeholder phrases of `ai/config.toml`.
+When no image waits, the worker lets the language model write one sentence about a last-seen frame (`SceneWriter`).
 An error marks the image `failed`. The reason is only the name of the error class.
 `start()` runs the worker as a background thread. An upload calls `wake()`, so a new image starts at once.
 `stop()` finishes the current image and stops the thread.
@@ -246,7 +258,8 @@ engine = AiEngine()
 backend = Backend(engine)          # It checks the size of the vectors
 
 app.include_router(backend.create_router())     # The HTTP routes
-register_pages(backend.upload_service, backend.enrollment_service, backend.find_service)  # The UI
+register_pages(backend.upload_service, backend.enrollment_service, backend.find_service,
+               backend.voice_service, backend.browse_service)  # The UI
 app.on_startup(backend.start)                   # The worker and the maintenance thread
 app.on_shutdown(lambda: stop_components(components))
 # stop_components stops the backend, saves the vector index, closes the database and releases the lock
@@ -264,6 +277,8 @@ app.on_shutdown(lambda: stop_components(components))
 | `LimitReachedError` | The gallery has the largest number of objects or photos |
 | `NotFoundError` | An object or a photo does not exist |
 | `InvalidQueryError` | The words of a user are empty, too long or not printable |
+| `InvalidAudioError` | A recording is not a usable WAV file (format, size or length) |
+| `VoiceUnavailableError` | The speech recognizer is switched off |
 | `ObjectNotReadyError` | A search asks for an object that is a draft, or a look-alike |
 
 The upload step also passes on the errors of the `storage` and `db` modules.

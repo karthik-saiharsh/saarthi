@@ -44,7 +44,7 @@ Edit `config.toml`.
 | `limits.max_pixels` | Largest image, in pixels. Keep it equal to `[image] max_pixels` in `ai/config.toml` |
 | `limits.min_free_bytes` | New images are refused if the disk would have less free space |
 | `image.jpeg_quality` | Quality of the saved JPEG, from 1 to 95 |
-| `retention.days` | Images older than this can be deleted. 0 keeps all images |
+| `retention.days` | Images older than this can be deleted. 0 keeps all images. Today 1 (a rolling buffer of 24 hours) |
 | `cleanup.orphan_grace_seconds` | A file that the database does not know is an orphan only after this time |
 
 ## Helpers
@@ -87,3 +87,4 @@ path = storage.save_image(prepared)
 | `StoragePathError` | A path is not a safe storage path |
 | `StorageNotFoundError` | The file does not exist |
 | `StorageIOError` | The disk refuses a read, a write or a delete |
+| `InvalidCropError` | The box of `read_crop` is not inside the image |

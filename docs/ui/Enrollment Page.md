@@ -27,6 +27,7 @@ A small navigation links `/find`, `/upload`, `/enroll` and `/memory` on all page
 | `list_objects()` | A list of `ObjectInfo` |
 | `get_object(object_id)` | `ObjectDetail`: the object and its photos |
 | `delete_object(object_id)` | Nothing |
+| `set_small(object_id, small)` | Nothing. A small object makes the detector look in 4 tiles of each frame |
 | `add_photo(object_id, data)` | `PhotoInfo` |
 | `confirm_photo`, `remove_photo`, `retry_photo` (`object_id`, `photo_id`) | Nothing |
 | `get_crop(object_id, photo_id, max_side)` | The bytes of a JPEG |

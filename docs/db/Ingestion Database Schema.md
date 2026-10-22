@@ -8,14 +8,14 @@ A client sends images one at a time.
 The server saves each image on disk without its metadata (EXIF).
 The server then records its own metadata in a SQLite database.
 
-This design covers the ingestion data only.
-The object gallery and the memory (the sighting log and the last-seen table) have their own sections below.
+This document starts with the ingestion data (the tables `image` and `region`).
+The gallery, the answers of the carer, the scene and description caches, and the memory have their own sections below.
 
 ## Design rules
 
-- The server stores the vectors in a FAISS index, not in SQLite.
+- The server stores the vectors of the boxes in three FAISS indexes, not in SQLite. The gallery vectors are in SQLite.
 - The db module owns both stores. The `backend` module uses `db/api.py` only.
-- `Region.id` is the vector id in the FAISS index. This is the only link between the two stores.
+- `Region.id` is the vector id in each FAISS index. This is the only link between the stores.
 - All timestamps are UTC.
 - `captured_at` is the time at which the server received the image. It is not the time in the image metadata.
 - The database refuses wrong values. `CHECK` constraints limit `status` and `source`, and they check the image size and the box coordinates.
@@ -51,7 +51,7 @@ One row for each uploaded image.
 
 ## Table `region`
 
-One row for each detected box in an image.
+One row for each box in an image: a candidate of the detector of the registered objects, or a box of the broad detector.
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -64,7 +64,10 @@ One row for each detected box in an image.
 | `phrases` | JSON list | Detector labels that remain after the merge of duplicate boxes |
 | `in_hand` | boolean | True when a hand covers the object |
 | `quality_ok` | boolean | False when the crop failed the size, blur or edge check, or lies inside a screen, a picture frame or a mirror |
-| `embedding_model` | text, index, null | Name of the model that made the vector. Null means the vector is not in the FAISS index |
+| `embedding_model` | text, index, null | Name of the model that made the DINOv2 region vector. Null means the vector is not in `regions.faiss` |
+| `label` | text(80), index, null | The name that the broad detector gave the box (a hint, it can be wrong). Null for a candidate |
+| `crop_model` | text, index, null | Name of the model of the SigLIP crop vector. Null means no vector in `crops.faiss` |
+| `key_model` | text, index, null | Name of the DINOv2 key (with the crop size). Null means no vector in `keys.faiss` |
 
 ### Region source
 
@@ -73,6 +76,7 @@ One row for each detected box in an image.
 | `full` | Full-frame pass |
 | `tile` | Tiled pass for small objects |
 | `generic` | Generic "an object" pass |
+| `broad` | The broad detector (YOLOE, prompt-free). The box has a name in `label` and no phrase |
 
 ## Gallery tables
 
@@ -91,6 +95,7 @@ The tables are `enrolled_object`, `reference_photo` and `object_view`.
 | `tau`, `tau_strong`, `margin_min` | The calibration. Null until the object is `ready` |
 | `calibration_model` | The model whose vectors the calibration used |
 | `calibration_note` | A short text for the carer: what is missing, or a warning |
+| `small` | `true`: the detector also looks for the object in 4 tiles of each frame (the tiled pass). Default `false` |
 | `created_at`, `updated_at` | Naive UTC times |
 
 ### Table `reference_photo`
@@ -104,6 +109,7 @@ The tables are `enrolled_object`, `reference_photo` and `object_view`.
 | `status` | `pending`, `processing`, `located`, `confirmed` or `failed` |
 | `status_detail` | The reason of a failure. No personal data |
 | `x0`, `y0`, `x1`, `y1`, `det_score` | The box of the object. Null until the object is located |
+| `created_at` | Naive UTC time |
 
 ### Table `object_view`
 
@@ -117,6 +123,28 @@ One row for each vector of a photo.
 | `augmentation` | How the view was made, for example `original` |
 
 The gallery vectors are in SQLite, not in FAISS. The gallery is small (tens of objects, tens of views each).
+
+## Table `review_answer`
+
+The answers of the carer to "Is this your object?" (see `docs/backend/Enrollment.md`). The helpers are in `db/reviews.py`.
+`db/api.py` gives them as `db.reviews`.
+
+| Column | Meaning |
+|--------|---------|
+| `enrolled_object` | The object. Delete cascades to the answer |
+| `region` | The box that the carer saw. `SET NULL` when retention deletes the frame |
+| `answer` | `yes` or `no` |
+| `crop_vector`, `key_vector` | A copy of the SigLIP crop vector and of the DINOv2 key of the box (`float32`, unit length, as bytes). So a "no" stays a negative after the frame is deleted |
+| `crop_model`, `key_model` | The models of the two vectors |
+| `answered_at` | Naive UTC time |
+
+| Helper | Task |
+|--------|------|
+| `add_answer` | Keep one answer of the carer, with the two vectors of the box |
+| `answered_region_ids(object_id)` | The boxes that the carer answered for the object, so they are not shown again |
+| `load_negatives(object_id, crop_model, key_model)` | The vectors of the "no" answers of the object, for the matching mode `keys` |
+
+A "yes" also makes the frame a reference photo of the object (`gallery.add_confirmed_photo`).
 
 ## Description table
 
@@ -193,6 +221,8 @@ The rule that changes them is in `docs/backend/Memory.md`. The helpers are in `d
 |--------|------|
 | `add_sighting` | Add a row to the log. `InvalidRecordError` if the object, the image or the region does not exist |
 | `count_recent(object_id, since, until)` | The number of frames with a sighting in the window (both ends included). A frame counts one time |
+| `newest_weak(object_id, after, until)` | The newest weak sighting in the window, with its box. The search names it as a second "maybe" place |
+| `strong_region_ids(object_id, since)` | The boxes with a strong sighting of the object since a time. The question "Is this your object?" skips them |
 | `get_last_seen`, `list_last_seen` | Read the records |
 | `set_last_seen` | Make a sighting the record. An older sighting does not replace a newer record. Returns True if the record changed |
 
@@ -206,12 +236,14 @@ The rule that changes them is in `docs/backend/Memory.md`. The helpers are in `d
 |--------|------|
 | `create_object`, `get_object`, `list_objects`, `count_objects`, `delete_object` | Objects. `delete_object` returns the file paths for the storage module |
 | `add_reference_photo`, `get_photo`, `list_photos`, `count_photos_by_status` | Photos |
+| `add_confirmed_photo` | Add a photo that is `confirmed` at once, with its box and its views (a "yes" of the carer). All steps or none |
 | `claim_next_reference_photo` | The worker takes the oldest `pending` photo. It becomes `processing` |
 | `store_photo_views`, `mark_photo_failed` | The result of the worker: the box and the views, or a failure |
 | `confirm_photo`, `remove_photo`, `retry_photo` | The steps of the carer. A photo in `processing` cannot be removed |
 | `load_views`, `load_other_views` | The views of an object, and the views of all other objects (the negatives) |
 | `set_calibration`, `clear_calibration` | Save the thresholds, or go back to `draft` with a note |
 | `gallery_phrases` | The phrases of all `ready` objects, for the detector |
+| `set_small`, `small_phrases` | Mark an object as small, and the phrases of the small `ready` objects (the tiled pass) |
 | `list_photo_paths`, `reset_processing_photos` | For the file checks and for the start-up recovery |
 
 `list_all_file_paths()` in `db/api.py` returns the paths of the image files and of the reference photos.
@@ -258,6 +290,9 @@ Each helper uses peewee expressions only. No helper builds SQL from text.
 | `list_images_older_than(cutoff, limit=100)` | List the oldest `done`, `rejected` and `failed` images that were captured before `cutoff`. An image that waits or is in use is never listed | List of `Image` |
 | `delete_images(image_ids)` | Delete the images and their regions (by cascade), then remove their vectors from the index. Unknown ids are ignored. If one image is `processing`, the helper raises `InvalidStateError` and deletes nothing | The `file_path` of each deleted image |
 | `list_image_paths()` | List the `file_path` of every image, sorted | List of text |
+| `list_all_file_paths()` | List the `file_path` of every image and every reference photo, sorted (the orphan check) | List of text |
+| `get_region(region_id)` | Read one region, with its frame in `region.image` | `Region` or `None` |
+| `get_broad_regions(image_id)` | Read the boxes of the broad detector in an image, the most confident first | List of `Region` |
 | `count_images_by_status(status)` | Count the images with one status. The upload step uses it to limit the queue of `pending` images | Integer |
 | `close_connection()` | Close the database connection of the current thread. A thread that uses the database for a long time calls it when it ends | `None` |
 | `recover_interrupted()` | Reset interrupted images. It changes the tables only. The application uses `startup_recovery()` | `RecoveryReport` |
@@ -283,6 +318,7 @@ Do not put image content or personal data in this text.
 | `DbError` | Base class of the errors below. The helpers also raise it for other database errors |
 | `VectorIndexError` | The vector index refuses the call (for example, an id is already in the index, or the file cannot be read) |
 | `DuplicateImageError` | `file_path` or `sha256` is already in the database |
+| `DuplicateObjectError` | An enrolled object with this name already exists |
 | `InvalidStateError` | The image does not exist or has the wrong status. Also used when a region id does not exist |
 | `InvalidRecordError` | The database refuses a value |
 
@@ -295,7 +331,9 @@ and `startup_recovery` repair them. The opposite order would leave rows that poi
 
 ## Vector index
 
-The vectors are in a FAISS index. The index file path is `paths.faiss_index` in `db/config.toml`.
+The vectors of the boxes are in three FAISS indexes: `paths.faiss_index` (the DINOv2 region vectors),
+`paths.crop_faiss_index` (the SigLIP crop vectors) and `paths.key_faiss_index` (the DINOv2 keys), in `db/config.toml`.
+The rules below are true for each index. The helpers of this section are for `regions.faiss`. The crop vectors have their own helpers (`db.crop_vectors`).
 
 - The index is an `IndexIDMap2` over `IndexFlatIP`. The vector id is `Region.id`.
 - All vectors have unit length. The inner product of two vectors is their cosine similarity.
@@ -348,6 +386,8 @@ The helper does these steps:
    This happens when the server stops before the index is saved.
 4. It finds each `done` image that has a region without a vector (a gap).
    It deletes the regions and vectors of this image and sets it to `pending`. The workers process the image again.
+5. It repairs the crop vectors (`crop_vectors.recover`): it removes a crop vector that has no marked region, and clears a mark that has no vector.
+   The crop vectors are an extra, so a frame does not go back to `pending` for them.
 
 The table changes run in write transactions and come before the index changes.
 If the server stops during the recovery, the next recovery finishes the work.
@@ -374,14 +414,14 @@ Use `startup_recovery()` in the application.
 
 ## Configuration
 
-The file `db/config.toml` holds the paths of the SQLite file and the FAISS index.
+The file `db/config.toml` holds the paths of the SQLite file and of the three FAISS indexes.
 The paths are relative to the `db/` folder.
 The loader refuses absolute paths and paths that leave the `db/` folder.
 
 | Key | Default | Description |
 |-----|---------|-------------|
 | `paths.sqlite` | `data/saarthi.db` | SQLite file |
-| `paths.faiss_index` | `data/regions.faiss` | FAISS index file |
+| `paths.faiss_index` | `data/regions.faiss` | FAISS index file of the DINOv2 region vectors |
 | `vectors.dimension` | `384` | Length of one vector. It must match the embedding model |
 | `vectors.checkpoint_every` | `200` | Save the index after this number of added or removed vectors |
 | `paths.crop_faiss_index` | `data/crops.faiss` | FAISS index file of the SigLIP crop vectors |

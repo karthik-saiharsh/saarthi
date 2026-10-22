@@ -9,21 +9,22 @@ The search (stage Q1) reads the memory. See `docs/backend/Search.md`.
 ## Where it fits
 
 ```
-Worker: frame ──▶ regions and vectors stored ──▶ MemoryService.remember ──▶ db: sighting log, last_seen
-                                                     │
-                                                     └─▶ AiEngine.match_regions (see docs/ai/AI Ingestion Module.md)
+Worker: frame ──▶ boxes and vectors stored ──▶ mode keys:         MemoryService.match_keys ─▶ MemoryService.record ──▶ db: sighting log, last_seen
+                                           └─▶ mode tau/evidence: MemoryService.remember (match_regions or score_evidence, then record)
 ```
 
+The matching functions are in the ai module (see `docs/ai/AI Ingestion Module.md`, "Stage I4").
+
 - `backend/memory.py` has `MemoryService`. The worker owns one.
-- The worker calls it after it stores the regions and the vectors, and before it marks the image `done`.
+- The worker calls it after it stores the boxes and their vectors, and before it marks the image `done`.
 - A frame with no region, or a gallery with no `ready` object, does nothing.
 
 ## The steps for one frame
 
 1. Load the `ready` objects of the gallery with their views. An object with no view of the current model is left out.
-2. Match the regions with the objects. A region with `quality_ok = False` is never matched.
-   The mode is `[matching].mode` in `ai/config.toml` (see "The matching modes"). The default is `keys` (owner decision 2026-11-12).
-   The mode `keys` matches before the regions are stored (see below).
+2. Match the boxes with the objects. The mode is `[matching].mode` in `ai/config.toml` (see "The matching modes").
+   The default is `keys` (owner decision 2026-11-12). In the modes `tau` and `evidence`, a region with `quality_ok = False` is never matched.
+   In the mode `keys`, such a box is weak at most, and a box inside a screen, frame or mirror is never a sighting.
 3. Check each weak match against the reference photos of the object (stage I5, see `docs/backend/Verification.md`).
    A match that passes the check counts as strong.
 4. Write each accepted match to the table `sighting`. The time is the time at which the server received the frame (`Image.captured_at`).
@@ -44,6 +45,7 @@ Worker: frame ──▶ regions and vectors stored ──▶ MemoryService.remem
    it can be sharp where the candidate is blurred (`benchmarks/recall/README.md`). The crop gate applies to all of them.
 2. **The keys.** The worker makes the SigLIP crop vector and the DINOv2 key of every box, one time, and stores them
    (`db.crop_vectors`). The reference photos get the same two vectors (`ReferenceVectors`).
+   A box that the carer refused for the object ("no" in "Is this your object?") is a negative: a box closer to it than to every reference photo is refused.
 3. **The decision** (`docs/ai/AI Ingestion Module.md`, "Mode `keys`"). Strong: SigLIP 0.77 and DINOv2 0.42. Weak: SigLIP 0.72 and
    one more vote (DINOv2 0.40, or a detector score of 0.30 for a word of the object). A box with a bad crop (small, blurred, cut by the edge)
    is weak at most. A box inside a screen, frame or mirror is never a sighting. One box is one object, and a look-alike can take a box.
@@ -84,7 +86,7 @@ The detector also called the watch on a wrist "a headset", so the phrase rule bl
 The positive part of `meaning` is capped (`meaning_cap`). The meaning tells the kind of thing, not which one.
 In the test, another book scored 0.98 for "book". It must not make a match, and the cap keeps it below `score_maybe`.
 
-**The reference vectors.** `backend/references.py` (`ReferenceVectors`) makes the SigLIP vectors of the confirmed reference crops from the stored photos.
+**The reference vectors.** `backend/references.py` (`ReferenceVectors`) makes the SigLIP vectors and the DINOv2 keys of the confirmed reference crops from the stored photos.
 They stay in memory, and they are made again only when the set of confirmed photos of an object changes. The worker and the search share one instance.
 A photo that cannot be read is left out. A tracked object without a readable photo is not matched in this mode. A look-alike needs no reference vectors:
 it takes part only in the margin.
@@ -101,7 +103,7 @@ The step costs about 1.8 s for a frame with 7 candidates on the development CPU.
 
 | Sighting | What happens |
 |----------|--------------|
-| Strong (mode `tau`: `similarity >= tau_strong` and `margin >= margin_strong`; mode `evidence`: `score >= score_sure`), or weak and verified | The record changes at once |
+| Strong (mode `keys`: both keys at their strong bars; mode `tau`: `similarity >= tau_strong` and `margin >= margin_strong`; mode `evidence`: `score >= score_sure`), or weak and verified | The record changes at once |
 | Weak (accepted, not strong, and not verified) | The record changes only if the object has enough **weak** sightings in different frames inside the time window. The new sighting counts. A strong sighting does not count, so a weak false match after a true strong sighting cannot replace the record alone |
 
 The settings are in `[memory]` of `backend/config.toml`:
@@ -161,8 +163,8 @@ Both tables are in `db/schema.py`. The helpers are in `db/sightings.py` (`db.sig
   The rows of the log go with their frames, so the rolling buffer (`retention.days = 1`) also limits the log. With `retention.days = 0` the log grows without a limit. The rows are small.
 - The rule counts the weak sightings of the same object only. A weak sighting does not show if a look-alike was nearby.
 - The views come from one embedding model. If the model changes, an object is ignored until the carer adds its photos again.
-- The values of `[matching]` come from 3 objects in 15 frames and one hold-out object. They are start values. Measure again with more objects.
-- The score is not stored. The `similarity` of a sighting is the DINOv2 similarity in both modes. The log line of a sighting shows the score.
+- The values of the mode `evidence` come from 3 objects in 15 frames and one hold-out object. The bars of the mode `keys` come from 4 objects in 31 home frames and 309 frames of other homes (`benchmarks/recall/README.md`). All are start values. Measure again with more objects.
+- The score is not stored. The `similarity` of a sighting is the SigLIP key in the mode `keys`, and the DINOv2 similarity in the modes `tau` and `evidence`. The log line of a sighting shows the score.
 - Reference photos that all show the same table make two small objects look alike to DINOv2. Photos of each object in the places where it is used help most.
   In the test, the headset was never found: all its photos were close-ups on one table, and the frames showed it from the side or in a hand.
 - A single weak sighting does not change the record. In the test, the book in frame 10 was weak and alone, so the record stayed on the older strong sighting.
@@ -175,5 +177,5 @@ Both tables are in `db/schema.py`. The helpers are in `db/sightings.py` (`db.sig
 | `tests/test_backend_memory.py` | The rule: strong, weak, the window, other objects, one frame twice, the limit 1, a deleted object, `load_objects` |
 | `tests/test_backend_worker.py` | The whole step with a fake detector: a record is set, a look-alike blocks, a look-alike alone is not reported, a region that is not good, a matching error, retention keeps the frame |
 | `tests/test_backend_settings.py` | The keys of `[memory]` |
-| `tests/test_backend_keys.py` | The mode `keys`: the DINOv2 keys of the references, all boxes matched, only a broad box with a sighting becomes a region, the shared SigLIP vectors of the open search, the hysteresis, an error of the broad detector, the archive search |
+| `tests/test_backend_keys.py` | The mode `keys`: the DINOv2 keys of the references, all boxes stored and matched (also without a sighting), a sighting on a broad box, the hysteresis, a gallery without a ready object, an error of the broad detector, the archive search from the stored vectors |
 | `tests/test_backend_evidence.py` | The mode `evidence`: the reference vectors (only confirmed photos, kept, made again after a change, a missing file), the memory (strong, weak and the window, no picture, no readable reference), the archive search |

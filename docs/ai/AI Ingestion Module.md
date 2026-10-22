@@ -15,9 +15,10 @@ It does these things:
 8. It turns speech into text (stage Q0).
 9. It finds and names objects that nobody registered (the broad detector), and makes SigLIP vectors for them.
 10. It rewrites a description into object names, and writes a sentence about a place (the language model).
+11. It turns the sentence of an answer into speech for the wearable (stage Q3 on the server).
 
 The design follows `docs/guide/DINO-Based Object Recall Pipeline.md`.
-Items 8 to 10 are described in `docs/backend/Voice.md` and `docs/backend/Open Search.md`.
+Items 8 to 11 are described in `docs/backend/Voice.md`, `docs/backend/Open Search.md` and `docs/backend/Wearable.md`.
 The enrollment stages E2 to E4 are in the section "Enrollment stages E2 to E4".
 The stages that use the results are in `docs/backend/Memory.md` and `docs/backend/Search.md`.
 
@@ -33,16 +34,23 @@ worker (backend):
   db.set_image_analysis(id, report.phash, report.blur_score)
   if engine.is_blurry(report):                                   db.mark_image_rejected(...)
   if engine.is_near_duplicate(report.phash, db.list_recent_phashes()): db.mark_image_rejected(...)
-  candidates = engine.detect_candidates(image, include_generic=every_nth_frame)
-  vectors    = engine.embed_regions(image, [c.box for c in candidates])   # before the rows: an error leaves nothing
-  regions    = db.add_regions(id, [to_new_region(c) for c in candidates])
+  candidates = engine.detect_candidates(image, phrases=gallery_phrases, small_phrases=small, tiling=bool(small))
+  found      = engine.detect_open(image)                                  # the broad detector, if it is on
+  boxes      = candidates + engine.broad_candidates(image, found)
+  vectors    = engine.embed_regions(image, [b.box for b in boxes])        # the model work comes before the rows:
+  crops      = engine.embed_evidence_crops(image, [b.box for b in boxes]) #   an error leaves nothing behind
+  keys       = engine.embed_key_crops(image, [b.box for b in boxes])
+  regions    = db.add_regions(id, [to_new_region(b) for b in boxes])
   db.store_region_vectors([r.id for r in regions], vectors, engine.embedding_model)
+  db.crop_vectors.store([r.id for r in regions], crops, engine.open_vector_model, keys, engine.key_model)
+  sightings  = engine.match_keys(crops, keys, regions, objects)           # stage I4, mode keys (the default)
+  memory.record(...)                                                      # stages I5 and I6, in the backend
   db.mark_image_done(id)
 ```
 
 The worker in `backend/worker.py` does these steps (see `docs/backend/Worker.md`).
 
-Every candidate that the backend stores must also get a vector.
+Every box that the backend stores must also get a vector.
 The start-up recovery of the db module sets an image back to `pending` if one of its regions has no vector.
 
 `Candidate` has the same fields as `db.api.NewRegion`. The backend converts one to the other.
@@ -52,7 +60,7 @@ The ai module does not import the db module.
 
 | Helper | Task | Result |
 |--------|------|--------|
-| `AiEngine(config=None)` | Load up to eight models. The detector, the embedder and the query encoder always load. The verifier, the scene model, the speech model, the broad detector and the language model load only if their `enabled` key is true | The engine. Call it one time at start-up |
+| `AiEngine(config=None)` | Load up to nine models. The detector, the embedder and the query encoder always load. The verifier, the scene model, the speech model, the voice, the broad detector and the language model load only if their `enabled` key is true | The engine. Call it one time at start-up |
 | `open_image(data, max_pixels)` | Decode image bytes. Apply the EXIF orientation. Convert to RGB | A PIL image. Raises `ImageError` |
 | `engine.open_image(data)` | The same, with `image.max_pixels` of the config | A PIL image |
 | `engine.assess_quality(image)` | Blur score and perceptual hash | `QualityReport` |
@@ -83,6 +91,10 @@ The ai module does not import the db module.
 | `engine.rewrite_query(words)` | The language model turns a description into up to 3 object names | List of `str` |
 | `engine.describe_scene(picture, facts)` | The language model writes one sentence about the place. The backend checks it | `str` |
 | `engine.language_enabled`, `description_model` | The language model is loaded. The name for the stored sentences | `bool`, `str` |
+| `engine.synthesize_speech(text)` | Text to speech with the Piper voice (stage Q3, the wearable). `tts_enabled` and `tts_sample_rate` describe it | `int16` samples, mono |
+| `engine.locate_object(...)`, `engine.embed_views(...)`, `engine.calibrate_object(...)`, `engine.min_photos` | The enrollment stages E2 to E4 (see "Enrollment stages E2 to E4") | See there |
+| `engine.embed_place(image, box)`, `engine.place_note(place_vectors)` | The self-test of the photos of an object (see "Enrollment stages E2 to E4") | A vector, a note or `None` |
+| `engine.review_scores(sig_vectors, dino_vectors, obj)` | The SigLIP key of each stored box for one object, for "Is this your object?". A refused box gets minus infinity | Array |
 
 `detect_candidates` uses `detection.default_phrases` when you give no phrases.
 `include_generic` adds the generic pass. `tiling` switches the tiled pass for this call. The value `None` uses the config.
@@ -95,7 +107,10 @@ The backend chooses both switches for each frame. The ai module does not count f
 | `Box` | `x0`, `y0`, `x1`, `y1` in pixels. `x1` and `y1` are exclusive |
 | `QualityReport` | `blur_score`, `phash` (16 hex characters) |
 | `MatchRegion`, `MatchObject`, `Sighting` | The input and the result of the matching (see "Stage I4") |
-| `Candidate` | `box`, `det_score`, `source` (`full`, `tile` or `generic`), `phrases`, `in_hand`, `quality_ok` |
+| `Candidate` | `box`, `det_score`, `source` (`full`, `tile`, `generic` or `broad`), `phrases`, `in_hand`, `quality_ok`, `depicted` |
+| `RawDetection`, `OpenDetection` | A raw box of the detector (box, score, label), and a named box of the broad detector |
+| `LocatedObject`, `Calibration` | The results of the enrollment stages E2 and E4 |
+| `VerifyResult` | The result of stage I5: `verified`, `matches`, `compared` |
 
 `det_score` is for analysis only. Do not use it to decide the identity of an object.
 
@@ -147,7 +162,7 @@ Hand boxes and depiction boxes are never returned as candidates. An object insid
 
 ### Crop quality
 
-`apply_crop_quality` sets `quality_ok`. A candidate is good if all three are true:
+`apply_crop_quality` sets `quality_ok`. A candidate is good if all four are true:
 
 - It is not inside a depiction box (step 6 of the post-processing). `apply_crop_quality` never sets this flag back to True.
 - Its short side is at least `quality.min_crop_side` pixels.
@@ -156,6 +171,7 @@ Hand boxes and depiction boxes are never returned as candidates. An object insid
 
 A candidate with `quality_ok = False` is still returned. The archive keeps it.
 It must still get a vector (see "Where it fits").
+In the mode `keys` such a box can still be a sighting, but a weak one at most (see "Stage I4"). The modes `tau` and `evidence` skip it.
 
 ## Stage I3: embed
 
@@ -349,15 +365,17 @@ All settings are in `ai/config.toml`. The start values come from the pipeline do
 
 | Table | Keys |
 |-------|------|
-| `[models]` | `detector_id`, `detector_revision`, `embedder_id`, `embedder_revision`, `query_encoder_id`, `query_encoder_revision`, `verifier_id`, `verifier_revision`, `scene_id`, `scene_revision`, `speech_id`, `speech_revision`, `language_id`, `language_revision`, `open_detector_file`, `open_detector_url`, `open_detector_sha256`, `device` (`auto`, `cpu` or `cuda`), `cpu_threads`, `local_files_only` |
+| `[models]` | `detector_id`, `detector_revision`, `embedder_id`, `embedder_revision`, `query_encoder_id`, `query_encoder_revision`, `verifier_id`, `verifier_revision`, `scene_id`, `scene_revision`, `speech_id`, `speech_revision`, `language_id`, `language_revision`, `open_detector_file`, `open_detector_url`, `open_detector_sha256`, `voice_file`, `voice_url`, `voice_sha256`, `voice_config_url`, `voice_config_sha256`, `device` (`auto`, `cpu` or `cuda`), `cpu_threads`, `local_files_only` |
 | `[image]` | `max_pixels` |
 | `[quality]` | `blur_min`, `analysis_max_side`, `phash_max_distance`, `min_crop_side`, `crop_blur_min` |
 | `[detection]` | `box_threshold`, `text_threshold`, `input_short_edge`, `max_per_phrase`, `chunk_size`, `phrase_max_chars`, `nms_iou`, `max_frame_fraction`, `min_box_side`, `hand_overlap`, `depiction_inside`, `default_phrases`, `small_phrases`, `hand_phrase`, `depiction_phrases`, `generic_phrase`, `tiling_enabled`, `tile_overlap` |
 | `[embedding]` | `frame_short_edge`, `frame_long_edge_max`, `crop_size`, `small_box_min_side`, `crop_padding` |
+| `[enrollment]` | `augmentations`, `box_scale`, `brightness`, `tau_std_factor`, `tau_strong_offset`, `tau_min`, `margin_min`, `margin_strong`, `min_photos`, `place_same_min` |
 | `[query]` | `max_tokens` |
 | `[verification]` | `enabled`, `min_matches`, `match_threshold`, `crop_padding` |
 | `[scene]` | `enabled`, `prompt`, `rooms`, `surfaces`, `surface_context` |
 | `[speech]` | `enabled`, `max_seconds`, `max_new_tokens` |
+| `[tts]` | `enabled`, `length_scale` (above 1 is slower), `max_chars` |
 | `[open_detection]` | `enabled`, `confidence`, `max_boxes`, `input_size`, `min_box_side`. The SigLIP vector of a box is cut with `matching.crop_padding` |
 | `[matching]` | `mode` (`evidence`, `keys` or `tau`), `candidate_min`, `max_regions`, `top_photos`, `crop_padding`, `contrast_phrases`, `bias`, `weight_meaning`, `meaning_cap`, `weight_visual`, `visual_centre`, `visual_scale`, `weight_dino`, `dino_centre`, `dino_scale`, `weight_margin`, `margin_cap`, `margin_scale`, `score_maybe`, `score_sure`, `key_crop_size` (a multiple of 14), `sig_strong`, `dino_strong`, `sig_weak`, `dino_weak`, `word_vote`. `score_sure` must not be below `score_maybe`, and `sig_weak` not above `sig_strong` |
 | `[language]` | `enabled`, `max_input_chars`, `max_new_tokens`, `max_names`, `rewrite_system`, `rewrite_examples`, `describe_system`, `describe_max_new_tokens`, `describe_image_side` |
@@ -381,8 +399,9 @@ All settings are in `ai/config.toml`. The start values come from the pipeline do
 | Turn speech into text | `openai/whisper-base` (Apache-2.0) | About 290 MB |
 | Find objects that nobody registered | YOLOE `yoloe-11s-seg-pf.pt` (AGPL-3.0). Downloaded into `ai/models/`, SHA-256 checked | About 28 MB |
 | Rewrite a description, write a sentence about a place | `Qwen/Qwen3.5-0.8B` (Apache-2.0) | About 1.75 GB |
+| Say the answer on the wearable | Piper voice `en_GB-alba-medium` (`rhasspy/piper-voices`, voice data CC BY 4.0; the engine `piper-tts` is GPL-3.0-or-later). Downloaded into `ai/models/`, SHA-256 checked | About 63 MB |
 
-All eight models together are about 3.8 GB.
+All nine models together are about 3.9 GB.
 
 - The first start downloads the models to the Hugging Face cache, `~/.cache/huggingface/hub/`.
   Set the variable `HF_HOME` (or `HF_HUB_CACHE`) to use another folder.
@@ -402,7 +421,8 @@ All eight models together are about 3.8 GB.
 | `AiConfigError` | `config.toml` is missing or has a wrong value. The message names the key |
 | `ModelLoadError` | A model cannot be loaded |
 | `ImageError` | The file is not an image, is broken or truncated, or has too many pixels |
-| `InferenceError` | A model failed while it worked on an image |
+| `InferenceError` | A model failed while it worked on an image, a text or a recording |
+| `CalibrationError` | The views of an object are not enough for a calibration |
 | `MatchingError` | A vector or a view of the matching is not usable |
 
 ## Security and privacy
@@ -417,6 +437,8 @@ All eight models together are about 3.8 GB.
 
 The development machine has an Intel Core Ultra 9 CPU and no GPU.
 The test photo is 968 x 728 pixels. Each time is the median of one run after a warm-up run.
+These times were measured with the first settings: a detector short edge of 800 (today 640) and the frame pass of DINOv2.
+The times of today's pipeline (mode `keys`) are in `benchmarks/recall/README.md` and `docs/Raspberry Pi.md`.
 
 | Stage | Time |
 |-------|------|
@@ -441,8 +463,8 @@ The photo shows a phone in a pink case on a book, a charger with a cable, and a 
 - The generic pass finds the pen. No phrase in the vocabulary names a pen.
 - The charger gets the labels "a set of keys" and "a remote control". The cable gets "a pair of glasses".
   The boxes are correct. The vocabulary has no phrase for a charger or a cable.
-- The module gives about 13 overlapping boxes for 5 objects.
-  The NMS value of 0.7 only merges boxes that are almost the same.
+- The module gave about 13 overlapping boxes for 5 objects.
+  The NMS value of that time (0.7) only merged boxes that are almost the same. The value is 0.5 since the calibration.
 
 ## Known limits and open items
 
@@ -452,13 +474,13 @@ The photo shows a phone in a pink case on a book, a charger with a cable, and a 
   Calibrate the value with 20 or more real frames from the wearable, both good and bad.
 - **Depiction rule.** The owner chose to mark, not drop. In a real test, a phone on a book cover got the label
   "a phone a smartphone a mirror" and a "television screen" box covered it. The phone now stays in the archive with `quality_ok = False`.
-  The later last-seen step must not use a candidate with `quality_ok = False`.
+  A box inside a depiction (`depicted`) is never a sighting. In the modes `tau` and `evidence`, no box with `quality_ok = False` is a sighting.
   The cost: a real object on a book cover also cannot update the last-seen record. A better test for a screen is an open item.
 - **Vocabulary.** The phrases are a placeholder. The labels are only as good as the phrases.
 - **Duplicate boxes.** The value `nms_iou = 0.5` came from the calibration (`benchmarks/calibration/README.md`). One box for each object needs a decision after the vocabulary is real.
 - **Calibration.** The values were tuned on 14 photos with one object. The README of `benchmarks/calibration` lists what was set, what was kept, and what the data could not decide.
   `text_threshold` was not tuned.
-- **Speed on the Raspberry Pi.** It is not measured. The installation of the aarch64 wheels of torch is not tested.
+- **Speed on the Raspberry Pi.** Measured on a Pi 5: 20 to 26 s for a frame without a cooler (see `docs/Raspberry Pi.md`). The voice of the wearable is not measured on the Pi.
 - **Not tested.** `device = "cuda"`, `local_files_only = true`, `cpu_threads`, and two threads that call a model at the same time.
 - **Stored image.** The storage module saves the image again as a JPEG. On the test photo, the number of candidates changed from 13 to 14.
   12 of the 13 boxes stayed the same (IoU of 0.8 or more). The blur score did not change.
@@ -494,6 +516,7 @@ These parts are not built yet:
 | `tests/test_ai_query_model.py` (slow) | The real query encoder: the vectors, the padding, four vague questions |
 | `tests/test_ai_models.py` (slow) | The real models: vector shape and length, the three passes, the engine |
 | `tests/test_ai_speech_model.py` (slow) | The real speech model |
+| `tests/test_ai_tts_model.py` (slow) | The real voice of the wearable: a sentence, an empty text, a long text that is cut |
 | `tests/test_ai_open_detector.py`, `tests/test_ai_open_detector_model.py` (slow) | The broad detector: the settings, the weights check, the offline switches, the real model |
 | `tests/test_ai_open_vectors.py`, `tests/test_ai_open_vectors_model.py` (slow) | The SigLIP vectors of crops and phrases |
 | `tests/test_ai_language.py`, `tests/test_ai_language_model.py` (slow) | The query rewriter and the description, with a fake and with the real model |

@@ -11,7 +11,7 @@ The Pi is the target device of the project. The application ran on a Pi 5 one ti
 - A Raspberry Pi 5 with 8 GB, a power supply of 5 V and 5 A, and **active cooling**. Without cooling, the processor slows down within minutes of work.
 - Raspberry Pi OS **64-bit** (Bookworm or Trixie). The packages of this project do not exist for the 32-bit system.
 - At least 15 GB of free space. The packages and the models need about 10 GB. A fast SD card, or better an SSD, helps: the models load from the disk.
-- A network. The first start downloads the models (about 3.8 GB). Later starts work without internet.
+- A network. The first start downloads the models (about 3.9 GB). Later starts work without internet.
 
 ## Setup (one time)
 
@@ -45,6 +45,7 @@ The microphone works only with HTTPS and a trusted certificate. If the Pi gets a
 ## Start at boot (the service)
 
 **Decision of the owner (2026-11-10): do not install the service on the shared Pi.** The Pi runs other work, so Saarthi starts by hand with `./start`. The files stay in `deploy/` for a Pi that Saarthi uses alone.
+**Changed 2026-11-12:** the Pi now runs only Saarthi. The service is an open decision of the owner. Ask the owner before you install it.
 
 1. Run `./deploy/install_service.sh`. It installs and starts `saarthi.service`.
 2. Watch it with `journalctl -u saarthi -f`. Stop it with `sudo systemctl stop saarthi`. Remove it with `./deploy/install_service.sh --remove`.
@@ -65,17 +66,18 @@ The service stops Saarthi with the same signal as Ctrl+C and waits up to 150 sec
 
 ## Copy the models from another machine
 
-The Pi may download slowly (about 0.35 MB/s on the test network, so 3.8 GB take about 3 hours). The models can come from a machine that has them:
-1. Copy the folders `models--...` of the seven models of `ai/config.toml` from `~/.cache/huggingface/hub/` to the same place on the Pi (for example with `rsync -a`).
+The Pi may download slowly (about 0.35 MB/s on the test network, so 3.9 GB take about 3 hours). The models can come from a machine that has them:
+1. Copy the folders `models--...` of the seven Hugging Face models of `ai/config.toml` from `~/.cache/huggingface/hub/` to the same place on the Pi (for example with `rsync -a`).
    Use `rsync --inplace --append-verify` for a weak Wi-Fi: a plain copy starts a big file again after each break.
 2. Copy the folder `blobs/` of the same `hub` folder, too. The newer cache keeps some files there, and the links in `models--.../snapshots` point to it.
    Without it, a model has no weights, and the start stops with "does not appear to have a file named model.safetensors".
 3. `./start` checks that every weight file opens. If one is missing, it does not use the offline mode, and the application downloads it.
-4. The file `ai/models/yoloe-11s-seg-pf.pt` is in the project folder. Copy it with the project.
+4. The folder `ai/models/` is in the project folder: the YOLOE file `yoloe-11s-seg-pf.pt` and the two files of the voice `en_GB-alba-medium.onnx` and `.onnx.json`. Copy it with the project. The SHA-256 of each file is checked at the start.
 
 ## Measured on a Pi 5 (2026-11-10)
 
 Test: Raspberry Pi 5, 8 GB, Raspberry Pi OS Trixie (64-bit, with the desktop), an SD card of 29 GB, Wi-Fi, **no active cooler**, the same 14 photos and one object as on the development computer.
+The test used the settings of that day: the matching mode `tau` and a detector short edge of 800. Today the default is the mode `keys` with a short edge of 640, and the voice of the wearable is loaded too. These are not measured on the Pi.
 
 | Measure | Pi 5 | Development computer |
 |---------|------|----------------------|
@@ -98,7 +100,7 @@ A frame takes 20 to 26 s, so the wearable must send at most one picture every 30
 ## Risks and open questions
 
 - **Speed.** See the measurements above. The wearable must not send faster than the Pi can process. The queue holds up to 500 frames (`ingest.max_pending`).
-- **Memory.** The application loads 7 models. It used 4.3 GB of 8 GB after the start (the desktop of the Pi OS included) and up to 5.8 GB at work. A Pi OS without the desktop leaves more room.
+- **Memory.** The application loaded 8 models in the test. It used 4.3 GB of 8 GB after the start (the desktop of the Pi OS included) and up to 5.8 GB at work. Today it loads 9 (the voice of the wearable, about 63 MB, is new). A Pi OS without the desktop leaves more room.
 - **The description.** One sentence takes 33 s on the Pi. It runs in the background when no frame waits.
 - **Heat.** Check the temperature with `vcgencmd measure_temp` during a long run.
 - **The package `ultralytics`** needs `libgl1` (installed by the setup script). A start can fail with a message about `libGL.so.1` if the package is missing.
@@ -110,4 +112,5 @@ A frame takes 20 to 26 s, so the wearable must send at most one picture every 30
 3. Send 10 pictures (`docs/Manual Test Guide.md`) and note the time for each. Watch `vcgencmd measure_temp` and `free -m`.
 4. Ask a question on the phone, with the voice (the time for the recognition) and with text.
 5. Check that the answer, the picture and the voice work over HTTPS on the phone.
-6. Stop with Ctrl+C. Look for `Shutdown is complete` in the log.
+6. Ask a question through `POST /api/talk` (`docs/backend/Wearable.md`) and note the time until the audio is ready.
+7. Stop with Ctrl+C. Look for `Shutdown is complete` in the log.

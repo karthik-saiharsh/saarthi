@@ -7,7 +7,7 @@ It also gives the stages of enrollment: find one object in a photo, make its vie
 It matches the boxes of a frame with the enrolled objects.
 It turns the words of a user into a vector, to find the object that the user means.
 
-It also scores the room and the surface of a place, turns speech into text, finds objects that nobody registered, and runs a small language model.
+It also scores the room and the surface of a place, turns speech into text and text into speech, finds objects that nobody registered, and runs a small language model.
 
 For the full design, see `docs/ai/AI Ingestion Module.md`.
 The source of the design is `docs/guide/DINO-Based Object Recall Pipeline.md`.
@@ -36,7 +36,7 @@ The source of the design is `docs/guide/DINO-Based Object Recall Pipeline.md`.
 | `enrollment.py` | Box scaling and brightness for the views of a photo. No model |
 | `runtime.py` | Safe model loading, device choice, model names |
 | `settings.py` | Reads `config.toml` |
-| `types.py` | `Box`, `QualityReport`, `Candidate`, `RawDetection` |
+| `types.py` | The data classes: `Box`, `QualityReport`, `Candidate`, `RawDetection`, `OpenDetection`, `LocatedObject`, `Calibration`, `MatchRegion`, `MatchObject`, `Sighting`, `VerifyResult` |
 | `errors.py` | The error classes |
 | `config.toml` | Every setting: models, thresholds, phrases, switches |
 
@@ -60,9 +60,18 @@ The source of the design is `docs/guide/DINO-Based Object Recall Pipeline.md`.
 | E2 Locate | `engine.locate_object(image, category_phrase, synonyms)` | A `LocatedObject` (the best box and its score), or `None` |
 | Q Detect phrases | `engine.detect_phrases(image, phrases)` | A list of `RawDetection` (box, score, label), with no merge and no filter. The open search in the mode `verified` uses it |
 | E3 Views | `engine.embed_views(image, box)` | A list of (view name, vector). The views are in `[enrollment]` of `config.toml` |
+| I4 Match, mode `tau` | `engine.match_regions(vectors, regions, objects)` | A list of `Sighting`. One threshold for each object |
 | I4 Match, mode `keys` | `engine.broad_candidates(image, detections)`, `engine.embed_evidence_crops(image, boxes)`, `engine.embed_key_crops(image, boxes)`, `engine.match_keys(...)` | A list of `Sighting`. Blurred crops are weak at most |
 | I4 Match, mode `evidence` | `engine.evidence_regions(...)`, `engine.embed_evidence_crops(image, boxes)`, `engine.score_evidence(...)` | A list of `Sighting` with a `score`. `engine.matching_mode` says which mode is on (`[matching]` of `config.toml`) |
 | E4 Calibrate | `engine.calibrate_object(views, photo_ids, others)` | A `Calibration` with `tau`, `tau_strong` and a note. `engine.min_photos` is the number of photos that an object needs |
+| E4 Self-test | `engine.embed_place(image, box)`, `engine.place_note(...)` | The background of a photo, and a warning if all photos of an object show one place |
+| Review | `engine.review_scores(...)` | The SigLIP key of each stored box for one object, for "Is this your object?" |
+| I5 Verify | `engine.verification_crop(image, box)`, `engine.verify_match(references, candidate)` | A `VerifyResult` (matching keypoints). Only if `engine.verification_enabled` |
+| Q0 Listen | `engine.transcribe(samples)` | English text. Samples are float32, mono, 16 kHz. Only if `engine.speech_enabled` |
+| Q1 Words | `engine.encode_texts(texts)` | One unit-length vector for each text (the resolver of the backend) |
+| Q2 Describe | `engine.score_rooms(image)`, `engine.score_surfaces(image, box)`, `engine.describe_scene(image, facts)` | The room and the surface from fixed lists, and one sentence of the language model |
+| Q3 Speak | `engine.synthesize_speech(text)` | int16 samples, mono, `engine.tts_sample_rate`. Only if `engine.tts_enabled` |
+| Open search | `engine.detect_open(image)`, `engine.embed_open_phrases(phrases)`, `engine.open_pair_scores(crops, phrases)`, `engine.rewrite_query(text)` | The named boxes of the broad detector, the SigLIP scores of crops and words, and up to 3 object names from a description |
 
 `engine.embedding_model` is the name that goes into `Region.embedding_model`.
 `engine.embedding_dimension` must equal `vectors.dimension` in `db/config.toml`.
@@ -72,7 +81,7 @@ The source of the design is `docs/guide/DINO-Based Object Recall Pipeline.md`.
 ```python
 from ai.api import AiEngine
 
-engine = AiEngine()  # Loads the models (up to eight). Do this one time.
+engine = AiEngine()  # Loads the models (up to nine). Do this one time.
 image = engine.open_image(data)
 report = engine.assess_quality(image)
 candidates = engine.detect_candidates(image)
@@ -117,4 +126,6 @@ Edit `config.toml`. The file explains each key.
 | `AiConfigError` | `config.toml` is missing or has a wrong value |
 | `ModelLoadError` | A model cannot be loaded |
 | `ImageError` | The file is not an image, is broken, or has too many pixels |
-| `InferenceError` | A model failed while it worked on an image |
+| `InferenceError` | A model failed while it worked on an image, a text or a recording |
+| `CalibrationError` | The views of an object cannot give thresholds |
+| `MatchingError` | The data for the matching is not usable (for example vectors of another size) |

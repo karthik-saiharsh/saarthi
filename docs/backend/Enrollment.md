@@ -115,8 +115,8 @@ The functions are in `ai/calibration.py`. They use numpy only. The service calls
 The values are in `[enrollment]` of `ai/config.toml`: `tau_std_factor`, `tau_min`, `tau_strong_offset`, `margin_min` (0.03),
 `margin_strong` (0.08) and `min_photos` (3). The reasons for `tau_min` and `tau_strong_offset` are in `benchmarks/calibration/README.md`.
 
-In the mode `evidence` of the matching (the default, see `docs/backend/Memory.md`), `tau` and `tau_strong` do not decide a match.
-The mode `tau` and the archive search in that mode use them. The note for the carer stays: it shows reference photos that look alike.
+In the modes `keys` (the default since 2026-11-12) and `evidence` of the matching (see `docs/backend/Memory.md`), `tau` and `tau_strong` do not decide a match.
+Only the mode `tau` and the archive search in that mode use them. The note for the carer stays: it shows reference photos that look alike.
 
 Every change of a photo or an object calibrates all objects again. The negatives of an object change when another object changes.
 
@@ -176,6 +176,9 @@ These settings are in the table `[enrollment]` of `backend/config.toml`.
 |-----|---------|
 | `max_photos_per_object` | The most photos for one object (20). The error is `LimitReachedError` |
 | `max_objects` | The most objects in the gallery (50) |
+| `review_hours` | "Is this your object?" shows boxes of the frames of the last 24 hours |
+| `review_max` | ...at most 6 boxes, one for each frame |
+| `review_min` | ...with a SigLIP agreement of 0.55 or more (a start value) |
 
 The upload limits of `storage/config.toml` apply to the photos too.
 
@@ -185,7 +188,7 @@ For each frame, the worker calls `db.gallery.gallery_phrases()`.
 The result is the category phrase and the synonyms of all `ready` objects, also the look-alikes. Each phrase is in the list one time.
 The worker gives the list to the detector.
 If no object is `ready`, the worker uses `detection.default_phrases` of `ai/config.toml`.
-`detection.small_phrases` is still a list in the config. A gallery phrase gets the tiled pass only if it is in this list.
+The tiled pass gets the phrases of the `ready` objects that are marked as small (see "Small objects"). `detection.small_phrases` of the config is used only when no object is `ready`.
 
 ## HTTP routes
 
@@ -262,13 +265,12 @@ The test used the real application and the real models on the development machin
   With the screen, frame and mirror phrases in the prompt, the phone box got the label "a phone a smartphone a mirror" (0.39),
   and a "television screen" box covered it. The old rule dropped such a box, so the frame had no regions.
   The owner decided to keep the box and set `quality_ok = False`. The region stays in the archive with its vector.
-  The matching step must not use it for the last-seen record. Enrollment uses `context_phrases=False` and is not affected.
+  A box inside a depiction is never a sighting. Enrollment uses `context_phrases=False` and is not affected.
 - The detector is not perfect. The carer must check each crop. The system has no automatic check.
 - Boxes only. There are no masks, so the views contain some background. Mask pooling and context negatives are not built.
 - No re-embedding. If the embedding model changes, the carer must add the photos again. The photos are kept for this.
 - An object cannot be changed after it is created. The carer deletes it and adds it again.
 - The carer cannot draw the box by hand.
-- `small_phrases` is a list in the config. There is no flag for a small object in the gallery.
 - A photo of the same picture can belong to two objects, but only one time to the same object.
 
 ## Tests
@@ -282,5 +284,6 @@ The test used the real application and the real models on the development machin
 | `tests/test_backend_worker.py` | The photo step, the order, the gallery phrases for a frame |
 | `tests/test_backend_http_objects.py` | Every route, the token, bad ids and bodies, the fixed messages |
 | `tests/test_backend_ui_enrollment.py` | The adapter for the UI |
+| `tests/test_backend_review.py` | "Is this your object?": the order of the boxes, a "yes" and a "no", a box with a strong sighting, the limits, and the self-test of one place |
 
 The tests use the actual database and storage. A fake engine replaces the models. Each test removes its own data.

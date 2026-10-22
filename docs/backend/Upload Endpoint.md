@@ -93,6 +93,8 @@ A big upload therefore never fills the memory.
 
 The owner chose an optional token. The device is used on a local network only, so the token is off by default.
 Switch it on with the environment variable. You do not need a code change.
+The same token protects all routes under `/api`. The talk routes of the wearable always need it (see `docs/backend/Wearable.md`).
+So a wearable that asks questions also sends the token with each photo.
 
 ### Threads
 
@@ -124,7 +126,7 @@ A `failed` row shows the button **Try again** on the page.
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `ingest.max_pending` | 500 | Refuse new uploads when this many images wait. At about 10 seconds for each image, 500 images are about 80 minutes of work. Set the value for your device |
+| `ingest.max_pending` | 500 | Refuse new uploads when this many images wait. At about 7 seconds for each image (development CPU), 500 images are about 1 hour of work. On a Raspberry Pi 5 (20 to 26 seconds) they are about 3 hours. Set the value for your device |
 | `api.token_env_var` | `SAARTHI_API_TOKEN` | The name of the environment variable that holds the token |
 
 ## Security and privacy

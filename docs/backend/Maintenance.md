@@ -52,7 +52,7 @@ Report the rows whose file does not exist.
 
 ### 4. Vector checkpoint
 
-Save the vector index to disk (`db.checkpoint_vectors()`).
+Save the three vector indexes to disk (`db.checkpoint_vectors()`): the region vectors, the SigLIP crop vectors and the DINOv2 keys.
 
 - This is a save by time. The index is also saved after every `vectors.checkpoint_every` new vectors and at shutdown.
 - A save error is written to the log. The report shows `checkpoint_saved = False`.

@@ -24,7 +24,8 @@ The module does not know the database.
 | Worker: analyse the image | ai | `open_image`, `AiEngine` |
 | Retention: list old images, delete rows and vectors | db | `list_images_older_than`, `delete_images` |
 | Retention: delete the files | storage | `delete_images` |
-| Start: find orphan and missing files | storage and db | `find_orphan_files`, `find_missing_files`, `list_image_paths` |
+| Search and enrollment: a picture of a box | storage | `read_crop` |
+| Maintenance: find orphan and missing files | storage and db | `find_orphan_files`, `find_missing_files`, `list_all_file_paths` |
 
 ## What a stored image is
 
@@ -67,12 +68,19 @@ The module does not know the database.
 - `delete_images` checks all paths first. One bad path stops the whole call before any file is deleted.
   After a delete, the module removes the empty day, month and year folders.
 
+## read_crop
+
+`read_crop(path, box, max_side=512)` returns a JPEG of a box of a stored image. The longest side is at most `max_side`.
+The search uses it for the picture of an answer. The page of the carer uses it for the object in a reference photo, and for the boxes of "Is this your object?".
+A box that is not inside the image gives `InvalidCropError`.
+
 ## Orphan and missing files
 
 A stop at the wrong time can leave a file without a row, or a row without a file.
 
 - An **orphan** is a file that the database does not know.
-  `find_orphan_files(known_paths)` lists the orphans. The backend gives it the paths from `db.list_image_paths()`.
+  `find_orphan_files(known_paths)` lists the orphans. The backend gives it the paths from `db.list_all_file_paths()`:
+  the images and the reference photos. A list of the images alone makes the reference photos look like orphans.
   A file that is younger than `cleanup.orphan_grace_seconds` is not an orphan yet.
   It can be an upload that has no row yet.
 - A **missing file** is a path in the database that has no file.
@@ -104,7 +112,7 @@ The file `storage/config.toml` holds the settings.
 | `limits.max_pixels` | 40000000 | Largest image, in pixels. Keep it equal to the value in `ai/config.toml` |
 | `limits.min_free_bytes` | 1073741824 | New images are refused if less than this is free |
 | `image.jpeg_quality` | 95 | Quality of the saved JPEG. The value must be from 1 to 95 |
-| `retention.days` | 0 | Delete images older than this number of days. 0 keeps all images |
+| `retention.days` | 1 | Delete images older than this number of days. 0 keeps all images. 1 is a rolling buffer of 24 hours (owner decision, 2026-11-12). The frame of a last-seen record is always kept |
 | `cleanup.orphan_grace_seconds` | 3600 | A file is an orphan only after this time |
 
 `load_config` checks every value and names the key of a wrong value. It raises `StorageConfigError`.
@@ -123,6 +131,7 @@ All errors derive from `StorageError`.
 | `StoragePathError` | A path is not a safe storage path |
 | `StorageNotFoundError` | The file does not exist |
 | `StorageIOError` | The disk refuses a read, a write or a delete |
+| `InvalidCropError` | The box of `read_crop` is not inside the image |
 
 ## Security and privacy
 

@@ -24,6 +24,7 @@ The server listens on `server.host` and `server.port` of `backend/config.toml` (
 | `POST /api/images` | The upload route for the wearable and for scripts (see `docs/backend/Upload Endpoint.md`) |
 | `/api/objects` | The routes of the gallery (see `docs/backend/Enrollment.md`) |
 | `POST /api/search` and `GET /api/objects/{id}/last-seen` | The routes of the search (see `docs/backend/Search.md`) |
+| `/api/talk` | The routes of the wearable: a spoken question and its spoken answer (see `docs/backend/Wearable.md`). They need the token |
 
 ## Start-up order
 
@@ -36,8 +37,8 @@ The server never starts.
 | 2. Database | `db.init_db()`: open SQLite, create the tables, open the vector index | Everything else reads the database |
 | 3. Instance lock | Take an exclusive lock on `db/data/saarthi.lock` | Only one copy may use the data. A second copy stops here (see below) |
 | 4. Recovery | `db.startup_recovery()`: repair what a stop or a crash left behind | It changes data, so the lock comes first |
-| 5. Ai models | `AiEngine()`: load the detector, the embedder, the query encoder, the verifier, the scene model, the speech model, the broad detector and the language model | The first start downloads about 3.8 GB (the detector 690 MB, the embedder 90 MB, the query encoder 91 MB, the verifier 55 MB, the scene model 813 MB, the speech model 290 MB, the broad detector 28 MB, the language model 1.75 GB). Later starts take about 7 seconds |
-| 6. Backend | `Backend(engine)`: the upload step, the worker and the maintenance jobs | It checks that the size of the model vectors equals `vectors.dimension` |
+| 5. Ai models | `AiEngine()`: load the detector, the embedder, the query encoder, the verifier, the scene model, the speech model, the voice of the wearable, the broad detector and the language model | The first start downloads about 3.9 GB (the detector 690 MB, the embedder 90 MB, the query encoder 91 MB, the verifier 55 MB, the scene model 813 MB, the speech model 290 MB, the voice 63 MB, the broad detector 28 MB, the language model 1.75 GB). Later starts take about 7 seconds on the development machine, and about 27 seconds on the Raspberry Pi |
+| 6. Backend | `Backend(engine)`: the upload step, the worker, the maintenance jobs, the search and the talk thread of the wearable | It checks that the size of the model vectors equals `vectors.dimension`, `vectors.key_dimension` and `vectors.crop_dimension` |
 | 7. Web server | The pages and the routes start, with HTTP or with HTTPS (see `docs/backend/HTTPS.md`) | The worker and the maintenance thread start with the server |
 
 The threads (worker and maintenance) start when the web server starts, not before.
@@ -47,11 +48,12 @@ In this way, nothing processes an image before the server can answer.
 
 Press Ctrl+C, or send the signal `SIGTERM` (a service manager does this). The application does these steps:
 
-1. The maintenance thread stops. A run that is in progress finishes first.
-2. The worker stops. It finishes the image that it holds. This takes up to `server.worker_stop_seconds` (120 by default).
-3. The vector index is saved to disk.
-4. The database connection is closed.
-5. The instance lock is released.
+1. The talk thread of the wearable stops. A question that has not started is dropped.
+2. The maintenance thread stops. A run that is in progress finishes first.
+3. The worker stops. It finishes the image that it holds. This takes up to `server.worker_stop_seconds` (120 by default).
+4. The three vector indexes are saved to disk.
+5. The database connection is closed.
+6. The instance lock is released.
 
 A clean shutdown loses no vectors. Both signals were tested with the real application.
 

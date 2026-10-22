@@ -52,7 +52,8 @@ An image with no candidates is also `done`, with no regions.
 
 In step 6, the phrases for the detector come from the gallery: `db.gallery.gallery_phrases()` gives the category phrase and
 the synonyms of all `ready` objects (also the look-alikes). If no object is `ready`, the worker uses `detection.default_phrases` of `ai/config.toml`.
-The list `detection.small_phrases` stays in the config. A gallery phrase gets the tiled pass only if it is in this list.
+The tiled pass (4 more detector runs) looks for the phrases of the `ready` objects that the carer marked as small (`db.gallery.small_phrases()`, the flag `small`).
+If no object is small, the tiled pass does not run. Without a `ready` object, the worker uses `detection.small_phrases` of `ai/config.toml` with the placeholder phrases.
 
 ### Why the vectors come before the regions
 
@@ -99,7 +100,7 @@ The `Backend` class does these steps for you (see `docs/backend/Lifecycle.md`).
 
 - `start()` starts the thread. A second call raises `RuntimeError`.
 - `stop()` asks the thread to stop. The worker finishes the image that it holds. This can take as long as one image:
-  about 10 seconds on the development machine, more on the Raspberry Pi. When the worker is idle, `stop()` returns at once.
+  about 7 seconds on the development machine, 20 to 26 seconds on the Raspberry Pi. When the worker is idle, `stop()` returns at once.
 - If the application is killed in the middle of an image, the start-up recovery repairs the data at the next start.
 - `process_next()` can be called without the thread. The tests do this.
 
@@ -133,8 +134,9 @@ The log does not show image content or file names.
 
 ## Known limits
 
-- The speed is about 10 seconds for each image on the development machine. A frame that arrives faster than this waits in the queue.
-  The upload step refuses new images when `ingest.max_pending` images wait. The speed on the Raspberry Pi is not measured.
+- The speed in the mode `keys` is about 7 seconds for each image on the development machine (`benchmarks/recall/README.md`),
+  and 20 to 26 seconds on a Raspberry Pi 5 without a cooler (`docs/Raspberry Pi.md`). A frame that arrives faster than this waits in the queue.
+  The upload step refuses new images when `ingest.max_pending` images wait.
 - The blur gate is off (`quality.blur_min = 0`, a decision of the owner) until there are real frames to calibrate it.
   The pipeline start value of 100 rejects the test photo (score 94.2).
   The score also depends on the JPEG compression: the same photo saved again at another quality scored 117.1.
@@ -160,5 +162,5 @@ The quality gate, the image decoding and the post-processing are the real code.
 | The thread | A wake-up works with a long wait. Stop is fast. No double start. The loop survives an error |
 
 The worker also ran with the real models, inside the real application (see `docs/backend/Lifecycle.md`).
-With the test photo, one image took about 8.4 seconds from the claim to `done`: the detector 7.6 seconds, the vectors 0.7 seconds.
+With the test photo and the first settings (before the broad detector and the mode `keys`), one image took about 8.4 seconds from the claim to `done`: the detector 7.6 seconds, the vectors 0.7 seconds.
 An image that the near-duplicate gate rejected took a few milliseconds.

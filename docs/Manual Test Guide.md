@@ -9,7 +9,7 @@ The expected results come from a real run with the real models. The run used the
 
 ## What you need
 
-- The models in the Hugging Face cache. They are on this machine. A new machine downloads about 3.8 GB at the first start.
+- The models in the Hugging Face cache. They are on this machine. A new machine downloads about 3.9 GB at the first start.
   If the download does not start, set `HF_HUB_DISABLE_XET=1`.
 - The test photos: `/home/ks/Desktop/Project Saarthi/Dataset/` (`1.jpeg` to `14.jpeg`).
 - A browser. Two terminals help: one for the application, one for the commands.
@@ -31,7 +31,7 @@ The log shows the start-up order. Each line starts with the name of a component:
 |----------------------|-----------|--------------------------|
 | `storage.` | Storage | Prepared the folder `storage/uploads` for the pictures |
 | `db.` | Database and vector index | Opened `db/data/saarthi.db` and the index. The recovery repaired nothing |
-| `ai.detector`, `ai.embedder`, `ai.query`, `ai.verifier`, `ai.scene`, `ai.speech`, `ai.open_detector`, `ai.language` | The models | Detector, region embedder, query encoder, verifier, scene classifier, speech recognizer, broad detector, language model |
+| `ai.detector`, `ai.embedder`, `ai.query`, `ai.verifier`, `ai.scene`, `ai.speech`, `ai.tts`, `ai.open_detector`, `ai.language` | The models | Detector, region embedder, query encoder, verifier, scene classifier, speech recognizer, voice of the wearable, broad detector, language model |
 | `backend.` | Control flow | Started the upload step, the worker and the maintenance thread |
 | `main` | Entry point | Held the order, and printed the address |
 
@@ -91,8 +91,10 @@ curl -i -X POST --data-binary @"/home/ks/Desktop/Project Saarthi/Dataset/10.jpeg
 ```
 
 Watch the log. For each picture you see these steps: stored, claimed, candidates found, vectors made, matching, and done.
-The line `Evidence matching: N region(s) scored, ...` says how many regions were scored and how many sightings were found.
-A line `Sighting of object ... (strong, score 8.10)` shows the score of a sighting (see `docs/backend/Memory.md`). A line from `backend.memory` tells you what happened to the last-seen record.
+In the mode `keys` (the default), the line `Key matching: N region(s), ...` says how many boxes were scored and how many sightings were found.
+In the mode `evidence`, the line is `Evidence matching: N region(s) scored, ...`.
+The line `Sighting of object ... in image ... (strong, score ...)` from `backend.memory` tells you what happened to the last-seen record (see `docs/backend/Memory.md`).
+The score is the DINOv2 key in the mode `keys`, and the evidence score in the mode `evidence`.
 
 What you should see (the photo numbers are the file names):
 
@@ -109,7 +111,9 @@ What you should see (the photo numbers are the file names):
 | 14 | The bottle, small, on a desk | A **weak** sighting (score about 5.9, below `score_sure` of 6). The check passes (`Verification: passed (best 153 of 30 needed ...)`). It counts as strong |
 
 Photo 14 shows stage I5: the sighting is weak, the verifier compares it with a reference photo, and it passes.
-These results are for the mode `evidence` (the default). With `[matching].mode = "tau"` the result is the same, but photo 14 is only 0.001 above `tau`.
+**These results were measured in the mode `evidence`, the default of that day.** The default is now the mode `keys` (2026-11-12). The run was not made again in the mode `keys`.
+To get the results of the table, set `[matching].mode = "evidence"` in `ai/config.toml`. With `"tau"` the result is the same, but photo 14 is only 0.001 above `tau`.
+In the mode `keys`, also the boxes of the broad detector are matched, and a blurred crop (photo 8) can be a weak sighting. So the counts in the mode `keys` can differ.
 
 Two more tests:
 - Send `1.jpeg` again. The answer is `duplicate`. Nothing is stored twice.
@@ -214,13 +218,16 @@ What happened inside: `backend.query` turned your words into a vector (`ai.query
 | Press Ctrl+C while a picture is processed | The worker finishes the picture. Shutdown ends with `Shutdown is complete` |
 | Start again after that | `Start-up recovery` finds nothing to repair. The vectors load again |
 | Stop with `kill -9` (use the process id), then start | The recovery repairs the data. The log says what it repaired |
-| Set `[matching].mode = "tau"` in `ai/config.toml` | The old rule with one threshold. The log shows `Matching: ...` in place of `Evidence matching: ...` |
+| Set `[matching].mode = "tau"` in `ai/config.toml` | The old rule with one threshold. The log shows `Matching: ...` in place of `Key matching: ...` |
 | Set `verification.enabled = false` in `ai/config.toml` | The verifier is not loaded. The log says `verifier off` |
 | Set only `server.tls_certfile` in `backend/config.toml` | The start stops: both keys must be set, or both empty |
 | Set `server.tls_certfile` and `server.tls_keyfile` to missing files | The start stops with `server.tls_certfile is not a file` |
 | Set `speech.enabled = false` in `ai/config.toml` | The speech model is not loaded. The page has no **Talk** button |
 | Set `scene.enabled = false` in `ai/config.toml` | The sentence has the time only. It names no surface and no room |
 | Set the variable `SAARTHI_API_TOKEN=secret` before the start | The API routes need `Authorization: Bearer secret`. The pages stay open |
+| Without the token, send a WAV file to `POST /api/talk` | The answer is 503: the talk routes of the wearable need the token |
+| With the token, send a WAV file (16 kHz, 16-bit, mono) of "where is my bottle" to `POST /api/talk`, then poll `GET /api/talk/{id}` | `status` becomes `done`, with the sentence in `text`. `GET /api/talk/{id}/speech` gives the spoken answer as a WAV file (see `docs/backend/Wearable.md`) |
+| Set `tts.enabled = false` in `ai/config.toml` | The voice of the wearable is not loaded. `GET /api/talk/{id}` has `"speech": false` |
 
 Restore every change of a config file afterwards.
 
@@ -228,7 +235,8 @@ Restore every change of a config file afterwards.
 
 Press Ctrl+C in the terminal of the application. Look for `Saved index`, `Instance lock released` and `Shutdown is complete`.
 
-The test data stays on the disk. To remove it, stop the application and run:
+The test data stays on the disk. To remove it, stop the application and run `./clear` (it asks first).
+It removes the pictures, the database, the indexes and the registered objects. Or run this script:
 
 ```
 uv run python - <<'EOF'
@@ -253,7 +261,7 @@ EOF
 - **The voice and the Talk button are not tested on a phone.** The sound depends on the voices that the device has.
 - **Noise can give wrong words.** The speech model can write words for a noisy recording. The silence check only catches near-silence.
 - **The room is often not named.** The rule prefers silence to a wrong room (see step 5).
-- **The blur check hides a true sighting.** In photo 8, the bottle is blurred by motion. Its similarity is above the threshold, but the crop fails the blur check, so the region is not used.
-- **`/` opens the upload page**, not the find page.
+- **The blur check hides a true sighting.** In photo 8, the bottle is blurred by motion. Its similarity is above the threshold, but the crop fails the blur check, so the region is not used in the modes `tau` and `evidence`. In the mode `keys`, such a crop can still be a weak sighting.
+- **`/` opens the upload page**, not the find page. This is a decision of the owner (2026-11-12).
 - **The pages show all links to all users.** There is no separation between the carer and the patient.
-- **The first answer can be old.** A picture takes about 8 seconds to process. The answer does not show how fresh the memory is.
+- **The first answer can be old.** A picture takes about 7 seconds to process on the development machine, and 20 to 26 seconds on a Raspberry Pi. The answer does not show how fresh the memory is.

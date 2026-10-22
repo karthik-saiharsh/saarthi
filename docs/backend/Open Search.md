@@ -93,7 +93,7 @@ An older pipeline worked better: SigLIP only ranked the boxes, and Grounding DIN
    If no frame passes, the result is "not found". The search never gives an unchecked answer in this mode.
 
 The four `verify_*` keys are start values. Only the mode `verified` uses them. The calibration (phase 7) must set them on real frames.
-A check costs one detector run for each frame (about 10 s on the development CPU), so a question can take up to `verify_max_frames` times that.
+A check costs one detector run for each frame (2.4 to 5 s on the development CPU at the short edge of 640), so a question can take up to `verify_max_frames` times that.
 The words of the user are never logged. The log shows counts only.
 
 ### Test on 18 frames (7 of the owner, 11 of the dataset; 158 boxes)
@@ -123,7 +123,7 @@ The best score wins. The model runs for 3 to 5 s on this CPU. The instruction an
 **A correction of the first test.** The first test gave "that thing I check my mails on" the answer "laptop, computer, tablet". That instruction had the example "laptop, computer, tablet", so the model repeated it.
 Without such an example, the model answers "mail, inbox, folder" (5 prompts tested). It does not know that mail is read on a computer. The first count of 16 of 20 right answers was too high for the same reason.
 The final instruction has no example that is a right answer. On 30 questions it gives 28 right answers. It misses "that thing I check my mails on" and "what I eat soup with".
-A larger model may know more: Qwen3.5-2B is being downloaded for the same test.
+A larger model may know more. The owner decided on 2026-11-12 to keep Qwen3.5-0.8B as it is.
 
 **A wrong answer in the real test, and the fix.** The question "where is my piano" gave the name "keyboard", and the search showed a "laptop keyboard" (score 0.83). The first version of step 3 ran for every question.
 Now it runs only for a description (3 words or more) and a name from the model must score 0.9. The question "the thing I carry my stuff in" still finds the bag (name "bag", score 1.0).
@@ -210,15 +210,16 @@ The plan of the test (done for Qwen3.5-0.8B):
 
 ## The worker step (phase 4)
 
-After the registered path of a frame (detect, embed, match, memory), the worker runs the broad detector, makes a SigLIP vector for each box,
-and stores the boxes (`Worker._store_open_boxes`, `docs/backend/Worker.md`, step 10).
-- The step needs the broad detector and the scene model. If one is off, the step does nothing.
-- An error of the detector, of the scene model or of the database is logged. The frame is still `done`: the open search is an extra.
-- A box is linked to the region of a registered candidate when the IoU is at least `worker.open_link_iou` (0.5). A box with a link is kept.
-  The owner agreed to this rule on 2026-11-10. The link tells the search that the registered path has seen the same thing.
+Since 2026-11-12 (one archive, plan phase R2), the broad detector is part of the main steps of each frame (`docs/backend/Worker.md`, step 6).
+The worker runs it after the candidate detector, makes the three vectors of every box together, and stores all boxes in the table `region`
+(a box of the broad detector has `source = broad`, its name in `label`, and no phrase). The matching mode `keys` also scores these boxes.
+- The detector needs the scene model. If one of them is off, the frame has the candidates only.
+- An error of the broad detector is logged, and the frame goes on with the candidates: the open search is an extra.
+- The worker keeps every box of the broad detector, also a box that overlaps a candidate.
+  The memory page shows such a box as "the same place as" the candidate when the IoU is at least `worker.open_link_iou` (0.5). The search does not use the link.
 - The backend refuses to start if the scene model makes vectors of another size than `vectors.crop_dimension` in `db/config.toml`.
 
-Run on the 14 photos of the dataset, with the real models and an empty database (all 11 frames `done`, no error):
+The first run of the step, before the one archive. The 14 photos of the dataset, with the real models and an empty database (all 11 frames `done`, no error):
 
 | Result | Value |
 |--------|-------|
