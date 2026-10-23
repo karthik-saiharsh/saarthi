@@ -100,7 +100,7 @@ The `Backend` class does these steps for you (see `docs/backend/Lifecycle.md`).
 
 - `start()` starts the thread. A second call raises `RuntimeError`.
 - `stop()` asks the thread to stop. The worker finishes the image that it holds. This can take as long as one image:
-  about 7 seconds on the development machine, 20 to 26 seconds on the Raspberry Pi. When the worker is idle, `stop()` returns at once.
+  about 7 seconds on the development machine, about 24 seconds on the Raspberry Pi. When the worker is idle, `stop()` returns at once.
 - If the application is killed in the middle of an image, the start-up recovery repairs the data at the next start.
 - `process_next()` can be called without the thread. The tests do this.
 
@@ -135,7 +135,7 @@ The log does not show image content or file names.
 ## Known limits
 
 - The speed in the mode `keys` is about 7 seconds for each image on the development machine (`benchmarks/recall/README.md`),
-  and 20 to 26 seconds on a Raspberry Pi 5 without a cooler (`docs/Raspberry Pi.md`). A frame that arrives faster than this waits in the queue.
+  and about 24 seconds for a 4:3 frame on a Raspberry Pi 5 with an active cooler (`docs/Raspberry Pi.md`). A frame that arrives faster than this waits in the queue.
   The upload step refuses new images when `ingest.max_pending` images wait.
 - The blur gate is off (`quality.blur_min = 0`, a decision of the owner) until there are real frames to calibrate it.
   The pipeline start value of 100 rejects the test photo (score 94.2).

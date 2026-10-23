@@ -243,7 +243,7 @@ Set the I2S amplifier (for example a MAX98357A) to this rate.
 ## Limits and risks
 
 - **Not tested on the hardware.** Nobody has tested the routes with a real ESP32, a real INMP441 or a real speaker.
-- **Not tested on the Pi.** On the Pi, a frame takes 20 to 26 s (`docs/Raspberry Pi.md`).
+- **Not tested on the Pi.** On the Pi, a 4:3 frame takes about 24 s (`docs/Raspberry Pi.md`). So send at most one frame every 25 to 30 s, or the queue grows.
   The talk thread and the worker share the CPU. So an answer on the Pi can take several seconds more than on the development CPU.
 - **The pins of the ESP32-CAM.** The camera uses most of the pins and one I2S peripheral.
   The microphone and the amplifier must share the second I2S peripheral and the few free pins. Make the pin plan before you buy parts.

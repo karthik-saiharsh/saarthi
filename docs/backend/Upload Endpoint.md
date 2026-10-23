@@ -126,7 +126,7 @@ A `failed` row shows the button **Try again** on the page.
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `ingest.max_pending` | 500 | Refuse new uploads when this many images wait. At about 7 seconds for each image (development CPU), 500 images are about 1 hour of work. On a Raspberry Pi 5 (20 to 26 seconds) they are about 3 hours. Set the value for your device |
+| `ingest.max_pending` | 500 | Refuse new uploads when this many images wait. At about 7 seconds for each image (development CPU), 500 images are about 1 hour of work. On a Raspberry Pi 5 (about 24 seconds) they are about 3 hours. Set the value for your device |
 | `api.token_env_var` | `SAARTHI_API_TOKEN` | The name of the environment variable that holds the token |
 
 ## Security and privacy

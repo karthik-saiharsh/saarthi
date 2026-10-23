@@ -131,10 +131,10 @@ The application ran with the real models, on the development machine (a CPU, no 
 
 ## Known limits
 
-- The speed on the Raspberry Pi 5 was measured one time, without a cooler (see `docs/Raspberry Pi.md`).
+- On the Raspberry Pi 5 with an active cooler, a 4:3 frame takes about 24 s (2026-11-13, see `docs/Raspberry Pi.md`).
 - The web server shows no health or status page. The number of `pending` images is the only sign of the load.
 - The application does not start itself at boot. Start it by hand with `./start`.
-  The owner decided this on 2026-11-10: the Pi is shared, so do not install `deploy/saarthi.service` on it.
+  Since 2026-11-12 the Pi runs only Saarthi. The boot service (`deploy/saarthi.service`) is an open decision of the owner. Do not install it without a clear "yes".
 - The upload route is open on the local network unless you set the token.
 - The shutdown can take up to `server.worker_stop_seconds`, because the worker finishes its image.
 

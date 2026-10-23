@@ -480,7 +480,7 @@ The photo shows a phone in a pink case on a book, a charger with a cable, and a 
 - **Duplicate boxes.** The value `nms_iou = 0.5` came from the calibration (`benchmarks/calibration/README.md`). One box for each object needs a decision after the vocabulary is real.
 - **Calibration.** The values were tuned on 14 photos with one object. The README of `benchmarks/calibration` lists what was set, what was kept, and what the data could not decide.
   `text_threshold` was not tuned.
-- **Speed on the Raspberry Pi.** Measured on a Pi 5: 20 to 26 s for a frame without a cooler (see `docs/Raspberry Pi.md`). The voice of the wearable is not measured on the Pi.
+- **Speed on the Raspberry Pi.** Measured on a Pi 5 with an active cooler: about 24 s for a 4:3 frame (see `docs/Raspberry Pi.md`). The voice of the wearable is not measured on the Pi.
 - **Not tested.** `device = "cuda"`, `local_files_only = true`, `cpu_threads`, and two threads that call a model at the same time.
 - **Stored image.** The storage module saves the image again as a JPEG. On the test photo, the number of candidates changed from 13 to 14.
   12 of the 13 boxes stayed the same (IoU of 0.8 or more). The blur score did not change.

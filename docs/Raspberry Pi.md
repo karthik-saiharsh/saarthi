@@ -3,8 +3,9 @@
 ## Purpose
 
 This guide shows how to run Saarthi on a Raspberry Pi 5 with 8 GB of memory, and how to open it on a phone on the same Wi-Fi.
-The Pi is the target device of the project. The application ran on a Pi 5 one time, without an active cooler (see "Measured on a Pi 5").
-**Measure again with a cooler.** The list "To measure again, with a cooler" at the end says what to check.
+The Pi is the target device of the project. The measurements below are from 2026-11-10, without an active cooler.
+The Pi has an active cooler since 2026-11-13. With it, the Pi stays at 60 to 70 degrees C, but a frame is only about 5 % faster: a 4:3 frame (as from the ESP32-CAM) takes about 24 s.
+An overclock to 2.8 GHz stopped the Pi within 2 minutes of work. Do not use it.
 
 ## What you need
 
@@ -44,8 +45,7 @@ The microphone works only with HTTPS and a trusted certificate. If the Pi gets a
 
 ## Start at boot (the service)
 
-**Decision of the owner (2026-11-10): do not install the service on the shared Pi.** The Pi runs other work, so Saarthi starts by hand with `./start`. The files stay in `deploy/` for a Pi that Saarthi uses alone.
-**Changed 2026-11-12:** the Pi now runs only Saarthi. The service is an open decision of the owner. Ask the owner before you install it.
+Since 2026-11-12 the Pi runs only Saarthi (owner). The service is not installed: install it only after a clear "yes" of the owner. Until then, start Saarthi by hand with `./start`.
 
 1. Run `./deploy/install_service.sh`. It installs and starts `saarthi.service`.
 2. Watch it with `journalctl -u saarthi -f`. Stop it with `sudo systemctl stop saarthi`. Remove it with `./deploy/install_service.sh --remove`.
@@ -94,7 +94,7 @@ The test used the settings of that day: the matching mode `tau` and a detector s
 
 The Pi is about 2 times slower for a frame and about 4 times slower for the language model.
 **The Pi got too hot.** During the frames the temperature went to 86 degrees C, and the processor ran at 1.5 GHz and not at 2.4 GHz (`vcgencmd get_throttled` gave `0xe0006`).
-So the times above are with throttling. An active cooler is needed. Run the test again with one.
+So the times above are with throttling. The Pi has an active cooler since 2026-11-13 (see "Purpose").
 A frame takes 20 to 26 s, so the wearable must send at most one picture every 30 s, or the queue grows.
 
 ## Risks and open questions
@@ -105,7 +105,7 @@ A frame takes 20 to 26 s, so the wearable must send at most one picture every 30
 - **Heat.** Check the temperature with `vcgencmd measure_temp` during a long run.
 - **The package `ultralytics`** needs `libgl1` (installed by the setup script). A start can fail with a message about `libGL.so.1` if the package is missing.
 
-## To measure again, with a cooler
+## Still to test on the Pi
 
 1. `./start` and note the time until "All components are ready", and `free -m` after the start.
 2. Add an object (`/enroll`, 3 photos) and note the time for the photos.

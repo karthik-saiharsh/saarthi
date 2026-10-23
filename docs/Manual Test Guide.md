@@ -96,7 +96,7 @@ In the mode `evidence`, the line is `Evidence matching: N region(s) scored, ...`
 The line `Sighting of object ... in image ... (strong, score ...)` from `backend.memory` tells you what happened to the last-seen record (see `docs/backend/Memory.md`).
 The score is the DINOv2 key in the mode `keys`, and the evidence score in the mode `evidence`.
 
-What you should see (the photo numbers are the file names):
+What you should see (the photo numbers are the file names). The table was measured in the mode `evidence`, not in today's default `keys` (see the note under the table):
 
 | Photo | What it shows | Expected result |
 |-------|---------------|-----------------|
@@ -264,4 +264,4 @@ EOF
 - **The blur check hides a true sighting.** In photo 8, the bottle is blurred by motion. Its similarity is above the threshold, but the crop fails the blur check, so the region is not used in the modes `tau` and `evidence`. In the mode `keys`, such a crop can still be a weak sighting.
 - **`/` opens the upload page**, not the find page. This is a decision of the owner (2026-11-12).
 - **The pages show all links to all users.** There is no separation between the carer and the patient.
-- **The first answer can be old.** A picture takes about 7 seconds to process on the development machine, and 20 to 26 seconds on a Raspberry Pi. The answer does not show how fresh the memory is.
+- **The first answer can be old.** A picture takes about 7 seconds to process on the development machine, and about 24 seconds on a Raspberry Pi. The answer does not show how fresh the memory is.

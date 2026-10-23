@@ -208,7 +208,7 @@ These decisions are still open:
 
 | # | Question | Why it matters |
 |---|----------|----------------|
-| 7 | How much memory and which CPU does the target device have? | Every new model adds memory and time. The application loads eight models. A Pi 5 with 8 GB used up to 5.8 GB (see `docs/Raspberry Pi.md`) |
+| 7 | How much memory and which CPU does the target device have? | Every new model adds memory and time. The application loads nine models. A Pi 5 with 8 GB used up to 5.8 GB (see `docs/Raspberry Pi.md`) |
 | 8 | How does a patient who cannot tap answer "Which one do you mean?" | A yes or no by voice needs a dialogue of more than one turn. **For the wearable (2026-11-14):** the answer names the objects and asks the user to press the button again and say the name. The page is not changed |
 
 ## HTTPS
@@ -239,6 +239,6 @@ Each phase is one commit.
 
 - **A wrong description.** The system could say "bedroom" for a bathroom, or name a wrong colour. A patient may believe it.
   The sentence must be careful, and the picture must stay on the page.
-- **Time and memory.** The application loads eight models. On the Pi 5, the recognition of 2 s of speech took 2 to 5 s, and a sentence of the language model took 33 s (see `docs/Raspberry Pi.md`).
+- **Time and memory.** The application loads nine models. On the Pi 5, the recognition of 2 s of speech took 2 to 5 s, and a sentence of the language model took 33 s (see `docs/Raspberry Pi.md`).
 - **Speech of an older patient.** A recognizer can make more mistakes with a quiet or slow voice. This is not tested.
 - **Noise.** A home has a TV and other voices. The recognizer can hear the wrong person.
