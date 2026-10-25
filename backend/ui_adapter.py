@@ -412,9 +412,9 @@ class UiFindService:
         found, picture = self._open_search.find_with_picture(text, FIND_PICTURE_SIDE)
         if found is None or found.answer.age_seconds is None:
             return None
-        name: str = found.label[:1].upper() + found.label[1:]
+        name: str = found.name[:1].upper() + found.name[1:]
         description: str = self._describer.describe(
-            found.label, found.answer, owned=False
+            found.name, found.answer, owned=False
         ).text
         return FindResult(
             FindStatus.FOUND,

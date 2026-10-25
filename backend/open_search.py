@@ -88,6 +88,16 @@ class OpenAnswer:
     score: float  # The label score (cosine), the SigLIP probability, or the Grounding DINO score
     answer: Answer  # For the description: `source` is `open`, `strong` is False
 
+    @property
+    def name(self) -> str:
+        """The name that the page and the voice use for the object.
+
+        In the mode "verified", Grounding DINO found the words of the user at the box, so the answer uses them.
+        The name of the broad detector can be wrong (a white bottle called "napkin"), and the check did not confirm it.
+        The other modes have only the name of the detector.
+        """
+        return self.phrase if self.via == "verified" else self.label
+
 
 class OpenSearchService:
     """Finds objects that nobody registered. It is safe to call from several threads."""

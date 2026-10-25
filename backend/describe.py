@@ -5,8 +5,12 @@ when the object was seen, what it was on, and what kind of room it was in (see `
 
 The words come from fixed lists of the scene model (`ai/config.toml`, `[scene]`). The room is chosen
 by a rule: the scores of the frame of the answer and of the frames near it in time are averaged.
-The room is named only if enough frames agree and the score is high enough. Otherwise the sentence
-says nothing about the room. A single frame can mislead: a close-up of a floor does not show the room.
+The room is named only if enough frames agree and the score is high enough. A single frame can mislead:
+a close-up of a floor does not show the room. So if the rule says nothing, the room of the frame of the answer
+alone is named only with a very high score (`room_single_min_score`), and the sentence says "may look like".
+Otherwise the sentence says nothing about the room.
+
+A sure answer with no place at all (no surface, no room, no checked sentence) asks the user to look at the picture.
 
 The description is an extra. An error of the model or of a file never fails an answer: the sentence
 then has the time only. The log shows counts and ids. It never shows a name or a word of the lists.
@@ -55,6 +59,9 @@ class Description:
     text: str
     surface: str | None  # For example "a table". None if the sentence does not name it
     room: str | None  # For example "a bedroom". None if the sentence does not name it
+    room_sure: bool = (
+        True  # False: the room comes from the frame of the answer alone ("may look like")
+    )
 
 
 def time_phrase(
@@ -174,8 +181,11 @@ def build_sentence(
     owned: bool = True,
     scene: str | None = None,
     listening: bool = False,
+    room_sure: bool = True,
 ) -> str:
     """Make the sentence for the voice. A weak answer says that the system is not sure.
+
+    `room_sure` is False for a room from the frame of the answer alone: the sentence then says "may look like".
 
     `listening` is True for a device with no screen (the wearable). Then the sentence never asks the user to look at a picture.
 
@@ -218,9 +228,14 @@ def build_sentence(
             scene.strip() if scene.strip().endswith(".") else scene.strip() + "."
         )
     elif room:
-        parts.append(f"The room {'looks' if sure else 'may look'} like {room}.")
+        parts.append(
+            f"The room {'looks' if sure and room_sure else 'may look'} like {room}."
+        )
     if not sure and not listening:
         parts.append("Please look at the picture.")
+    elif not listening and not answer.in_hand and not (surface or room or scene):
+        # A sure answer without a place is a bare time. The picture is then the only clue to the place.
+        parts.append("Please look at the picture to see the place.")
     maybe = answer.newer_maybe
     if maybe is not None:
         # A newer weak sighting in another frame: a second place, said with "I am not sure" (plan part G1).
@@ -256,6 +271,7 @@ class DescribeService:
         scene: str | None = self._stored_scene(answer)
         surface: str | None = None
         room: str | None = None
+        room_sure: bool = True
         if scene is None and (
             answer.found
             and answer.image_id is not None
@@ -263,7 +279,7 @@ class DescribeService:
             and self._engine.scene_enabled
         ):
             try:
-                surface, room = self._place(
+                surface, room, room_sure = self._place(
                     answer.image_id, answer.box, bool(answer.in_hand)
                 )
             except (AiError, storage.StorageError, db.DbError):
@@ -280,9 +296,11 @@ class DescribeService:
                 owned,
                 scene,
                 listening,
+                room_sure,
             ),
             surface,
             room,
+            room_sure,
         )
 
     def _stored_scene(self, answer: Answer) -> str | None:
@@ -314,32 +332,41 @@ class DescribeService:
     def place(
         self, image_id: int, box: tuple[int, int, int, int], in_hand: bool
     ) -> tuple[str | None, str | None]:
-        """Return the surface and the room of a frame. Each can be None. The scene model must be on."""
+        """Return the surface and the room of a frame. Each can be None. The scene model must be on.
+
+        Only a room of the rule is returned. The room of one frame alone is too weak to be a fact for the language model.
+        """
         assert self._engine.scene_enabled, "the scene classifier is switched off"
-        return self._place(image_id, box, in_hand)
+        surface, room, room_sure = self._place(image_id, box, in_hand)
+        return surface, room if room_sure else None
 
     # ---- The place ----
 
     def _place(
         self, image_id: int, box: tuple[int, int, int, int], in_hand: bool
-    ) -> tuple[str | None, str | None]:
-        """Return the surface and the room of the frame of the answer. Each can be None."""
+    ) -> tuple[str | None, str | None, bool]:
+        """Return the surface, the room and whether the room comes from the rule. The surface and the room can be None."""
         frame: Image | None = db.get_image(image_id)
         if frame is None:
-            return None, None
+            return None, None, True
         picture: PilImage.Image = self._open(frame)
         surface: str | None = None
         if not in_hand:
             best_name, best_score = self._engine.score_surfaces(picture, Box(*box))[0]
             if best_score >= self._config.surface_min_score:
                 surface = best_name
-        return surface, self._room(frame, picture)
+        room, room_sure = self._room(frame, picture)
+        return surface, room, room_sure
 
     def _open(self, frame: Image) -> PilImage.Image:
         return self._engine.open_image(storage.read_image(frame.file_path))
 
-    def _room(self, frame: Image, picture: PilImage.Image) -> str | None:
-        """Choose the room from the frame of the answer and the frames near it in time."""
+    def _room(self, frame: Image, picture: PilImage.Image) -> tuple[str | None, bool]:
+        """Choose the room from the frame of the answer and the frames near it in time.
+
+        Return the room and True if the rule named it. If the rule says nothing, return the room of the frame
+        of the answer alone and False, when its score reaches `room_single_min_score`. Otherwise (None, True).
+        """
         neighbours: list[Image] = db.scenes.list_neighbour_images(
             frame.id,
             self._config.neighbour_window_seconds,
@@ -376,7 +403,16 @@ class DescribeService:
             choice.agreeing,
             "room named" if choice.room else "no room named",
         )
-        return choice.room
+        if choice.room is not None:
+            return choice.room, True
+        own: dict[str, float] = scores[
+            0
+        ]  # The frame of the answer is first: it cannot be left out
+        best: str = max(own, key=own.get)  # type: ignore[arg-type]
+        if own[best] >= self._config.room_single_min_score:
+            logger.info("Room rule: the room of the frame alone is named, with may")
+            return best, False
+        return None, True
 
     @staticmethod
     def _save(image_id: int, model: str, rooms: dict[str, float]) -> None:

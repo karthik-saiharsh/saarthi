@@ -130,6 +130,10 @@ room_min_frames = 3
 room_agree_fraction = 0.6
 # ...and if the average score of this room is at least this value. If one of the three rules fails, the voice says nothing about the room.
 room_min_score = 0.4
+# If the rule above says nothing, the room of the frame of the answer alone is named, with "may look like",
+# when its score is at least this value. A strong answer then still has a place (owner decision 2026-11-14).
+# 1.0 switches this off. Start value: on the 14 test photos a clear room scores 0.8 to 0.99.
+room_single_min_score = 0.9
 # The surface under the object is named only if its score is at least this value.
 surface_min_score = 0.4
 # The time zone for the part of the day in the sentence ("yesterday evening"). An IANA name, for example "Asia/Kolkata".

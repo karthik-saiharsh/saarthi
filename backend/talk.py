@@ -208,7 +208,7 @@ class TalkService:
         if found is None or found.answer.age_seconds is None:
             return TalkOutcome.UNKNOWN, UNKNOWN_TEXT
         sentence: str = self._describer.describe(
-            found.label, found.answer, owned=False, listening=True
+            found.name, found.answer, owned=False, listening=True
         ).text
         return TalkOutcome.MAYBE, sentence
 

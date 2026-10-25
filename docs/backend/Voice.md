@@ -87,7 +87,10 @@ The service names the room only if all these are true:
 - At least `room_agree_fraction` of them have the room as best room (0.6).
 - The average score of the room is at least `room_min_score` (0.4).
 
-If one is false, the sentence says nothing about the room. The surface comes from the box with its surroundings.
+If one is false, the service looks at the answer frame alone (owner decision, 2026-11-14).
+If the best room of that frame has a score of at least `room_single_min_score` (0.9), the sentence names it with "may look like", also for a sure answer.
+Otherwise the sentence says nothing about the room. The room of one frame is not given to the language model as a fact.
+The surface comes from the box with its surroundings.
 It needs a score of at least `surface_min_score` (0.4). There is no surface when the object is in a hand.
 On the 14 photos these settings gave 6 right rooms, 0 wrong rooms and 8 silent answers.
 The values are start values. A test on real frame sequences must confirm them.
@@ -98,6 +101,8 @@ The sentences that the code builds:
 |------|----------|
 | Sure | "Your bottle was last seen about 20 minutes ago. It was on a table. The room looks like a bedroom." |
 | Sure, with a checked sentence of the language model | "Your bottle was last seen 2 minutes ago. The bottle is on the desk." (the sentence replaces the surface and the room) |
+| Sure, room from the answer frame alone | "Your watch was last seen 5 minutes ago. The room may look like a balcony." |
+| Sure, no place known (page only) | "Your watch was last seen 5 minutes ago. Please look at the picture to see the place." The wearable says the time only |
 | In hand | "You were holding your bottle about 20 minutes ago." |
 | In hand, weak | "I am not sure, but you may have been holding your bottle about 20 minutes ago. Please look at the picture." |
 | Weak | "I am not sure, but I may have seen your bottle about 20 minutes ago. It may have been on a table. The room may look like a bedroom. Please look at the picture." |

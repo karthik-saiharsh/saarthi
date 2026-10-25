@@ -121,6 +121,7 @@ def create_search_router(
                 answer = {
                     **answer_json(found.answer),
                     "label": found.label,
+                    "name": found.name,
                     "via": found.via,
                 }
         return {

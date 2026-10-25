@@ -63,6 +63,8 @@ The answer is weak, or "no match" (see `docs/ui/Find Page.md`). The route `POST 
 
 The search reads the boxes of `done` frames of the last `max_scan_hours` (24, the rolling buffer), at most `max_boxes` (5000), and compares them in memory.
 The route gives `status: "open"` with the answer, its `label` and `via` (`label`, `visual` or `rewrite`; `verified` in the mode `verified`).
+The route also gives `name`: the name that the page and the voice use. In the mode `verified` it is the phrase of the user, because Grounding DINO found the phrase at the box.
+The `label` of the broad detector can be wrong (a white bottle called "napkin"). In the other modes, `name` is the `label`.
 
 ## The two modes
 

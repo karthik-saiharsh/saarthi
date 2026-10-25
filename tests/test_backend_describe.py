@@ -185,10 +185,28 @@ def test_a_sure_answer_names_the_time_the_surface_and_the_room() -> None:
     )
 
 
-def test_the_surface_and_the_room_are_left_out_when_they_are_none() -> None:
+def test_a_sure_answer_without_a_place_asks_to_look_at_the_picture() -> None:
+    assert build_sentence("bottle", sure(), None, None) == (
+        "Your bottle was last seen 10 minutes ago. Please look at the picture to see the place."
+    )
+
+
+def test_a_sure_answer_without_a_place_on_the_wearable_says_the_time_only() -> None:
     assert (
-        build_sentence("bottle", sure(), None, None)
+        build_sentence("bottle", sure(), None, None, listening=True)
         == "Your bottle was last seen 10 minutes ago."
+    )
+
+
+def test_a_sure_answer_with_a_place_does_not_ask_to_look_at_the_picture() -> None:
+    assert "picture" not in build_sentence("bottle", sure(), "a table", None)
+    assert "picture" not in build_sentence("bottle", sure(), None, "a bedroom")
+
+
+def test_a_room_of_one_frame_is_said_with_may_also_for_a_sure_answer() -> None:
+    text = build_sentence("bottle", sure(), None, "a balcony", room_sure=False)
+    assert text == (
+        "Your bottle was last seen 10 minutes ago. The room may look like a balcony."
     )
 
 
@@ -299,6 +317,41 @@ def test_no_room_is_named_when_the_frames_disagree() -> None:
     assert result.surface == "a table"
 
 
+def test_a_clear_room_of_the_answer_frame_is_named_with_may_when_the_frames_disagree() -> (
+    None
+):
+    centre = frame_at(0)
+    frame_at(-30), frame_at(40)
+    service, scene = make_service(room_single_min_score=0.9)
+    scene.room_queue = [
+        rooms("a balcony", 0.97),
+        rooms("a kitchen"),
+        rooms("a bathroom"),
+    ]
+    result = service.describe("bottle", answer_for(centre))
+    assert result.room == "a balcony" and result.room_sure is False
+    assert "The room may look like a balcony." in result.text
+
+
+def test_the_room_of_one_frame_below_the_value_is_not_named() -> None:
+    centre = frame_at(0)
+    frame_at(-30), frame_at(40)
+    service, scene = make_service(room_single_min_score=0.98)
+    scene.room_queue = [
+        rooms("a balcony", 0.97),
+        rooms("a kitchen"),
+        rooms("a bathroom"),
+    ]
+    assert service.describe("bottle", answer_for(centre)).room is None
+
+
+def test_the_room_of_one_frame_is_not_a_fact_for_the_language_model() -> None:
+    centre = frame_at(0)
+    service, scene = make_service(room_single_min_score=0.9)
+    scene.room_queue = [rooms("a balcony", 0.97)]
+    assert service.place(centre.id, BOX, False) == ("a table", None)
+
+
 def test_no_room_is_named_without_neighbours() -> None:
     centre = frame_at(0)
     result = make_service()[0].describe("bottle", answer_for(centre))
@@ -368,7 +421,9 @@ def test_a_switched_off_scene_gives_a_sentence_with_the_time_only() -> None:
     )
     service = DescribeService(backend_config(), engine)
     result = service.describe("bottle", answer_for(frame_at(0)))
-    assert result.text == "Your bottle was last seen 10 minutes ago."
+    assert result.text == (
+        "Your bottle was last seen 10 minutes ago. Please look at the picture to see the place."
+    )
     assert result.surface is None and result.room is None
 
 
@@ -377,7 +432,9 @@ def test_an_error_of_the_scene_model_gives_a_sentence_without_the_place() -> Non
     scene = FakeSceneClassifier()
     scene.error = InferenceError("test")
     result = make_service(scene)[0].describe("bottle", answer_for(centre))
-    assert result.text == "Your bottle was last seen 10 minutes ago."
+    assert result.text == (
+        "Your bottle was last seen 10 minutes ago. Please look at the picture to see the place."
+    )
 
 
 def test_a_neighbour_that_fails_is_left_out_and_the_others_still_count() -> None:
@@ -392,7 +449,9 @@ def test_a_frame_of_the_answer_that_cannot_be_read_gives_the_time_only() -> None
     centre = frame_at(0)
     storage.delete_images([centre.file_path])
     result = make_service()[0].describe("bottle", answer_for(centre))
-    assert result.text == "Your bottle was last seen 10 minutes ago."
+    assert result.text == (
+        "Your bottle was last seen 10 minutes ago. Please look at the picture to see the place."
+    )
 
 
 def test_an_unknown_frame_and_an_answer_without_frame_give_the_time_only() -> None:

@@ -303,6 +303,20 @@ def test_the_verified_mode_is_the_default_and_classic_is_unchanged() -> None:
     assert detector.phrase_calls == []
 
 
+def test_a_verified_answer_uses_the_words_of_the_user_not_the_detector_name() -> None:
+    # The broad detector called a white bottle "napkin". The check confirmed "water bottle" at the box.
+    add_box(store_frame(8), "napkin", shows="water bottle")
+    found = verified(ScriptedDetector([HIT])).find("where is my water bottle")
+    assert found is not None and found.via == "verified"
+    assert found.label == "napkin" and found.name == "water bottle"
+
+
+def test_a_classic_answer_uses_the_detector_name() -> None:
+    add_box(store_frame(8), "laptop")
+    found = make_service().find("where is my laptop")
+    assert found is not None and found.via == "label" and found.name == "laptop"
+
+
 def test_a_wrong_mode_is_refused_by_the_service() -> None:
     with pytest.raises(AssertionError):
         make_service(mode="fast")

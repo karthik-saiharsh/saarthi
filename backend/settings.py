@@ -107,6 +107,8 @@ class DescribeConfig:
     room_min_frames: int
     room_agree_fraction: float
     room_min_score: float
+    # The room of the answer frame alone is named (with "may") at this score, when the rule says nothing.
+    room_single_min_score: float
     surface_min_score: float
     # IANA name of the time zone for the part of the day. Empty: the time zone of the server.
     time_zone: str
@@ -404,6 +406,9 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> BackendConfig:
             describe, "describe", "room_agree_fraction", 0.0, 1.0
         ),
         room_min_score=_number(describe, "describe", "room_min_score", 0.0, 1.0),
+        room_single_min_score=_number(
+            describe, "describe", "room_single_min_score", 0.0, 1.0
+        ),
         surface_min_score=_number(describe, "describe", "surface_min_score", 0.0, 1.0),
         time_zone=_time_zone(describe),
         day_part_min_hours=_integer(describe, "describe", "day_part_min_hours", 1, 24),
